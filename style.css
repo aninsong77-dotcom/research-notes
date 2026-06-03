@@ -1833,7 +1833,7 @@ body {
 /* ── 저작권 표시 ──────────────────────────────────────────── */
 .copyright {
     position: fixed;
-    bottom: 10px;
+    bottom: 18px;
     right: 16px;
     font-size: 11px;
     color: var(--text-muted);
