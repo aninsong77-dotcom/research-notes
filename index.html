@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>내 연구노트</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36'%3E%3Crect width='36' height='36' rx='9' fill='%231a73e8'/%3E%3Crect x='7' y='6' width='13' height='17' rx='2.5' fill='white'/%3E%3Crect x='10' y='10' width='7' height='1.5' rx='.75' fill='%231a73e8' opacity='.35'/%3E%3Crect x='10' y='13' width='5.5' height='1.5' rx='.75' fill='%231a73e8' opacity='.35'/%3E%3Crect x='10' y='16' width='6.5' height='1.5' rx='.75' fill='%231a73e8' opacity='.35'/%3E%3Ccircle cx='26' cy='11' r='3' fill='white' opacity='.95'/%3E%3Ccircle cx='29' cy='21' r='2' fill='white' opacity='.8'/%3E%3Ccircle cx='22' cy='27' r='2' fill='white' opacity='.7'/%3E%3Cline x1='20' y1='12.5' x2='23.2' y2='11.5' stroke='white' stroke-width='1.3' stroke-linecap='round' opacity='.85'/%3E%3Cline x1='27' y1='14' x2='28.2' y2='19.2' stroke='white' stroke-width='1.3' stroke-linecap='round' opacity='.75'/%3E%3Cline x1='27.5' y1='23' x2='24' y2='26' stroke='white' stroke-width='1.3' stroke-linecap='round' opacity='.65'/%3E%3C/svg%3E">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- 사이드바 -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <div class="logo" style="margin-bottom:12px">
+                <svg class="logo-icon" width="34" height="34" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                        <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
+                            <stop offset="0%" stop-color="#4285f4"/>
+                            <stop offset="100%" stop-color="#1a73e8"/>
+                        </linearGradient>
+                    </defs>
+                    <rect width="36" height="36" rx="10" fill="url(#lg)"/>
+                    <!-- 문서 -->
+                    <rect x="7" y="6" width="13" height="17" rx="2.5" fill="white"/>
+                    <!-- 텍스트 줄 -->
+                    <rect x="10" y="10" width="7" height="1.5" rx="0.75" fill="#1a73e8" opacity="0.3"/>
+                    <rect x="10" y="13" width="5.5" height="1.5" rx="0.75" fill="#1a73e8" opacity="0.3"/>
+                    <rect x="10" y="16" width="6.5" height="1.5" rx="0.75" fill="#1a73e8" opacity="0.3"/>
+                    <!-- 연결 노드 -->
+                    <circle cx="26" cy="11" r="3.2" fill="white" opacity="0.2"/>
+                    <circle cx="26" cy="11" r="2.2" fill="white"/>
+                    <circle cx="29" cy="21" r="2" fill="white" opacity="0.85"/>
+                    <circle cx="22" cy="27" r="1.8" fill="white" opacity="0.75"/>
+                    <!-- 연결선 -->
+                    <line x1="20" y1="12.5" x2="23.9" y2="11.5" stroke="white" stroke-width="1.3" stroke-linecap="round" opacity="0.85"/>
+                    <line x1="27.2" y1="13.8" x2="28.4" y2="19.2" stroke="white" stroke-width="1.3" stroke-linecap="round" opacity="0.75"/>
+                    <line x1="27.8" y1="23" x2="24" y2="26" stroke="white" stroke-width="1.3" stroke-linecap="round" opacity="0.65"/>
+                </svg>
+                <span class="logo-text">내 연구노트</span>
+            </div>
+            <div id="project-selector"></div>
+        </div>
+        <nav class="sidebar-nav">
+            <button class="nav-item active" data-view="papers">
+                <span class="nav-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+                    </svg>
+                </span>
+                <span>논문</span>
+                <span class="nav-count" id="papers-count">0</span>
+            </button>
+            <button class="nav-item" data-view="materials">
+                <span class="nav-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+                    </svg>
+                </span>
+                <span>자료</span>
+                <span class="nav-count" id="materials-count">0</span>
+            </button>
+            <button class="nav-item" data-view="references">
+                <span class="nav-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3" cy="6" r="1" fill="currentColor"/><circle cx="3" cy="12" r="1" fill="currentColor"/><circle cx="3" cy="18" r="1" fill="currentColor"/>
+                    </svg>
+                </span>
+                <span>참고문헌</span>
+            </button>
+            <button class="nav-item" data-view="sketch">
+                <span class="nav-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                    </svg>
+                </span>
+                <span>모형스케치북</span>
+            </button>
+            <button class="nav-item" data-view="notes">
+                <span class="nav-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="9" y1="18" x2="15" y2="18"/><line x1="10" y1="22" x2="14" y2="22"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/>
+                    </svg>
+                </span>
+                <span>아이디어 저장소</span>
+                <span class="nav-count" id="notes-count">0</span>
+            </button>
+            <button class="nav-item" data-view="organize">
+                <span class="nav-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 7V5a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v1"/><path d="M3 7h18l-1.5 11a2 2 0 0 1-2 1.8H6.5a2 2 0 0 1-2-1.8z"/>
+                    </svg>
+                </span>
+                <span>정리</span>
+            </button>
+        </nav>
+        <div class="sidebar-footer">
+            <button class="btn-add" id="btn-add">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="vertical-align:middle;margin-right:4px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                새로 추가
+            </button>
+            <div class="data-buttons">
+                <button class="btn-data" id="btn-folder-backup" title="백업 — 폴더에 최신본 자동 덮어쓰기">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:3px"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                    백업
+                </button>
+                <button class="btn-data" id="btn-export" title="보냄 — 데이터를 파일로 내보내기">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:3px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    보냄
+                </button>
+                <button class="btn-data" id="btn-import" title="받음 — 파일에서 데이터를 가져오기">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:3px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    받음
+                </button>
+            </div>
+            <button class="btn-debug" id="btn-datainfo" title="내 데이터가 어디 저장되는지 보기 / 삭제하기">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                내 데이터
+            </button>
+            <button class="btn-debug" id="btn-debug" title="오류 로그 보기 — 충돌·버그 발생 시 눌러서 로그를 복사해 알려주세요">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px"><rect x="8" y="6" width="8" height="14" rx="4"/><path d="M19 7l-3 2M5 7l3 2M3 13h4M17 13h4M19 19l-3-2M5 19l3-2M12 2v4"/></svg>
+                디버그 로그<span class="debug-badge" id="debug-badge" style="display:none">0</span>
+            </button>
+        </div>
+    </aside>
+
+    <!-- 메인 영역 -->
+    <main class="main">
+        <div class="topbar">
+            <div class="search-container">
+                <span class="search-icon">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                </span>
+                <input type="text" id="search-input" class="search-input"
+                    placeholder="제목, 저자, 변인, 메모 등 단어 검색...">
+            </div>
+            <div class="search-mode-toggle" id="search-mode-toggle" title="검색 범위 선택">
+                <button class="sm-btn active" data-mode="fulltext">전체단어</button>
+                <button class="sm-btn" data-mode="keyword">키워드만</button>
+            </div>
+            <button class="btn-mini-open" id="btn-open-mini" title="빠른 인용 창 열기">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:5px"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>빠른 인용
+            </button>
+            <button class="btn-primary" id="btn-add-top">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="vertical-align:middle;margin-right:5px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span id="add-top-label">논문 추가</span>
+            </button>
+        </div>
+        <div class="content" id="content"></div>
+    </main>
+
+    <!-- 논문 추가/수정 폼 모달 -->
+    <div class="modal-overlay" id="modal-form" style="display:none">
+        <div class="modal modal-large">
+            <div class="modal-header">
+                <h2 id="modal-form-title">논문 추가</h2>
+                <button class="modal-close" id="close-form">✕</button>
+            </div>
+            <div class="modal-body">
+
+                <!-- 보기 모드 전용: 메타 · 인용 · 관련 논문 -->
+                <div id="view-extras" class="view-extras"></div>
+
+                <!-- RISS 인용 붙여넣기 -->
+                <div class="riss-paste-box">
+                    <div class="riss-paste-label">📋 RISS "인용하기" 텍스트 붙여넣기 (한국 논문)</div>
+                    <div class="riss-paste-row">
+                        <textarea id="riss-input" rows="2"
+                            placeholder="예: 박지선. (2025). 사회비교경향성이 자기은폐에 미치는 영향. 한국심리학회지: 문화 및 사회문제, 31(1), 167-187."></textarea>
+                        <button class="btn-secondary" id="btn-riss-parse">자동 입력</button>
+                    </div>
+                </div>
+
+                <!-- DOI 자동 불러오기 -->
+                <div class="doi-lookup">
+                    <div class="doi-lookup-label">🔎 DOI로 자동 불러오기 (영어 논문 / DOI 있는 논문)</div>
+                    <div class="doi-lookup-row">
+                        <input type="text" id="doi-input" placeholder="예: 10.1037/abc123  또는  https://doi.org/10.xxxx/xxx">
+                        <button class="btn-secondary" id="btn-doi-lookup">자동 불러오기</button>
+                    </div>
+                </div>
+
+                <div class="form-divider">또는 직접 입력</div>
+
+                <form id="paper-form">
+                    <div class="form-grid">
+                        <div class="form-group full">
+                            <label>제목 <span class="required">*</span></label>
+                            <input type="text" id="f-title" required placeholder="논문 제목">
+                        </div>
+                        <div class="form-group">
+                            <label>저자</label>
+                            <input type="text" id="f-authors" placeholder="홍길동, 김철수">
+                        </div>
+                        <div class="form-group">
+                            <label>연도</label>
+                            <input type="text" id="f-year" placeholder="2025">
+                        </div>
+                        <div class="form-group full">
+                            <label>학술지명</label>
+                            <input type="text" id="f-source" placeholder="한국심리학회지: 문화 및 사회문제">
+                        </div>
+                        <div class="form-group">
+                            <label>권(Volume)</label>
+                            <input type="text" id="f-volume" placeholder="31">
+                        </div>
+                        <div class="form-group">
+                            <label>호(Issue)</label>
+                            <input type="text" id="f-issue" placeholder="1">
+                        </div>
+                        <div class="form-group">
+                            <label>페이지</label>
+                            <input type="text" id="f-pages" placeholder="167-187">
+                        </div>
+                        <div class="form-group">
+                            <label>DOI</label>
+                            <input type="text" id="f-doi" placeholder="10.xxxx/xxxxx">
+                        </div>
+                        <div class="form-group full">
+                            <label>초록</label>
+                            <textarea id="f-abstract" rows="4" placeholder="논문 초록"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>연구방법</label>
+                            <input type="text" id="f-methods" placeholder="설문, 구조방정식, 질적연구...">
+                        </div>
+                        <div class="form-group">
+                            <label>주요 발견 / 결론</label>
+                            <input type="text" id="f-findings" placeholder="핵심 연구결과 요약">
+                        </div>
+                        <div class="form-group full">
+                            <label>변인 <small>(입력 후 Enter로 추가)</small></label>
+                            <div class="tag-input-container" id="variables-container">
+                                <div class="tag-list" id="variables-list"></div>
+                                <input type="text" id="variables-input" placeholder="예: 자기효능감">
+                            </div>
+                        </div>
+                        <div class="form-group full">
+                            <label>태그 <small>(입력 후 Enter로 추가)</small></label>
+                            <div class="tag-input-container" id="tags-container">
+                                <div class="tag-list" id="tags-list"></div>
+                                <input type="text" id="tags-input" placeholder="예: 동기이론">
+                            </div>
+                        </div>
+                        <div class="form-group full">
+                            <label>내 메모</label>
+                            <textarea id="f-note" rows="3" placeholder="이 논문을 어디에 활용할지, 중요한 포인트 등 자유롭게 메모"></textarea>
+                        </div>
+                        <div class="form-group full">
+                            <label>PDF 파일</label>
+                            <div class="file-upload">
+                                <input type="file" id="f-pdf" accept=".pdf" style="display:none">
+                                <button type="button" class="btn-file" id="btn-pick-pdf">📎 PDF 선택</button>
+                                <span id="pdf-filename">선택된 파일 없음</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 논문 정밀 분석 (정리표) -->
+                    <details class="analysis-block" id="analysis-block">
+                        <summary>
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px"><path d="M3 3v18h18"/><rect x="7" y="9" width="3" height="9"/><rect x="14" y="5" width="3" height="13"/></svg>
+                            논문 정밀 분석 <small>(정독하며 채우는 정리표 — 비워둬도 됩니다)</small>
+                        </summary>
+                        <div class="analysis-content">
+                            <div class="analysis-group-label">기본 정보</div>
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>논문 종류</label>
+                                    <input type="text" id="a-type" placeholder="학술지 논문 / 석사학위 / 박사학위...">
+                                </div>
+                                <div class="form-group">
+                                    <label>학교명 <small>(대상자 소속)</small></label>
+                                    <input type="text" id="a-school" placeholder="○○대학교">
+                                </div>
+                                <div class="form-group full">
+                                    <label>키워드</label>
+                                    <input type="text" id="a-keywords" placeholder="자기효능감, 학업열의, 매개효과 (쉼표로 구분)">
+                                </div>
+                            </div>
+
+                            <div class="analysis-group-label">연구 배경</div>
+                            <div class="form-grid">
+                                <div class="form-group full">
+                                    <label>연구의 필요성</label>
+                                    <textarea id="a-needs" rows="2" placeholder="이 연구가 왜 필요한가?"></textarea>
+                                </div>
+                                <div class="form-group full">
+                                    <label>선행연구의 한계점</label>
+                                    <textarea id="a-priorlimits" rows="2" placeholder="기존 연구가 다루지 못한 부분"></textarea>
+                                </div>
+                                <div class="form-group">
+                                    <label>사용한 이론 <small>(저자, 연도)</small></label>
+                                    <input type="text" id="a-theory" placeholder="예: 자기결정성이론 (Deci & Ryan, 1985)">
+                                </div>
+                                <div class="form-group">
+                                    <label>주요 연구</label>
+                                    <input type="text" id="a-mainstudies" placeholder="핵심적으로 인용된 선행연구">
+                                </div>
+                            </div>
+
+                            <div class="analysis-group-label">연구 설계</div>
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>연구대상자</label>
+                                    <input type="text" id="a-subjects" placeholder="예: 대학생 320명 (남 140, 여 180)">
+                                </div>
+                                <div class="form-group">
+                                    <label>연구모형</label>
+                                    <input type="text" id="a-model" placeholder="예: 매개모형 / 조절된 매개 / SEM">
+                                </div>
+                            </div>
+
+                            <div class="analysis-group-label">변수 <small>(역할별로 + 버튼을 눌러 추가)</small></div>
+                            <div id="analysis-vars-container"></div>
+
+                            <div class="analysis-group-label">분석</div>
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>통계 프로그램</label>
+                                    <input type="text" id="a-program" placeholder="SPSS, AMOS, R, Mplus, Process macro...">
+                                </div>
+                                <div class="form-group">
+                                    <label>분석 방법</label>
+                                    <input type="text" id="a-method" placeholder="위계적 회귀분석, 구조방정식, Bootstrapping...">
+                                </div>
+                                <div class="form-group full">
+                                    <label>분석 결과</label>
+                                    <textarea id="a-results" rows="3" placeholder="주요 통계 결과와 가설 검증 내용"></textarea>
+                                </div>
+                            </div>
+
+                            <div class="analysis-group-label">정리</div>
+                            <div class="form-grid">
+                                <div class="form-group full">
+                                    <label>시사점 및 제언</label>
+                                    <textarea id="a-implications" rows="2"></textarea>
+                                </div>
+                                <div class="form-group full">
+                                    <label>한계점</label>
+                                    <textarea id="a-limitations" rows="2"></textarea>
+                                </div>
+                                <div class="form-group full">
+                                    <label>인상 깊은 점</label>
+                                    <textarea id="a-impressive" rows="2" placeholder="내 연구에 참고할 점, 흥미로운 발견 등"></textarea>
+                                </div>
+                                <div class="form-group full">
+                                    <label>더 읽고 싶은 참고문헌</label>
+                                    <textarea id="a-further" rows="2" placeholder="이 논문에서 인용해 따라가 보고 싶은 문헌"></textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </details>
+
+                    <div class="form-actions">
+                        <button type="button" class="btn-delete view-only" id="btn-delete-paper">삭제</button>
+                        <div class="form-actions-spacer"></div>
+                        <button type="button" class="btn-secondary edit-only" id="btn-cancel-form">취소</button>
+                        <button type="button" class="btn-secondary view-only" id="btn-close-view">닫기</button>
+                        <button type="button" class="btn-primary view-only" id="btn-switch-edit">✏️ 수정</button>
+                        <button type="submit" class="btn-primary edit-only">저장</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 자료 추가/수정·보기 모달 -->
+    <div class="modal-overlay" id="modal-material" style="display:none">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 id="modal-material-title">자료 추가</h2>
+                <button class="modal-close" id="close-material">✕</button>
+            </div>
+            <div class="modal-body">
+                <form id="material-form">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>종류</label>
+                            <select id="m-type">
+                                <option value="척도">척도</option>
+                                <option value="도서">도서</option>
+                                <option value="웹자료">웹자료</option>
+                                <option value="보고서">보고서</option>
+                                <option value="강의자료">강의자료</option>
+                                <option value="기타">기타</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>작성자 / 원저자</label>
+                            <input type="text" id="m-authors" placeholder="예: 홍길동 / 기관명">
+                        </div>
+                        <div class="form-group full">
+                            <label>제목 <span class="required">*</span></label>
+                            <input type="text" id="m-title" required placeholder="자료 제목 (예: 한국판 자기효능감 척도)">
+                        </div>
+                        <div class="form-group full">
+                            <label>출처 / 링크</label>
+                            <input type="text" id="m-source" placeholder="출처, URL, 소장처 등">
+                        </div>
+                        <div class="form-group full">
+                            <label>설명 / 메모</label>
+                            <textarea id="m-note" rows="4" placeholder="문항 수, 하위요인, 신뢰도, 사용 조건, 활용 계획 등 자유롭게"></textarea>
+                        </div>
+                        <div class="form-group full">
+                            <label>첨부 파일</label>
+                            <div class="file-upload">
+                                <input type="file" id="m-file" style="display:none">
+                                <button type="button" class="btn-file" id="btn-pick-mfile">📎 파일 선택</button>
+                                <span id="mfile-name">선택된 파일 없음</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn-delete view-only" id="btn-delete-material">삭제</button>
+                        <div class="form-actions-spacer"></div>
+                        <button type="button" class="btn-secondary edit-only" id="btn-cancel-material">취소</button>
+                        <button type="button" class="btn-secondary view-only" id="btn-close-material-view">닫기</button>
+                        <button type="button" class="btn-primary view-only" id="btn-switch-material-edit">✏️ 수정</button>
+                        <button type="submit" class="btn-primary edit-only">저장</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 디버그 로그 모달 -->
+    <div class="modal-overlay" id="modal-debug" style="display:none">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>🐞 디버그 로그</h2>
+                <button class="modal-close" id="close-debug">✕</button>
+            </div>
+            <div class="modal-body">
+                <p class="debug-help">앱을 쓰다가 충돌하거나 이상하면 이 창을 열어 <strong>복사</strong> 후 채팅에 붙여넣어 주세요. 어떤 동작에서 어떤 오류가 났는지 확인할 수 있어요.</p>
+                <textarea id="debug-output" class="debug-output" readonly rows="16"></textarea>
+                <div class="form-actions">
+                    <button type="button" class="btn-delete" id="btn-debug-clear">로그 비우기</button>
+                    <div class="form-actions-spacer"></div>
+                    <button type="button" class="btn-secondary" id="btn-debug-download">다운로드</button>
+                    <button type="button" class="btn-primary" id="btn-debug-copy">📋 복사</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 내 데이터 정보 / 삭제 -->
+    <div class="modal-overlay" id="modal-datainfo" style="display:none">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>💾 내 데이터</h2>
+                <button class="modal-close" id="close-datainfo">✕</button>
+            </div>
+            <div class="modal-body" id="datainfo-body"></div>
+        </div>
+    </div>
+
+    <!-- 가져오기용 숨겨진 파일 입력 -->
+    <input type="file" id="import-input" accept=".json" style="display:none">
+
+    <script src="mindmap.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

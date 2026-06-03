@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>연구노트 — 빠른 인용</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #1a73e8;
+            --accent-hover: #1557b0;
+            --accent-light: #e8f0fe;
+            --accent-mid: #d2e3fc;
+            --bg: #f1f3f4;
+            --surface: #ffffff;
+            --border: #dadce0;
+            --text-primary: #3c4043;
+            --text-secondary: #5f6368;
+            --text-muted: #80868b;
+            --success: #1e8e3e;
+            --danger: #d93025;
+            --shadow: 0 1px 3px rgba(60,64,67,0.1), 0 2px 6px rgba(60,64,67,0.08);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Noto Sans KR', 'Inter', -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text-primary);
+            font-size: 13px;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            padding: 8px;
+            gap: 0;
+        }
+
+        .window-wrap {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--surface);
+            border-radius: 16px;
+            box-shadow: 0 1px 3px rgba(60,64,67,0.12), 0 4px 12px rgba(60,64,67,0.1);
+            overflow: hidden;
+        }
+
+        /* ── 헤더 ── */
+        .header {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 12px 14px 10px;
+            flex-shrink: 0;
+        }
+        .header-title {
+            color: var(--accent);
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: -0.2px;
+            margin-bottom: 8px;
+        }
+        .search-wrap { position: relative; }
+        .search-icon {
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 13px;
+            pointer-events: none;
+        }
+        .search-input {
+            width: 100%;
+            padding: 8px 10px 8px 32px;
+            background: var(--bg);
+            border: 1.5px solid transparent;
+            border-radius: 24px;
+            font-size: 13px;
+            color: var(--text-primary);
+            font-family: inherit;
+            transition: all 0.15s;
+        }
+        .search-input:focus {
+            outline: none;
+            border-color: var(--accent);
+            background: white;
+            box-shadow: 0 0 0 3px rgba(26,115,232,0.12);
+        }
+        .search-input::placeholder { color: var(--text-muted); }
+
+        /* ── 탭 ── */
+        .tabs {
+            display: flex;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 8px 10px;
+            gap: 4px;
+            flex-shrink: 0;
+        }
+        .tab {
+            flex: 1;
+            padding: 7px;
+            border: none;
+            border-radius: 24px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.15s;
+            color: var(--text-secondary);
+            background: transparent;
+        }
+        .tab.active {
+            background: var(--accent-light);
+            color: var(--accent);
+        }
+        .tab:hover:not(.active) { background: var(--bg); color: var(--text-primary); }
+
+        /* ── 카운트 배지 ── */
+        .count-bar {
+            padding: 7px 14px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            font-size: 11.5px;
+            color: var(--text-muted);
+            flex-shrink: 0;
+        }
+        .count-bar strong { color: var(--accent); }
+
+        /* ── 리스트 ── */
+        .list-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        /* ── 인용 카드 ── */
+        .paper-item {
+            background: var(--surface);
+            border-radius: 14px;
+            padding: 11px 12px;
+            border: 1.5px solid var(--border);
+            transition: all 0.15s;
+            box-shadow: 0 1px 2px rgba(60,64,67,0.08);
+        }
+        .paper-item:hover {
+            border-color: var(--accent-mid);
+            box-shadow: 0 2px 8px rgba(60,64,67,0.12);
+            transform: translateY(-1px);
+        }
+
+        .paper-meta {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+            margin-bottom: 4px;
+        }
+        .paper-author {
+            font-weight: 700;
+            font-size: 12.5px;
+            color: var(--text-primary);
+        }
+        .paper-year {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--accent);
+            background: var(--accent-light);
+            padding: 1px 6px;
+            border-radius: 20px;
+        }
+        /* ── 본문 인용 탭 안내 ── */
+        .cite-hint-mini {
+            flex-shrink: 0;
+            padding: 8px 14px;
+            background: var(--accent-light);
+            border-bottom: 1px solid var(--border);
+            font-size: 11px;
+            color: var(--accent-hover);
+            line-height: 1.5;
+        }
+        .cite-hint-mini b { font-weight: 700; }
+
+        .paper-title-mini {
+            font-size: 12px;
+            color: var(--text-secondary);
+            line-height: 1.4;
+            margin-bottom: 9px;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .paper-btns {
+            display: flex;
+            gap: 6px;
+        }
+        .btn-intext {
+            flex: 1;
+            padding: 6px 8px;
+            background: #f0fdf4;
+            color: #166534;
+            border: 1.5px solid #86efac;
+            border-radius: 6px;
+            font-size: 11.5px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+            transition: background 0.12s;
+            text-align: center;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .btn-intext:hover { background: #dcfce7; }
+
+        .btn-apa {
+            flex: 1;
+            padding: 6px 8px;
+            background: var(--accent-light);
+            color: var(--accent-hover);
+            border: 1.5px solid #c7d2fe;
+            border-radius: 6px;
+            font-size: 11.5px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+            transition: background 0.12s;
+            text-align: center;
+        }
+        .btn-apa:hover { background: #e0e7ff; }
+
+        /* ── 참고문헌 탭 ── */
+        .ref-toolbar-mini {
+            display: flex;
+            gap: 6px;
+            padding: 8px;
+            flex-shrink: 0;
+            border-bottom: 1px solid var(--border);
+            background: var(--surface);
+        }
+        .btn-copy-all-mini {
+            flex: 1;
+            padding: 8px;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 7px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+            transition: background 0.15s;
+        }
+        .btn-copy-all-mini:hover { background: var(--accent-hover); }
+
+        .ref-item-mini {
+            background: var(--surface);
+            border-radius: 9px;
+            padding: 11px 12px;
+            border: 1.5px solid transparent;
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            box-shadow: var(--shadow);
+            transition: all 0.12s;
+        }
+        .ref-item-mini.selected { border-color: #86efac; background: #f0fdf4; }
+        .ref-item-mini:not(.selected) { opacity: 0.5; }
+
+        .ref-checkbox {
+            margin-top: 2px;
+            width: 15px;
+            height: 15px;
+            flex-shrink: 0;
+            accent-color: var(--accent);
+            cursor: pointer;
+        }
+        .ref-text-mini {
+            font-size: 11.5px;
+            line-height: 1.65;
+            color: var(--text-primary);
+            flex: 1;
+        }
+        .btn-ref-copy-mini {
+            padding: 4px 8px;
+            background: var(--bg);
+            color: var(--text-secondary);
+            border: 1.5px solid var(--border);
+            border-radius: 5px;
+            font-size: 11px;
+            cursor: pointer;
+            font-family: inherit;
+            white-space: nowrap;
+            flex-shrink: 0;
+            transition: all 0.12s;
+        }
+        .btn-ref-copy-mini:hover { background: var(--accent-light); border-color: var(--accent); color: var(--accent); }
+
+        /* ── 빈 상태 ── */
+        .empty {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+            text-align: center;
+            color: var(--text-muted);
+            flex: 1;
+        }
+        .empty-icon { font-size: 36px; margin-bottom: 10px; }
+        .empty h3 { font-size: 14px; color: var(--text-secondary); margin-bottom: 6px; }
+        .empty p { font-size: 12px; line-height: 1.6; }
+
+        /* ── 토스트 ── */
+        .toast {
+            position: fixed;
+            bottom: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 9px 16px;
+            border-radius: 8px;
+            font-size: 12.5px;
+            font-weight: 500;
+            color: white;
+            z-index: 9999;
+            animation: slideUp 0.2s ease;
+            white-space: nowrap;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+        }
+        .toast-success { background: var(--success); }
+        .toast-error { background: var(--danger); }
+        .toast-info { background: var(--accent); }
+        @keyframes slideUp {
+            from { transform: translateX(-50%) translateY(10px); opacity: 0; }
+            to { transform: translateX(-50%) translateY(0); opacity: 1; }
+        }
+
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+    </style>
+</head>
+<body>
+
+    <div class="window-wrap">
+        <div class="header">
+            <div class="header-title">
+            <svg style="vertical-align:middle;margin-right:6px" width="22" height="22" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <defs><linearGradient id="mg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#4285f4"/><stop offset="100%" stop-color="#1a73e8"/></linearGradient></defs>
+                <rect width="36" height="36" rx="10" fill="url(#mg)"/>
+                <rect x="7" y="6" width="13" height="17" rx="2.5" fill="white"/>
+                <rect x="10" y="10" width="7" height="1.5" rx="0.75" fill="#1a73e8" opacity="0.3"/>
+                <rect x="10" y="13" width="5.5" height="1.5" rx="0.75" fill="#1a73e8" opacity="0.3"/>
+                <rect x="10" y="16" width="6.5" height="1.5" rx="0.75" fill="#1a73e8" opacity="0.3"/>
+                <circle cx="26" cy="11" r="2.2" fill="white"/>
+                <circle cx="29" cy="21" r="2" fill="white" opacity="0.85"/>
+                <circle cx="22" cy="27" r="1.8" fill="white" opacity="0.75"/>
+                <line x1="20" y1="12.5" x2="23.9" y2="11.5" stroke="white" stroke-width="1.3" stroke-linecap="round" opacity="0.85"/>
+                <line x1="27.2" y1="13.8" x2="28.4" y2="19.2" stroke="white" stroke-width="1.3" stroke-linecap="round" opacity="0.75"/>
+                <line x1="27.8" y1="23" x2="24" y2="26" stroke="white" stroke-width="1.3" stroke-linecap="round" opacity="0.65"/>
+            </svg>
+            연구노트 — 빠른 인용
+        </div>
+            <div class="search-wrap">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="search" class="search-input" placeholder="저자, 제목, 변인 검색...">
+            </div>
+        </div>
+
+        <div id="count-bar" class="count-bar"></div>
+
+        <div class="cite-hint-mini">✓ 메인 앱 논문 목록에서 <b>‘빠른 인용’ 체크</b>한 논문만 표시됩니다</div>
+        <div class="ref-toolbar-mini">
+            <button class="btn-copy-all-mini" id="btn-copy-all-refs">📋 참고문헌 전체 복사</button>
+        </div>
+        <div class="list-area" id="cite-list-area"></div>
+    </div>
+
+    <script>
+    // ── DB (메인 앱과 동일) ──────────────────────────────────
+    const DB_NAME = 'ResearchNotesDB';
+    let db, papers = [], searchQuery = '';
+
+    function initDB() {
+        return new Promise((res, rej) => {
+            // 버전을 지정하지 않고 현재 버전 그대로 연다 (메인 앱과 버전 충돌 방지)
+            const req = indexedDB.open(DB_NAME);
+            req.onsuccess = e => { db = e.target.result; res(); };
+            req.onerror = e => rej(e.target.error);
+        });
+    }
+
+    function dbGetAll() {
+        return new Promise((res, rej) => {
+            const req = db.transaction('papers', 'readonly').objectStore('papers').getAll();
+            req.onsuccess = () => res(req.result);
+            req.onerror = () => rej(req.error);
+        });
+    }
+
+    function dbPut(item) {
+        return new Promise((res, rej) => {
+            const req = db.transaction('papers', 'readwrite').objectStore('papers').put(item);
+            req.onsuccess = () => res();
+            req.onerror = () => rej(req.error);
+        });
+    }
+
+    async function copyToClipboard(text) {
+        try { await navigator.clipboard.writeText(text); return true; }
+        catch { return false; }
+    }
+
+    function escHtml(str) {
+        if (!str) return '';
+        return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // ── APA 형식 ────────────────────────────────────────────
+    function formatAPA(p) {
+        const authors = p.authors || '저자 미상';
+        const year = p.year ? `(${p.year})` : '(연도 미상)';
+        const title = p.title || '제목 없음';
+        const source = p.source || '';
+        const volume = p.volume || '';
+        const issue = p.issue ? `(${p.issue})` : '';
+        const pages = p.pages || '';
+        const doi = p.doi ? `https://doi.org/${p.doi.replace(/^https?:\/\/doi\.org\//i,'')}` : '';
+
+        let ref = `${authors} ${year}. ${title}.`;
+        if (source) {
+            ref += ` ${source}`;
+            if (volume) ref += `, ${volume}${issue}`;
+            if (pages) ref += `, ${pages}`;
+            ref += '.';
+        }
+        if (doi) ref += ` ${doi}`;
+        return ref;
+    }
+
+    function formatInText(p) {
+        if (!p.authors) return p.year ? `(${p.year})` : '';
+        const list = p.authors.split(/[,·&]/).map(a => a.trim()).filter(Boolean);
+        const first = list[0];
+        let name = first;
+        if (list.length === 2) name = `${list[0]}, ${list[1]}`;
+        else if (list.length >= 3) name = `${first} 외`;
+        return p.year ? `(${name}, ${p.year})` : `(${name})`;
+    }
+
+    // ── 토스트 ────────────────────────────────────────────
+    function showToast(msg, type = 'info') {
+        document.querySelector('.toast')?.remove();
+        const t = document.createElement('div');
+        t.className = `toast toast-${type}`;
+        t.textContent = msg;
+        document.body.appendChild(t);
+        setTimeout(() => t.remove(), 2500);
+    }
+
+    // ── 렌더링 ───────────────────────────────────────────
+    function getFiltered() {
+        const q = searchQuery.toLowerCase();
+        if (!q) return papers;
+        return papers.filter(p =>
+            [p.title, p.authors, p.abstract, ...(p.variables||[]), ...(p.tags||[])]
+            .some(f => f && String(f).toLowerCase().includes(q))
+        );
+    }
+
+    function render() {
+        const selectedCount = papers.filter(p => p.inQuickCite).length;
+
+        // 메인 앱에서 '빠른 인용' 체크한 논문만 표시
+        const list = getFiltered().filter(p => p.inQuickCite).sort((a, b) => {
+            const na = (a.authors||'').split(/[,·]/)[0].trim();
+            const nb = (b.authors||'').split(/[,·]/)[0].trim();
+            return na.localeCompare(nb, 'ko');
+        });
+
+        const countBar = document.getElementById('count-bar');
+        countBar.innerHTML = `⭐ 빠른 인용 <strong>${selectedCount}편</strong> / 전체 ${papers.length}편${searchQuery ? ` · 검색 ${list.length}편` : ''}`;
+
+        // 참고문헌 전체 복사 버튼 (현재 표시된 선택 논문 기준)
+        document.getElementById('btn-copy-all-refs').onclick = async () => {
+            const text = list.map(formatAPA).join('\n\n');
+            if (!text) { showToast('표시된 논문이 없습니다', 'error'); return; }
+            const ok = await copyToClipboard(text);
+            showToast(ok ? `${list.length}편 복사됨 — 한글/워드에 붙여넣기 하세요` : '복사 실패', ok ? 'success' : 'error');
+        };
+
+        const panel = document.getElementById('cite-list-area');
+
+        if (list.length === 0) {
+            if (selectedCount === 0) {
+                panel.innerHTML = `
+                    <div class="empty">
+                        <div class="empty-icon">⭐</div>
+                        <h3>선택한 논문이 없습니다</h3>
+                        <p>메인 앱 논문 목록에서<br><b>‘빠른 인용’ 체크박스</b>를 선택하면<br>여기에 표시됩니다</p>
+                    </div>`;
+            } else {
+                panel.innerHTML = `
+                    <div class="empty">
+                        <div class="empty-icon">🔍</div>
+                        <h3>결과 없음</h3>
+                        <p>다른 키워드로 검색해보세요</p>
+                    </div>`;
+            }
+            return;
+        }
+
+        panel.innerHTML = list.map(p => {
+            const intext = formatInText(p);
+            const firstAuthor = (p.authors || '').split(/[,·]/)[0].trim();
+            return `
+                <div class="paper-item">
+                    <div class="paper-meta">
+                        <span class="paper-author">${escHtml(firstAuthor || '저자 미상')}</span>
+                        ${p.year ? `<span class="paper-year">${escHtml(p.year)}</span>` : ''}
+                    </div>
+                    <div class="paper-title-mini">${escHtml(p.title || '제목 없음')}</div>
+                    <div class="paper-btns">
+                        <button class="btn-intext" data-intext="${escHtml(intext)}">${intext ? escHtml(intext) : '본문 인용 복사'}</button>
+                        <button class="btn-apa" data-id="${p.id}">참고문헌 복사</button>
+                    </div>
+                </div>`;
+        }).join('');
+
+        panel.querySelectorAll('.btn-intext').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const intext = btn.dataset.intext;
+                if (!intext) { showToast('저자·연도가 없어 본문 인용을 만들 수 없습니다', 'error'); return; }
+                const ok = await copyToClipboard(intext);
+                showToast(ok ? `${intext} 복사됨` : '복사 실패', ok ? 'success' : 'error');
+            });
+        });
+
+        panel.querySelectorAll('.btn-apa').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const p = papers.find(x => x.id === btn.dataset.id);
+                if (!p) return;
+                const ok = await copyToClipboard(formatAPA(p));
+                showToast(ok ? 'APA 참고문헌 복사됨' : '복사 실패', ok ? 'success' : 'error');
+            });
+        });
+    }
+
+    // ── 검색 ────────────────────────────────────────────
+    document.getElementById('search').addEventListener('input', e => {
+        searchQuery = e.target.value.trim();
+        render();
+    });
+
+    // ── 주기적 데이터 새로고침 (메인 앱에서 추가하면 반영) ──
+    async function refresh() {
+        papers = await dbGetAll();
+        render();
+    }
+
+    // ── 시작 ────────────────────────────────────────────
+    async function init() {
+        await initDB();
+        papers = await dbGetAll();
+        render();
+
+        // 30초마다 자동 갱신 (메인 앱에서 추가한 논문 반영)
+        setInterval(refresh, 30000);
+    }
+
+    init().catch(console.error);
+    </script>
+</body>
+</html>
