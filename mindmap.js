@@ -20,6 +20,11 @@ const NODE_CFG = {
     idea:     { shape:'rect',    fill:'#f1f3f4', stroke:'#9aa0a6', textColor:'#5f6368', rx:12, label:'메모',     w:152, h:50 },
 };
 
+// 학술용 보기: 도형은 그대로 두고 색만 흑백(흰 채움·회색 테두리·진회색 글씨)으로,
+// 화살표는 가는 회색으로 덮어쓴다. 작업용(기본)은 위 컬러 그대로.
+const ACADEMIC_NODE = { fill:'#ffffff', stroke:'#8a8f99', textColor:'#2b2b2b' };
+const ACADEMIC_EDGE = { color:'#555555', marker:'marr-gray', dash:'' };
+
 // ── 묶기 도형(그룹) 색상 팔레트 ──────────────────────────────────────
 // 변인들을 감싸는 큰 원/박스. 노드 뒤에 깔리고 크기 조절·이동 가능.
 const GROUP_COLORS = ['#4285f4', '#34a853', '#a142f4', '#e37400', '#d93025'];
@@ -42,11 +47,23 @@ function nodeSize(node) {
 
 // ── 마커 (화살촉) 생성 ────────────────────────────────────────────────
 function mkMarkers() {
-    return Object.entries(EDGE_STYLES).map(([, s]) => `
+    const colored = Object.entries(EDGE_STYLES).map(([, s]) => `
         <marker id="${s.marker}" markerWidth="9" markerHeight="6"
                 refX="8" refY="3" orient="auto">
             <polygon points="0 0,9 3,0 6" fill="${s.color}"/>
         </marker>`).join('');
+    // 학술용 회색 화살촉
+    const gray = `
+        <marker id="${ACADEMIC_EDGE.marker}" markerWidth="9" markerHeight="6"
+                refX="8" refY="3" orient="auto">
+            <polygon points="0 0,9 3,0 6" fill="${ACADEMIC_EDGE.color}"/>
+        </marker>`;
+    return colored + gray;
+}
+
+// 현재 보기 모드('work'|'academic'). mmUI는 mmInitProp에서 settings로부터 로드.
+function mmStyleMode() {
+    return (typeof mmUI !== 'undefined' && mmUI.styleMode === 'academic') ? 'academic' : 'work';
 }
 
 // ── 진입점 ───────────────────────────────────────────────────────────
@@ -110,25 +127,41 @@ async function initMindmap(container, projectId) {
                     <option value="">── 저장된 모형 불러오기 ──</option>
                 </select>
                 <div class="mm-sep"></div>
+                <button class="mm-btn mm-btn-style" id="mm-style-toggle" title="보기 전환 — 작업용(컬러) ↔ 학술용(흑백 타원·회색선, 제출·발표용)">🎨 작업용</button>
+                <div class="mm-sep"></div>
                 <button class="mm-btn mm-btn-export" id="mm-export-png">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                     PNG 내보내기
                 </button>
+                <div class="mm-sep"></div>
+                <button class="mm-btn mm-btn-prop" id="mm-prop-toggle" title="미니 프로포절 — 연구 필요성·목적·방법·대상·가설을 옆에 정리">
+                    📝 프로포절
+                </button>
                 <div class="mm-hint-text" id="mm-hint"></div>
             </div>
-            <div class="mm-canvas-wrap" id="mm-cwrap">
-                <svg id="mm-svg" xmlns="${NS}">
-                    <defs>${mkMarkers()}</defs>
-                    <rect id="mm-bg" fill="#f8fafd"/>
-                    <g id="mm-world">
-                        <g id="mm-groups"></g>
-                        <g id="mm-edges"></g>
-                        <g id="mm-nodes"></g>
-                    </g>
-                </svg>
-                <div id="mm-var-panel" class="mm-var-panel" style="display:none"></div>
-                <div id="mm-rel-popup" class="mm-rel-popup" style="display:none"></div>
-                <input id="mm-edit-input" class="mm-edit-input" style="display:none"/>
+            <div class="mm-body" id="mm-body">
+                <div class="mm-canvas-wrap" id="mm-cwrap">
+                    <svg id="mm-svg" xmlns="${NS}">
+                        <defs>${mkMarkers()}</defs>
+                        <rect id="mm-bg" fill="#f8fafd"/>
+                        <g id="mm-world">
+                            <g id="mm-groups"></g>
+                            <g id="mm-edges"></g>
+                            <g id="mm-nodes"></g>
+                        </g>
+                    </svg>
+                    <div class="mm-title-bar" id="mm-title-bar">
+                        <div class="mm-title" id="mm-title" contenteditable="true" spellcheck="false"
+                             data-placeholder="연구모형 제목 — 클릭해서 입력"></div>
+                        <div class="mm-subtitle" id="mm-subtitle" contenteditable="true" spellcheck="false"
+                             data-placeholder="부제 (선택)"></div>
+                    </div>
+                    <div id="mm-var-panel" class="mm-var-panel" style="display:none"></div>
+                    <div id="mm-rel-popup" class="mm-rel-popup" style="display:none"></div>
+                    <input id="mm-edit-input" class="mm-edit-input" style="display:none"/>
+                </div>
+                <div class="mm-prop-resizer" id="mm-prop-resizer" style="display:none"></div>
+                <aside class="mm-prop-panel" id="mm-prop-panel" style="display:none"></aside>
             </div>
         </div>`;
 
@@ -163,6 +196,7 @@ async function initMindmap(container, projectId) {
     mmUpdateSnapList();
     mmHint('도형 추가 → 드래그 이동 → 우클릭으로 화살표 연결 → 더블클릭으로 이름 입력 → 화살표 클릭으로 수정·삭제');
     resizeBg();
+    await mmInitProp();
 }
 
 // ── 렌더링 ───────────────────────────────────────────────────────────
@@ -231,7 +265,11 @@ function renderGroup(group) {
 }
 
 function renderNode(node) {
-    const cfg = NODE_CFG[node.type] || NODE_CFG.variable;
+    const baseCfg = NODE_CFG[node.type] || NODE_CFG.variable;
+    // 학술 모드: 도형(shape/rx/w/h)은 유지하고 색만 흑백으로 덮어씀
+    const cfg = mmStyleMode() === 'academic'
+        ? { ...baseCfg, fill: ACADEMIC_NODE.fill, stroke: ACADEMIC_NODE.stroke, textColor: ACADEMIC_NODE.textColor }
+        : baseCfg;
     const { w, h } = nodeSize(node);
     const isSel  = S.sel?.type === 'node' && S.sel.id === node.id;
     const isConn = S.connectFrom === node.id;
@@ -281,17 +319,19 @@ function renderNode(node) {
         }));
     }
 
-    // 타입 레이블 (작은 글씨, 왼쪽 상단)
-    const labelX = cfg.shape === 'ellipse' ? w * 0.22 : 10;
-    const labelY = cfg.shape === 'ellipse' ? h * 0.28 : 13;
-    g.appendChild(el('text', {
-        x: labelX, y: labelY,
-        fill: cfg.textColor,
-        'font-size': '9',
-        'font-family': "'Noto Sans KR', sans-serif",
-        opacity: '0.5',
-        'pointer-events': 'none',
-    }, cfg.label));
+    // 타입 레이블 (작은 글씨, 왼쪽 상단) — 학술 모드에선 깔끔하게 숨김
+    if (mmStyleMode() !== 'academic') {
+        const labelX = cfg.shape === 'ellipse' ? w * 0.22 : 10;
+        const labelY = cfg.shape === 'ellipse' ? h * 0.28 : 13;
+        g.appendChild(el('text', {
+            x: labelX, y: labelY,
+            fill: cfg.textColor,
+            'font-size': '9',
+            'font-family': "'Noto Sans KR', sans-serif",
+            opacity: '0.5',
+            'pointer-events': 'none',
+        }, cfg.label));
+    }
 
     // 변인명 텍스트 (중앙)
     const display = node.text || '';
@@ -315,11 +355,21 @@ function renderEdge(edge) {
     const to   = S.nodes.find(n => n.id === edge.to);
     if (!from || !to) return;
 
-    const style = EDGE_STYLES[edge.label];
+    const academic = mmStyleMode() === 'academic';
+    const style = academic ? ACADEMIC_EDGE : EDGE_STYLES[edge.label];
     const isSel = S.sel?.type === 'edge' && S.sel.id === edge.id;
-    const { sx, sy, ex, ey } = endpoints(from, to);
+    const { sx, sy, ex, ey, axis } = endpoints(from, to);
     const mx = (sx + ex) / 2;
-    const d  = `M ${sx} ${sy} C ${mx} ${sy}, ${mx} ${ey}, ${ex} ${ey}`;
+    const my = (sy + ey) / 2;
+    // 기본은 부드러운 곡선(기존 동작). edge.straight면 직선.
+    // 곡선은 연결 방향(axis)에 맞춰 끝점으로 들어와야 화살촉이 옳은 쪽을 가리킴.
+    //  - 가로 연결: 제어점을 가로 중점(mx)에 → 좌/우로 들어옴
+    //  - 세로 연결: 제어점을 세로 중점(my)에 → 위/아래로 들어옴
+    const d = edge.straight
+        ? `M ${sx} ${sy} L ${ex} ${ey}`
+        : (axis === 'v'
+            ? `M ${sx} ${sy} C ${sx} ${my}, ${ex} ${my}, ${ex} ${ey}`
+            : `M ${sx} ${sy} C ${mx} ${sy}, ${mx} ${ey}, ${ex} ${ey}`);
 
     const g = el('g', { 'data-eid': edge.id, class: 'mm-eg' });
 
@@ -330,30 +380,43 @@ function renderEdge(edge) {
     g.appendChild(el('path', {
         d, fill: 'none',
         stroke: isSel ? '#333' : style.color,
-        'stroke-width': isSel ? 3 : 2.2,
+        'stroke-width': isSel ? 3 : (academic ? 1.6 : 2.2),
         'stroke-dasharray': style.dash,
         'marker-end': `url(#${style.marker})`,
     }));
 
-    // 레이블
+    // 레이블 — 가설이 연결돼 있으면 그 번호(H1)를 붉게, 아니면 관계 라벨
+    const hypoNum    = edgeHypoNum(edge);
+    const labelText  = hypoNum ? ('H' + hypoNum) : edge.label;
+    const labelColor = hypoNum ? '#b03a3a' : style.color;
+    const bw = hypoNum ? 30 : 68;
     const lx = sx + (ex - sx) * 0.5;
     const ly = sy + (ey - sy) * 0.5 - 13;
     g.appendChild(el('rect', {
-        x: lx - 34, y: ly - 10, width: 68, height: 19,
+        x: lx - bw / 2, y: ly - 10, width: bw, height: 19,
         rx: 9, fill: 'white',
-        stroke: style.color, 'stroke-width': 1, opacity: '0.93',
+        stroke: labelColor, 'stroke-width': 1, opacity: '0.93',
     }));
     g.appendChild(el('text', {
         x: lx, y: ly + 0.5,
         'text-anchor': 'middle', 'dominant-baseline': 'middle',
-        fill: style.color,
+        fill: labelColor,
         'font-size': '10',
         'font-family': "'Noto Sans KR', sans-serif",
         'font-weight': '700',
         'pointer-events': 'none',
-    }, edge.label));
+    }, labelText));
 
     S.edgesG.appendChild(g);
+}
+
+// 엣지에 연결된 가설의 1-based 번호(H번호). 연결 없음/삭제됨이면 null.
+// 번호는 프로포절 가설 순서로 계산 → 재정렬에도 항상 최신.
+function edgeHypoNum(edge) {
+    if (!edge.hypoId) return null;
+    const hs = (typeof state !== 'undefined' && state.proposal?.hypotheses) || [];
+    const i = hs.findIndex(h => h.id === edge.hypoId);
+    return i >= 0 ? i + 1 : null;
 }
 
 // ── 연결 끝점 계산 ────────────────────────────────────────────────────
@@ -363,15 +426,17 @@ function endpoints(from, to) {
     const fx = from.x + fw/2, fy = from.y + fh/2;
     const tx = to.x   + tw/2, ty = to.y   + th/2;
     const dx = tx - fx, dy = ty - fy;
-    let sx, sy, ex, ey;
+    let sx, sy, ex, ey, axis;
     if (Math.abs(dx) >= Math.abs(dy)) {
+        axis = 'h';                                    // 가로 연결(좌↔우)
         sx = dx > 0 ? from.x + fw : from.x; sy = fy;
         ex = dx > 0 ? to.x        : to.x + tw; ey = ty;
     } else {
+        axis = 'v';                                    // 세로 연결(위↕아래)
         sx = fx; sy = dy > 0 ? from.y + fh : from.y;
         ex = tx; ey = dy > 0 ? to.y        : to.y + th;
     }
-    return { sx, sy, ex, ey };
+    return { sx, sy, ex, ey, axis };
 }
 
 // ── 좌표 변환 ─────────────────────────────────────────────────────────
@@ -415,6 +480,8 @@ function mmBind() {
     };
     document.getElementById('mm-export-png').onclick = mmExport;
     document.getElementById('mm-vars-toggle').onclick = mmToggleVarPanel;
+    document.getElementById('mm-prop-toggle').onclick = mmToggleProp;
+    document.getElementById('mm-style-toggle').onclick = mmToggleStyle;
 
     const svg = S.svg;
     svg.addEventListener('mousedown',   onDown);
@@ -605,9 +672,12 @@ function onWheel(e) {
 
 function onKey(e) {
     if (!S) return;
+    // 텍스트 입력 중(제목·부제 contenteditable, 프로포절·이름 편집 input/textarea)에는
+    // 캔버스 단축키(Delete·Ctrl+Z 등)를 무시 — 네이티브 텍스트 편집을 우선한다.
+    if (document.activeElement?.isContentEditable) return;
     const tag = document.activeElement?.tagName;
-    const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
-    if (!isInput && (e.key === 'Delete' || e.key === 'Backspace')) mmDelete();
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (e.key === 'Delete' || e.key === 'Backspace') mmDelete();
     if ((e.ctrlKey||e.metaKey) && e.key==='z' && !e.shiftKey) { e.preventDefault(); mmUndo(); }
     if ((e.ctrlKey||e.metaKey) && (e.key==='y'||(e.key==='z'&&e.shiftKey))) { e.preventDefault(); mmRedo(); }
     if (e.key === 'Escape') {
@@ -713,13 +783,26 @@ function showEdgePopup(edge, cx, cy) {
     const popup = document.getElementById('mm-rel-popup');
     const wrapR = S.cwrap.getBoundingClientRect();
 
+    const hypos = (typeof state !== 'undefined' && state.proposal?.hypotheses) || [];
+    const hypoSection = `
+        <div class="mm-pop-divider"></div>
+        <div class="mm-pop-title">가설 연결</div>
+        ${hypos.length ? hypos.map((h, i) => `
+            <div class="mm-pop-item mm-pop-hypo ${edge.hypoId === h.id ? 'mm-pop-active' : ''}" data-hypo="${h.id}">
+                <span class="mm-pop-htag">H${i + 1}</span>${escHtml((h.text || '').slice(0, 16) || '(내용 없음)')}${edge.hypoId === h.id ? ' ✓' : ''}
+            </div>`).join('')
+        : `<div class="mm-pop-hint">📝 프로포절에서 가설을 먼저 추가하세요</div>`}
+        ${edge.hypoId ? `<div class="mm-pop-item mm-pop-hypo" data-hypo="">⨯ 가설 연결 해제</div>` : ''}`;
+
     popup.innerHTML = `
         <div class="mm-pop-title">화살표 관계 변경</div>
         ${Object.keys(EDGE_STYLES).map(l => `
             <div class="mm-pop-item ${l === edge.label ? 'mm-pop-active' : ''}" data-rel="${l}" style="--rc:${EDGE_STYLES[l].color}">
                 <span class="mm-pop-dot"></span>${l}${l === edge.label ? ' ✓' : ''}
             </div>`).join('')}
+        ${hypoSection}
         <div class="mm-pop-divider"></div>
+        <div class="mm-pop-item" data-act="toggle-straight">${edge.straight ? '↝ 곡선으로' : '╱ 직선으로'}</div>
         <div class="mm-pop-item mm-pop-del" data-act="delete">🗑 이 화살표 삭제</div>
         <div class="mm-pop-item mm-pop-cancel" data-act="cancel">✕ 닫기</div>`;
 
@@ -736,8 +819,9 @@ function showEdgePopup(edge, cx, cy) {
         item.addEventListener('mousedown', e => {
             e.stopPropagation();
             hidePopup();
-            const act = item.dataset.act;
-            const rel = item.dataset.rel;
+            const act  = item.dataset.act;
+            const rel  = item.dataset.rel;
+            const hypo = item.dataset.hypo;   // 가설 항목: id 또는 ''(해제). 해당 없으면 undefined
             if (act === 'delete') {
                 saveHistory();
                 S.edges = S.edges.filter(ed => ed.id !== edge.id);
@@ -746,6 +830,14 @@ function showEdgePopup(edge, cx, cy) {
             } else if (rel && rel !== edge.label) {
                 saveHistory();
                 edge.label = rel;
+                mmSaveToDB();
+            } else if (hypo !== undefined) {
+                saveHistory();
+                edge.hypoId = hypo || null;
+                mmSaveToDB();
+            } else if (act === 'toggle-straight') {
+                saveHistory();
+                edge.straight = !edge.straight;
                 mmSaveToDB();
             }
             mmRender();
@@ -1001,12 +1093,42 @@ async function mmExport() {
     const img = new Image();
     img.onload = () => {
         const sc = 2;
+        // 제목·부제(있으면 상단에 합성)
+        const title    = (state.proposal?.title || '').trim();
+        const subtitle = (state.proposal?.subtitle || '').trim();
+        const meas = document.createElement('canvas').getContext('2d');
+        const maxTextW  = W - 80;
+        const titleFont = '800 30px "Noto Sans KR", sans-serif';
+        const subFont   = '700 18px "Noto Sans KR", sans-serif';
+        const titleLines = title    ? wrapByChar(meas, title, titleFont, maxTextW) : [];
+        const subLines   = subtitle ? wrapByChar(meas, '— ' + subtitle + ' —', subFont, maxTextW) : [];
+        const titleLH = 40, subLH = 26;
+        let headerH = 0;
+        if (titleLines.length || subLines.length) {
+            headerH = 24 + titleLines.length * titleLH
+                    + (subLines.length ? 6 + subLines.length * subLH : 0) + 18;
+        }
+
+        const totalH = H + headerH;
         const canvas = document.createElement('canvas');
-        canvas.width = W * sc; canvas.height = H * sc;
+        canvas.width = W * sc; canvas.height = totalH * sc;
         const ctx = canvas.getContext('2d');
         ctx.scale(sc, sc);
-        ctx.fillStyle = '#f8fafd'; ctx.fillRect(0, 0, W, H);
-        ctx.drawImage(img, 0, 0, W, H);
+        ctx.fillStyle = '#f8fafd'; ctx.fillRect(0, 0, W, totalH);
+
+        ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+        let y = 24;
+        if (titleLines.length) {
+            ctx.font = titleFont; ctx.fillStyle = '#2b2b2b';
+            titleLines.forEach(line => { ctx.fillText(line, W / 2, y); y += titleLH; });
+        }
+        if (subLines.length) {
+            y += 6;
+            ctx.font = subFont; ctx.fillStyle = '#b03a3a';
+            subLines.forEach(line => { ctx.fillText(line, W / 2, y); y += subLH; });
+        }
+
+        ctx.drawImage(img, 0, headerH, W, H);
         URL.revokeObjectURL(url);
         const a = document.createElement('a');
         a.download = '연구모형.png'; a.href = canvas.toDataURL('image/png'); a.click();
@@ -1014,6 +1136,19 @@ async function mmExport() {
     };
     img.onerror = () => { URL.revokeObjectURL(url); showToast('PNG 변환 실패', 'error'); };
     img.src = url;
+}
+
+// 글자 단위 줄바꿈(한글은 공백이 없어 문자 기준이 안전) — PNG 헤더 제목/부제용
+function wrapByChar(ctx, text, font, maxW) {
+    ctx.font = font;
+    if (ctx.measureText(text).width <= maxW) return [text];
+    const lines = []; let cur = '';
+    for (const ch of text) {
+        if (cur && ctx.measureText(cur + ch).width > maxW) { lines.push(cur); cur = ch; }
+        else cur += ch;
+    }
+    if (cur) lines.push(cur);
+    return lines;
 }
 
 // ── DB ────────────────────────────────────────────────────────────────
@@ -1045,6 +1180,209 @@ async function mmLoad() {
             S.snapshots = data.snapshots || [];
         }
     } catch (e) { /* store not ready yet */ }
+}
+
+// ── 미니 프로포절 패널 (모형스케치북 오른쪽) ──────────────────────────
+// 데이터는 app.js의 state.proposal(프로젝트별) + queueSaveProposal()로 저장.
+// UI 상태(열림/폭)는 settings store의 'mm-ui' 레코드(전역, 프로젝트 무관).
+const MM_UI_KEY = 'mm-ui';
+let mmUI = {};
+
+// 텍스트 4칸: [key, 라벨, placeholder]
+const PROP_FIELDS = [
+    ['needs',    '연구 필요성', '왜 이 연구가 필요한가? 문제의식·배경'],
+    ['purpose',  '연구 목적',   '이 연구로 무엇을 밝히려 하는가?'],
+    ['method',   '연구 방법',   '연구 설계·분석 방법 (예: 설문조사, 구조방정식)'],
+    ['subjects', '연구 대상',   '누구를 대상으로? 표본·모집 방법'],
+];
+
+async function mmInitProp() {
+    try { mmUI = (await dbGet(STORE_SETTINGS, MM_UI_KEY)) || {}; } catch { mmUI = {}; }
+    const panel = document.getElementById('mm-prop-panel');
+    if (!panel) return;
+    panel.style.flexBasis = clampPropWidth(mmUI.propWidth || 360) + 'px';
+    mmBindPropResizer();
+    mmRenderProp();
+    mmInitTitle();
+    mmApplyPropOpen(!!mmUI.propOpen);   // 마지막 상태 복원(기본 닫힘)
+    mmSyncStyleBtn();
+    mmRender();                          // 복원된 styleMode(학술/작업)를 캔버스에 반영
+}
+
+// 작업용 ↔ 학술용 보기 전환
+function mmToggleStyle() {
+    const next = mmStyleMode() === 'academic' ? 'work' : 'academic';
+    mmSaveUI({ styleMode: next });   // mmUI.styleMode 갱신 + 저장
+    mmSyncStyleBtn();
+    mmRender();
+}
+
+function mmSyncStyleBtn() {
+    const btn = document.getElementById('mm-style-toggle');
+    if (!btn) return;
+    const academic = mmStyleMode() === 'academic';
+    btn.textContent = academic ? '🎓 학술용' : '🎨 작업용';
+    btn.classList.toggle('active', academic);
+}
+
+// 캔버스 상단 제목·부제(오버레이). 데이터는 state.proposal.title/subtitle.
+function mmInitTitle() {
+    const tEl = document.getElementById('mm-title');
+    const sEl = document.getElementById('mm-subtitle');
+    if (!tEl || !sEl) return;
+    const p = state.proposal || {};
+    tEl.textContent = p.title || '';
+    sEl.textContent = p.subtitle || '';
+    tEl.oninput = () => { state.proposal.title = tEl.textContent.trim(); queueSaveProposal(); };
+    sEl.oninput = () => { state.proposal.subtitle = sEl.textContent.trim(); queueSaveProposal(); };
+    // 제목·부제는 한 줄 의미 — Enter는 줄바꿈 대신 편집 종료. 캔버스로 키 전파 차단.
+    [tEl, sEl].forEach(elm => elm.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); elm.blur(); }
+        e.stopPropagation();
+    }));
+}
+
+function clampPropWidth(w) { return Math.min(640, Math.max(280, Math.round(w) || 360)); }
+
+function mmSaveUI(patch) {
+    mmUI = { ...mmUI, ...patch, id: MM_UI_KEY };
+    try { dbPut(STORE_SETTINGS, mmUI); } catch { /* silent */ }
+}
+
+function mmApplyPropOpen(open) {
+    document.getElementById('mm-prop-panel').style.display   = open ? 'flex' : 'none';
+    document.getElementById('mm-prop-resizer').style.display = open ? 'block' : 'none';
+    document.getElementById('mm-prop-toggle').classList.toggle('active', open);
+    if (open) requestAnimationFrame(() =>
+        document.querySelectorAll('#mm-prop-panel textarea').forEach(autoGrowTA));
+    resizeBg();
+}
+
+function mmToggleProp() {
+    const open = document.getElementById('mm-prop-panel').style.display === 'none';
+    mmApplyPropOpen(open);
+    mmSaveUI({ propOpen: open });
+}
+
+function autoGrowTA(ta) {
+    ta.style.height = 'auto';
+    ta.style.height = (ta.scrollHeight + 2) + 'px';
+}
+
+function mmRenderProp() {
+    const panel = document.getElementById('mm-prop-panel');
+    if (!panel) return;
+    const p = (typeof state !== 'undefined' && state.proposal) ? state.proposal : null;
+    if (!p) { panel.innerHTML = ''; return; }
+
+    const textSections = PROP_FIELDS.map(([key, label, ph], i) => `
+        <details class="mm-prop-sec" ${i === 0 ? 'open' : ''}>
+            <summary>${label}</summary>
+            <textarea class="mm-prop-ta" data-key="${key}" rows="2"
+                placeholder="${escHtml(ph)}">${escHtml(p[key] || '')}</textarea>
+        </details>`).join('');
+
+    const hypos = p.hypotheses || [];
+    const hypoSection = `
+        <details class="mm-prop-sec" open>
+            <summary>가설 <span class="mm-prop-count">${hypos.length}</span></summary>
+            <div class="mm-prop-hypos" id="mm-prop-hypos">${hypos.map(hypoRowHTML).join('')}</div>
+            <button class="mm-prop-addhypo" id="mm-prop-addhypo">+ 가설 추가</button>
+        </details>`;
+
+    panel.innerHTML = `
+        <div class="mm-prop-head">
+            <span>📝 미니 프로포절</span>
+            <button class="mm-prop-close" id="mm-prop-close" title="패널 닫기">✕</button>
+        </div>
+        <div class="mm-prop-body">${textSections}${hypoSection}</div>`;
+
+    mmBindProp();
+}
+
+// 가설 1줄. 번호(H1…)는 순서대로 매기므로 index에서 계산(저장값 아님 → 재정렬에 안전)
+function hypoRowHTML(h, i) {
+    return `
+        <div class="mm-prop-hypo" data-id="${h.id}">
+            <span class="mm-prop-hlabel">H${i + 1}</span>
+            <textarea class="mm-prop-htext" rows="1" placeholder="가설 내용">${escHtml(h.text || '')}</textarea>
+            <button class="mm-prop-hdel" title="이 가설 삭제">✕</button>
+        </div>`;
+}
+
+function mmBindProp() {
+    const panel = document.getElementById('mm-prop-panel');
+    panel.querySelector('#mm-prop-close').onclick = mmToggleProp;
+
+    // 텍스트 4칸 — 입력 시 state.proposal에 반영 + 자동저장 + 높이 자동
+    panel.querySelectorAll('.mm-prop-ta').forEach(ta => {
+        autoGrowTA(ta);
+        ta.oninput = () => {
+            state.proposal[ta.dataset.key] = ta.value;
+            autoGrowTA(ta);
+            queueSaveProposal();
+        };
+    });
+
+    // 가설 추가
+    panel.querySelector('#mm-prop-addhypo').onclick = () => {
+        state.proposal.hypotheses.push({ id: genId(), text: '' });
+        mmRenderProp();
+        queueSaveProposal();
+        const rows = document.querySelectorAll('#mm-prop-hypos .mm-prop-htext');
+        rows[rows.length - 1]?.focus();
+    };
+
+    // 가설 줄들
+    panel.querySelectorAll('.mm-prop-hypo').forEach(row => {
+        const id = row.dataset.id;
+        const ta = row.querySelector('.mm-prop-htext');
+        autoGrowTA(ta);
+        ta.oninput = () => {
+            const h = state.proposal.hypotheses.find(x => x.id === id);
+            if (h) h.text = ta.value;
+            autoGrowTA(ta);
+            queueSaveProposal();
+        };
+        row.querySelector('.mm-prop-hdel').onclick = () => {
+            state.proposal.hypotheses = state.proposal.hypotheses.filter(x => x.id !== id);
+            // 삭제된 가설에 연결돼 있던 화살표는 연결 해제
+            let edgeChanged = false;
+            S.edges.forEach(e => { if (e.hypoId === id) { e.hypoId = null; edgeChanged = true; } });
+            mmRenderProp();
+            queueSaveProposal();
+            if (edgeChanged) mmSaveToDB();
+            mmRender();   // 뒤 가설 번호가 당겨졌을 수 있으니 화살표 H번호 라벨 갱신
+        };
+    });
+}
+
+function mmBindPropResizer() {
+    const resizer = document.getElementById('mm-prop-resizer');
+    const panel   = document.getElementById('mm-prop-panel');
+    const body    = document.getElementById('mm-body');
+    if (!resizer) return;
+
+    const onMove = e => {
+        const rect = body.getBoundingClientRect();
+        panel.style.flexBasis = clampPropWidth(rect.right - e.clientX) + 'px';
+        resizeBg();
+    };
+    const onUp = () => {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        mmSaveUI({ propWidth: parseInt(panel.style.flexBasis, 10) || 360 });
+    };
+    // 할당(=)이라 initMindmap 재진입 시 핸들러가 덮어써져 중복 누적 없음
+    resizer.onmousedown = e => {
+        e.preventDefault();
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+    };
 }
 
 // ── 헬퍼 ─────────────────────────────────────────────────────────────

@@ -49,13 +49,14 @@ window.addEventListener('unhandledrejection', e => {
 
 // ── IndexedDB 초기화 ────────────────────────────────────────
 const DB_NAME = 'ResearchNotesDB';
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 const STORE_PAPERS = 'papers';
 const STORE_PROJECTS = 'projects';
 const STORE_MINDMAPS = 'mindmaps';
 const STORE_MATERIALS = 'materials';
 const STORE_SETTINGS = 'settings';   // 앱 설정(백업 폴더 핸들 등) 보관
 const STORE_NOTES = 'notes';         // 아이디어 저장소(메모)
+const STORE_PROPOSALS = 'proposals'; // 모형스케치북 미니 프로포절(프로젝트별, key=projectId)
 
 let db;
 
@@ -81,6 +82,9 @@ function initDB() {
             }
             if (!d.objectStoreNames.contains(STORE_NOTES)) {
                 d.createObjectStore(STORE_NOTES, { keyPath: 'id' });
+            }
+            if (!d.objectStoreNames.contains(STORE_PROPOSALS)) {
+                d.createObjectStore(STORE_PROPOSALS, { keyPath: 'id' });
             }
             pushDebug('info', `DB 업그레이드: v${e.oldVersion} → v${e.newVersion}`);
         };
@@ -126,7 +130,7 @@ function dbDelete(store, id) {
 let suppressAutoBackup = false;
 function maybeAutoBackup(store) {
     if (suppressAutoBackup) return;
-    if (store === STORE_PAPERS || store === STORE_MATERIALS || store === STORE_NOTES) autoBackup();
+    if (store === STORE_PAPERS || store === STORE_MATERIALS || store === STORE_NOTES || store === STORE_PROPOSALS) autoBackup();
 }
 
 // 스토어 전체 비우기 (삭제용 — 자동백업 트리거 안 함)
@@ -179,10 +183,15 @@ const state = {
     view: 'papers',
     searchQuery: '',
     searchMode: 'fulltext',    // 검색 방식: 'fulltext'(전체단어) | 'keyword'(키워드만)
-    organizeBy: 'keyword',     // 정리 뷰 기준: 'keyword'|'author'|'topic'|'variable'
+    paperSort: 'recent',       // 논문 정렬: 'recent'|'title'|'year'|'author'
+    groupBy: 'none',           // 논문 묶기 기준: 'none' | ORGANIZE_DIMS의 키
+    expandedId: null,          // 펼쳐진(아코디언) 논문 id
+    rowFields: null,           // 펼침에 보일 항목 키 배열(localStorage 복원, 아래 loadRowFields)
+    fieldsOpen: false,         // 「표시」 드롭다운 열림 여부(항목 토글해도 유지)
     papers: [],
     materials: [],
     notes: [],
+    proposal: null,            // 현재 프로젝트의 미니 프로포절(모형스케치북)
     projects: [],
     currentProjectId: null,
     editingId: null,
@@ -256,9 +265,45 @@ async function loadData() {
     state.materials = allMat.filter(m => m.projectId === state.currentProjectId);
     const allNotes = await dbGetAll(STORE_NOTES);
     state.notes = allNotes.filter(n => n.projectId === state.currentProjectId);
+    state.proposal = await loadProposal(state.currentProjectId);
     document.getElementById('papers-count').textContent = state.papers.length;
     document.getElementById('materials-count').textContent = state.materials.length;
     document.getElementById('notes-count').textContent = state.notes.length;
+}
+
+// ── 미니 프로포절 데이터층 (모형스케치북) ───────────────────
+// 프로젝트별 1개(key=projectId). 화면 로직은 mindmap.js, 저장은 여기로 일원화.
+function defaultProposal(pid) {
+    return {
+        id: pid, title: '', subtitle: '',
+        needs: '', purpose: '', method: '', subjects: '',
+        hypotheses: [],   // [{ id, label('H1' 자동 재계산), text }]
+        updatedAt: 0,
+    };
+}
+
+async function loadProposal(pid) {
+    return (await dbGet(STORE_PROPOSALS, pid)) || defaultProposal(pid);
+}
+
+// 프로포절에 내용이 얼마나 들어있는지(가져오기 때 가장 알찬 것 고르기·빈 것 판단용)
+function proposalContentScore(p) {
+    if (!p) return 0;
+    const text = [p.title, p.subtitle, p.needs, p.purpose, p.method, p.subjects].filter(Boolean).join('');
+    const hypos = (p.hypotheses || []).map(h => h.text || '').join('');
+    return (text + hypos).trim().length;
+}
+
+// 입력 중 600ms 디바운스 자동저장(아이디어 메모와 동일 패턴)
+let proposalSaveTimer;
+function queueSaveProposal() {
+    clearTimeout(proposalSaveTimer);
+    proposalSaveTimer = setTimeout(saveProposalNow, 600);
+}
+async function saveProposalNow() {
+    if (!state.proposal) return;
+    state.proposal.updatedAt = Date.now();
+    await dbPut(STORE_PROPOSALS, state.proposal);
 }
 
 // ── 프로젝트 전환 ──────────────────────────────────────────
@@ -317,6 +362,7 @@ async function deleteProject(id) {
         await dbDelete(STORE_PAPERS, p.id);
     }
     await dbDelete(STORE_PROJECTS, id);
+    await dbDelete(STORE_PROPOSALS, id);
     state.projects = await dbGetAll(STORE_PROJECTS);
 
     if (state.currentProjectId === id) {
@@ -427,73 +473,391 @@ function renderContent() {
     else if (state.view === 'references') renderReferences(container);
     else if (state.view === 'sketch') renderSketch(container);
     else if (state.view === 'notes') renderNotes(container);
-    else if (state.view === 'organize') renderOrganize(container);
 }
 
-// ── 논문 목록 ──────────────────────────────────────────────
+// ── 논문 목록 (정렬·묶기·한 줄 + 아코디언 통합) ─────────────
+const PAPER_SORTS = [
+    ['recent', '최신순'],
+    ['title',  '제목순'],
+    ['year',   '연도순'],
+    ['author', '저자순'],
+    ['manual', '내 순서'],
+];
+// 저자 문자열에서 첫 저자만
+function firstAuthor(p) {
+    return (p.authors || '').split(/[,，、;·]/)[0].trim();
+}
+
+// 현재 정렬 기준으로 정렬한 새 배열
+function sortPapers(arr) {
+    const a = [...arr];
+    if (state.paperSort === 'title')
+        return a.sort((x, y) => (x.title || '').localeCompare(y.title || '', 'ko'));
+    if (state.paperSort === 'year')
+        return a.sort((x, y) => String(y.year || '').localeCompare(String(x.year || ''), 'ko', { numeric: true }));
+    if (state.paperSort === 'author')
+        return a.sort((x, y) => firstAuthor(x).localeCompare(firstAuthor(y), 'ko'));
+    if (state.paperSort === 'manual')   // 끌어다 놓기로 정한 내 순서 (값 없으면 뒤로)
+        return a.sort((x, y) => (x.sortOrder ?? 1e9) - (y.sortOrder ?? 1e9) || (y.addedAt || 0) - (x.addedAt || 0));
+    return a.sort((x, y) => (y.addedAt || 0) - (x.addedAt || 0)); // recent
+}
+
+// 상단 정렬/묶기 컨트롤 바
+function papersControlsHTML() {
+    const sortTabs = PAPER_SORTS.map(([k, label]) =>
+        `<button class="og-tab pc-sort ${k === state.paperSort ? 'active' : ''}" data-sort="${k}">${label}</button>`
+    ).join('');
+    // 묶기 = '안 묶음' + ORGANIZE_DIMS (렌더 시점에 계산 — ORGANIZE_DIMS는 파일 뒤쪽 선언)
+    const groupOpts = [['none', '안 묶음'], ...ORGANIZE_DIMS.map(([k, label]) => [k, label])];
+    const groupTabs = groupOpts.map(([k, label]) =>
+        `<button class="og-tab pc-group ${k === state.groupBy ? 'active' : ''}" data-group="${k}">${label}</button>`
+    ).join('');
+    // 표시 항목(펼침에 보일 항목) — 드롭다운 안에서 여러 개 선택
+    const sel = ensureRowFields();
+    const fieldTabs = ROW_FIELDS.map(f =>
+        `<button class="og-tab pc-field ${sel.includes(f.key) ? 'active' : ''}" data-field="${f.key}">${f.label}</button>`
+    ).join('');
+    return `
+        <div class="paper-controls">
+            <div class="pc-row pc-row-inline">
+                <span class="pc-label">정렬</span><div class="og-tabs">${sortTabs}</div>
+                <span class="pc-sep"></span>
+                <span class="pc-label">묶기</span><div class="og-tabs">${groupTabs}</div>
+            </div>
+            <div class="pc-row pc-row-fields">
+                <span class="pc-label">표시</span>
+                <details class="pc-fields-dd" ${state.fieldsOpen ? 'open' : ''}>
+                    <summary>펼침에 보일 항목 <span class="pc-fields-count">${sel.length}개</span></summary>
+                    <div class="pc-fields-pop"><div class="og-tabs">${fieldTabs}</div></div>
+                </details>
+            </div>
+        </div>`;
+}
+
 function renderPapers(container) {
+    const controls = papersControlsHTML();
+
     if (state.papers.length === 0) {
         container.innerHTML = `
+            <div class="section-header"><span class="section-title">논문</span></div>
+            ${controls}
             <div class="empty-state">
                 <div class="empty-icon">📄</div>
                 <h3>저장된 논문이 없습니다</h3>
                 <p>위의 <strong>+ 논문 추가</strong> 버튼을 눌러<br>첫 번째 논문을 등록해보세요</p>
             </div>`;
+        bindPaperControls(container);
         return;
     }
 
-    const sorted = [...state.papers].sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+    // 묶음 없는 평면 목록일 때만 끌어다 놓기 가능
+    const flat = state.groupBy === 'none';
+    const body = flat
+        ? `<div class="paper-list">${paperRowsHTML(sortPapers(state.papers), true)}</div>`
+        : groupedPapersHTML();
+
+    const dragHint = flat
+        ? `<span class="og-summary">⠿ 손잡이를 끌어 순서를 바꿀 수 있어요</span>` : '';
+
     container.innerHTML = `
         <div class="section-header">
             <span class="section-title">논문 ${state.papers.length}편</span>
+            ${dragHint}
         </div>
-        <div class="papers-grid">${sorted.map(paperCardHTML).join('')}</div>`;
+        ${controls}
+        ${body}`;
 
-    bindCards(container);
+    bindPaperControls(container);
+    bindRows(container, flat);
 }
 
-// 카드 클릭(상세 열기) + '빠른 인용' 체크박스 바인딩
-function bindCards(container) {
-    container.querySelectorAll('.paper-card').forEach(card => {
-        card.addEventListener('click', e => {
-            if (e.target.closest('.paper-quickcite')) return;
-            openForm(card.dataset.id, 'view');
+// 묶기 기준이 선택됐을 때: 기준값별 접이식 그룹
+function groupedPapersHTML() {
+    const [dimKey, dimLabel, dimCls] =
+        ORGANIZE_DIMS.find(d => d[0] === state.groupBy) || ORGANIZE_DIMS[0];
+
+    const groups = new Map();
+    const noValue = [];
+    state.papers.forEach(p => {
+        const seen = new Set();
+        organizeValues(p, dimKey).forEach(v => {
+            const key = v.toLowerCase();
+            if (seen.has(key)) return;              // 같은 논문이 한 그룹에 중복되지 않게
+            seen.add(key);
+            if (!groups.has(key)) groups.set(key, { label: v, papers: [] });
+            groups.get(key).papers.push(p);
         });
+        if (seen.size === 0) noValue.push(p);       // 이 기준에 값이 없는 논문
     });
-    container.querySelectorAll('.qc-checkbox').forEach(cb => {
-        cb.addEventListener('click', e => e.stopPropagation());
-        cb.addEventListener('change', async e => {
-            e.stopPropagation();
-            const paper = state.papers.find(p => p.id === cb.dataset.id);
-            if (!paper) return;
-            paper.inQuickCite = cb.checked;
-            await dbPut(STORE_PAPERS, paper);
-            cb.closest('.paper-quickcite')?.classList.toggle('on', cb.checked);
-        });
-    });
+
+    // 편 수 많은 순 → 같으면 가나다 순
+    const sorted = [...groups.values()].sort((a, b) =>
+        b.papers.length - a.papers.length || a.label.localeCompare(b.label, 'ko'));
+
+    const groupHTML = sorted.map(g => `
+        <details class="og-group" open>
+            <summary>
+                <span class="og-group-name ${dimCls}">${escHtml(g.label)}</span>
+                <span class="og-group-count">${g.papers.length}편</span>
+            </summary>
+            <div class="paper-list">${paperRowsHTML(sortPapers(g.papers))}</div>
+        </details>`).join('');
+
+    const noValueHTML = noValue.length ? `
+        <details class="og-group og-group-none">
+            <summary>
+                <span class="og-group-name">${escHtml(dimLabel)} 미입력</span>
+                <span class="og-group-count">${noValue.length}편</span>
+            </summary>
+            <div class="paper-list">${paperRowsHTML(sortPapers(noValue))}</div>
+        </details>` : '';
+
+    return (groupHTML || `<p class="og-empty-dim">아직 ${escHtml(dimLabel)} 정보가 입력된 논문이 없습니다.</p>`) + noValueHTML;
 }
 
-function paperCardHTML(paper) {
-    const varTags = (paper.variables || [])
-        .map(v => `<span class="tag tag-variable">${escHtml(v)}</span>`).join('');
-    const normTags = (paper.tags || []).slice(0, 3)
-        .map(t => `<span class="tag tag-normal">${escHtml(t)}</span>`).join('');
+// 한 줄 행 목록 (draggable=true면 끌어다 놓기 손잡이 표시)
+function paperRowsHTML(arr, draggable = false) {
+    return arr.map(p => paperRowHTML(p, draggable)).join('');
+}
+
+function paperRowHTML(paper, draggable = false) {
+    const open = state.expandedId === paper.id;
+    const meta = [paper.year, firstAuthor(paper)].filter(Boolean).map(escHtml).join(' · ');
     return `
-        <div class="paper-card" data-id="${paper.id}">
-            <div class="paper-card-header">
-                <div class="paper-title">${escHtml(paper.title || '제목 없음')}</div>
-                ${paper.year ? `<span class="paper-year">${escHtml(paper.year)}</span>` : ''}
+        <div class="paper-row-wrap ${open ? 'open' : ''}" data-id="${paper.id}">
+            <div class="paper-row" data-id="${paper.id}" ${draggable ? 'draggable="true"' : ''}>
+                ${draggable ? '<span class="pr-grip" title="끌어서 순서 바꾸기">⠿</span>' : ''}
+                <span class="pr-caret">▸</span>
+                <span class="pr-title">${escHtml(paper.title || '제목 없음')}</span>
+                <span class="pr-meta">${meta}</span>
+                ${paper.pdfData ? '<span class="pr-icon" title="PDF 있음">📎</span>' : ''}
+                ${paper.inQuickCite ? '<span class="pr-icon" title="빠른 인용">⚡</span>' : ''}
             </div>
-            ${paper.authors ? `<div class="paper-authors">${escHtml(paper.authors)}</div>` : ''}
-            ${varTags || normTags ? `<div class="paper-tags">${varTags}${normTags}</div>` : ''}
-            <div class="paper-card-footer">
-                ${paper.pdfData ? `<span class="paper-has-pdf">📎 PDF 있음</span>` : '<span></span>'}
-                <label class="paper-quickcite ${paper.inQuickCite ? 'on' : ''}" title="빠른 인용 창에 표시">
-                    <input type="checkbox" class="qc-checkbox" data-id="${paper.id}" ${paper.inQuickCite ? 'checked' : ''}>
-                    <span>⚡ 빠른 인용</span>
-                </label>
+            ${open ? paperRowDetailHTML(paper) : ''}
+        </div>`;
+}
+
+// ── 펼침 상세에 보일 수 있는 항목 정의 ───────────────────────────────
+// 각 항목: { key, label, get(paper) → .prd-line HTML 문자열 또는 '' }
+// 표시 순서는 이 배열 순서. 사용자가 「표시」에서 켠 항목만(state.rowFields) 노출.
+const prdLine = (label, valHtml) => `<div class="prd-line"><span class="prd-k">${label}</span><span class="prd-v">${valHtml}</span></div>`;
+// 선택한 항목은 비어 있어도 (미입력)으로 항상 보여줌 → 선택이 적용된 게 눈에 보이게
+const prdEmpty = label => `<div class="prd-line"><span class="prd-k">${label}</span><span class="prd-v muted">(미입력)</span></div>`;
+const prdText = (label, val) => (val && String(val).trim()) ? prdLine(label, escHtml(val)) : prdEmpty(label);
+const prdChips = (label, arr, cls) => {
+    const chips = (arr || []).filter(Boolean).map(v => `<span class="tag ${cls}">${escHtml(v)}</span>`).join('');
+    return chips ? `<div class="prd-line"><span class="prd-k">${label}</span><span class="prd-chips">${chips}</span></div>` : prdEmpty(label);
+};
+
+const ROW_FIELDS = [
+    { key: 'biblio',  label: '서지',     get: p => {
+        const j = [];
+        if (p.source) j.push(escHtml(p.source));
+        if (p.volume) j.push(escHtml(p.volume) + (p.issue ? `(${escHtml(p.issue)})` : ''));
+        if (p.pages)  j.push(escHtml(p.pages));
+        const out = (j.length ? prdLine('학술지', j.join(', ')) : '') + (p.doi ? prdLine('DOI', escHtml(p.doi)) : '');
+        return out || prdEmpty('서지');
+    }},
+    { key: 'keywords', label: '키워드',     get: p => prdChips('키워드', splitMulti(p.analysis?.keywords), 'tag-normal') },
+    { key: 'needs',    label: '연구필요성', get: p => prdText('연구필요성', p.analysis?.needs) },
+    { key: 'theory',   label: '이론',       get: p => prdText('이론', p.analysis?.theory) },
+    { key: 'subjects', label: '연구대상',   get: p => prdText('연구대상', p.analysis?.subjects) },
+    { key: 'variables', label: '변인',      get: p => {
+        // 간단 변인 태그(paper.variables) + 정밀분석 변수명 둘 다 모아서(중복 제거)
+        const a = p.analysis?.variables || {};
+        const fromAnalysis = VAR_ROLES.flatMap(([role]) => (a[role] || []).map(v => v && v.name).filter(Boolean));
+        const seen = new Set();
+        const all = [...(p.variables || []), ...fromAnalysis].filter(v => {
+            const k = String(v).toLowerCase();
+            if (!v || seen.has(k)) return false;
+            seen.add(k); return true;
+        });
+        return prdChips('변인', all, 'tag-variable');
+    }},
+    { key: 'varDefs',  label: '변인의 정의', get: p => {
+        const v = p.analysis?.variables || {};
+        const roles = VAR_ROLES.map(([role, label]) => {
+            const items = (v[role] || []).filter(it => it && (it.name || it.factor || it.scale));
+            if (!items.length) return '';
+            const lis = items.map(it => {
+                const extra = [
+                    it.factor && '요인 ' + it.factor, it.scale && '척도 ' + it.scale,
+                    it.reliability && '신뢰도 ' + it.reliability, it.validity && '타당도 ' + it.validity,
+                ].filter(Boolean).map(escHtml).join(', ');
+                return `<div class="pvd-item"><b>${escHtml(it.name || '(이름 없음)')}</b>${extra ? ' — ' + extra : ''}</div>`;
+            }).join('');
+            return `<div class="pvd-role"><span class="pvd-role-name">${label}</span>${lis}</div>`;
+        }).filter(Boolean).join('');
+        return roles ? `<div class="prd-line prd-line-block"><span class="prd-k">변인의 정의</span><div class="prd-vardefs">${roles}</div></div>` : prdEmpty('변인의 정의');
+    }},
+    { key: 'method',   label: '연구방법',   get: p => {
+        const a = p.analysis || {};
+        const vals = [p.methods, a.method, a.program].filter(v => v && String(v).trim()).map(escHtml);
+        return vals.length ? prdLine('연구방법', vals.join(' · ')) : prdEmpty('연구방법');
+    }},
+    { key: 'results',     label: '분석결과', get: p => prdText('분석결과', p.analysis?.results) },
+    { key: 'findings',    label: '주요발견', get: p => prdText('주요발견', p.findings) },
+    { key: 'implications', label: '시사점',  get: p => prdText('시사점', p.analysis?.implications) },
+    { key: 'limitations', label: '한계점',   get: p => prdText('한계점', p.analysis?.limitations) },
+    { key: 'abstract',    label: '초록',     get: p => prdText('초록', p.abstract) },
+    { key: 'myNote',      label: '내 메모',  get: p => prdText('내 메모', p.myNote) },
+    { key: 'tags',        label: '태그',     get: p => prdChips('태그', p.tags, 'tag-normal') },
+];
+const ROW_FIELDS_DEFAULT = ['keywords', 'needs', 'variables', 'varDefs', 'method'];
+
+function loadRowFields() {
+    try {
+        const arr = JSON.parse(localStorage.getItem('rowFields') || 'null');
+        if (Array.isArray(arr)) return arr;
+    } catch {}
+    return [...ROW_FIELDS_DEFAULT];
+}
+function saveRowFields() {
+    try { localStorage.setItem('rowFields', JSON.stringify(state.rowFields)); } catch {}
+}
+function ensureRowFields() {
+    if (state.rowFields === null) state.rowFields = loadRowFields();
+    return state.rowFields;
+}
+
+// 펼친 상세 — 읽기 전용 요약. 보일 항목은 「표시」에서 고름(정밀분석 편집은 '수정' 모달에서)
+function paperRowDetailHTML(paper) {
+    const sel = ensureRowFields();
+    const rows = ROW_FIELDS.filter(f => sel.includes(f.key)).map(f => f.get(paper)).filter(Boolean);
+    const bodyHTML = rows.join('')
+        || '<div class="prd-line muted">위 「표시」에서 펼침에 보일 항목을 골라주세요.</div>';
+    return `
+        <div class="paper-row-detail">
+            <div class="prd-body">${bodyHTML}</div>
+            <div class="prd-actions">
+                <button type="button" class="btn-primary prd-edit" data-id="${paper.id}">✏️ 수정</button>
+                ${paper.pdfData ? `<button type="button" class="btn-secondary prd-pdf" data-id="${paper.id}">📎 PDF 열기</button>` : ''}
+                <button type="button" class="btn-secondary prd-qc" data-id="${paper.id}">${paper.inQuickCite ? '⚡ 빠른인용 해제' : '⚡ 빠른인용'}</button>
+                <button type="button" class="btn-delete prd-del" data-id="${paper.id}">🗑 삭제</button>
             </div>
         </div>`;
+}
+
+// 정렬/묶기 컨트롤 바인딩
+function bindPaperControls(container) {
+    container.querySelectorAll('.pc-sort').forEach(btn => {
+        btn.addEventListener('click', () => { state.paperSort = btn.dataset.sort; renderContent(); });
+    });
+    container.querySelectorAll('.pc-group').forEach(btn => {
+        btn.addEventListener('click', () => { state.groupBy = btn.dataset.group; renderContent(); });
+    });
+    // 드롭다운 열림/닫힘 기억(항목 토글로 다시 그려도 유지)
+    const dd = container.querySelector('.pc-fields-dd');
+    if (dd) dd.addEventListener('toggle', () => { state.fieldsOpen = dd.open; });
+    // 표시 항목 토글(여러 개 선택 가능) — 선택은 localStorage에 기억
+    container.querySelectorAll('.pc-field').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const k = btn.dataset.field;
+            const arr = ensureRowFields();
+            const i = arr.indexOf(k);
+            if (i >= 0) arr.splice(i, 1); else arr.push(k);
+            saveRowFields();
+            renderContent();
+        });
+    });
+}
+
+// 행 클릭(펼침/접힘) + 펼친 행의 동작 버튼 + (옵션)끌어다 놓기 바인딩
+let dragSrcId = null;        // 끌고 있는 논문 id
+let suppressRowClick = false; // 드래그 직후 클릭(펼침) 막기
+
+function bindRows(container, enableDrag = false) {
+    container.querySelectorAll('.paper-row').forEach(row => {
+        row.addEventListener('click', () => {
+            if (suppressRowClick) return;   // 방금 끌어다 놓은 경우 펼침 무시
+            const id = row.dataset.id;
+            state.expandedId = (state.expandedId === id) ? null : id;   // 한 번에 하나만
+            renderContent();
+        });
+    });
+    if (enableDrag) bindRowDrag(container);
+    container.querySelectorAll('.prd-edit').forEach(b =>
+        b.addEventListener('click', e => { e.stopPropagation(); openForm(b.dataset.id, 'edit'); }));
+    container.querySelectorAll('.prd-pdf').forEach(b =>
+        b.addEventListener('click', e => {
+            e.stopPropagation();
+            const p = state.papers.find(x => x.id === b.dataset.id);
+            if (p) openPdf(p);
+        }));
+    container.querySelectorAll('.prd-del').forEach(b =>
+        b.addEventListener('click', e => { e.stopPropagation(); deletePaper(b.dataset.id); }));
+    container.querySelectorAll('.prd-qc').forEach(b =>
+        b.addEventListener('click', async e => {
+            e.stopPropagation();
+            const p = state.papers.find(x => x.id === b.dataset.id);
+            if (!p) return;
+            p.inQuickCite = !p.inQuickCite;
+            await dbPut(STORE_PAPERS, p);
+            renderContent();
+        }));
+}
+
+// 끌어다 놓기(순서 바꾸기) — 평면 목록에서만
+function bindRowDrag(container) {
+    container.querySelectorAll('.paper-row[draggable="true"]').forEach(row => {
+        row.addEventListener('dragstart', e => {
+            dragSrcId = row.dataset.id;
+            suppressRowClick = true;
+            row.closest('.paper-row-wrap')?.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            try { e.dataTransfer.setData('text/plain', dragSrcId); } catch (_) {}
+        });
+        row.addEventListener('dragend', () => {
+            container.querySelectorAll('.paper-row-wrap')
+                .forEach(w => w.classList.remove('dragging', 'drag-over-top', 'drag-over-bottom'));
+            dragSrcId = null;
+            // 드래그 직후 발생할 수 있는 click 한 번만 무시
+            setTimeout(() => { suppressRowClick = false; }, 0);
+        });
+    });
+
+    container.querySelectorAll('.paper-row-wrap').forEach(wrap => {
+        wrap.addEventListener('dragover', e => {
+            if (!dragSrcId) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            const rect = wrap.getBoundingClientRect();
+            const after = e.clientY > rect.top + rect.height / 2;
+            wrap.classList.toggle('drag-over-bottom', after);
+            wrap.classList.toggle('drag-over-top', !after);
+        });
+        wrap.addEventListener('dragleave', () => {
+            wrap.classList.remove('drag-over-top', 'drag-over-bottom');
+        });
+        wrap.addEventListener('drop', e => {
+            e.preventDefault();
+            const targetId = wrap.dataset.id;
+            if (!dragSrcId || dragSrcId === targetId) return;
+            const rect = wrap.getBoundingClientRect();
+            const after = e.clientY > rect.top + rect.height / 2;
+            reorderPapers(dragSrcId, targetId, after);
+        });
+    });
+}
+
+// 끌어다 놓은 결과를 sortOrder로 저장하고 '내 순서'로 전환
+async function reorderPapers(srcId, targetId, after) {
+    const ordered = sortPapers(state.papers);       // 지금 보이는 순서
+    const srcIdx = ordered.findIndex(p => p.id === srcId);
+    if (srcIdx < 0) return;
+    const [moved] = ordered.splice(srcIdx, 1);
+    let tIdx = ordered.findIndex(p => p.id === targetId);
+    if (tIdx < 0) return;
+    if (after) tIdx += 1;
+    ordered.splice(tIdx, 0, moved);
+
+    for (let i = 0; i < ordered.length; i++) {       // 새 순서 번호 부여 + 저장
+        ordered[i].sortOrder = i;
+        await dbPut(STORE_PAPERS, ordered[i]);
+    }
+    state.paperSort = 'manual';                      // 끌면 '내 순서'로 전환
+    renderContent();
+    showToast('논문 순서를 저장했어요', 'success');
 }
 
 // ── 검색 결과 ──────────────────────────────────────────────
@@ -517,9 +881,9 @@ function renderSearchResults(q, container) {
         <div class="search-results-info">
             "<strong>${escHtml(q)}</strong>" 검색 결과 ${matches.length}편
         </div>
-        <div class="papers-grid">${matches.map(paperCardHTML).join('')}</div>`;
+        <div class="paper-list">${paperRowsHTML(sortPapers(matches))}</div>`;
 
-    bindCards(container);
+    bindRows(container);
 }
 
 function paperMatchesQuery(paper, q) {
@@ -743,91 +1107,6 @@ function organizeValues(paper, dimKey) {
         return [...(paper.variables || []), ...fromAnalysis].filter(Boolean);
     }
     return [];
-}
-
-// ── 정리 뷰: 키워드·저자·주제·변인별로 논문 묶어보기 ──────────
-function renderOrganize(container) {
-    const [dimKey, dimLabel, dimCls] =
-        ORGANIZE_DIMS.find(d => d[0] === state.organizeBy) || ORGANIZE_DIMS[0];
-
-    const tabs = ORGANIZE_DIMS.map(([k, label]) =>
-        `<button class="og-tab ${k === dimKey ? 'active' : ''}" data-dim="${k}">${label}</button>`
-    ).join('');
-
-    if (state.papers.length === 0) {
-        container.innerHTML = `
-            <div class="section-header"><span class="section-title">정리</span></div>
-            <div class="og-tabs">${tabs}</div>
-            <div class="empty-state">
-                <div class="empty-icon">🗂️</div>
-                <h3>정리할 논문이 없습니다</h3>
-                <p>논문을 추가하면 키워드·저자·주제·변인별로<br>묶어서 한눈에 볼 수 있어요</p>
-            </div>`;
-        bindOrgTabs(container);
-        return;
-    }
-
-    // 값(소문자) → { label, papers[] } 로 묶기
-    const groups = new Map();
-    const noValue = [];
-    state.papers.forEach(p => {
-        const seen = new Set();
-        organizeValues(p, dimKey).forEach(v => {
-            const key = v.toLowerCase();
-            if (seen.has(key)) return;              // 같은 논문이 한 그룹에 중복되지 않게
-            seen.add(key);
-            if (!groups.has(key)) groups.set(key, { label: v, papers: [] });
-            groups.get(key).papers.push(p);
-        });
-        if (seen.size === 0) noValue.push(p);       // 이 기준에 값이 없는 논문
-    });
-
-    // 편 수 많은 순 → 같으면 가나다 순
-    const sorted = [...groups.values()].sort((a, b) =>
-        b.papers.length - a.papers.length || a.label.localeCompare(b.label, 'ko'));
-
-    const groupHTML = sorted.map(g => `
-        <details class="og-group" open>
-            <summary>
-                <span class="og-group-name ${dimCls}">${escHtml(g.label)}</span>
-                <span class="og-group-count">${g.papers.length}편</span>
-            </summary>
-            <div class="papers-grid">${g.papers
-                .slice().sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0))
-                .map(paperCardHTML).join('')}</div>
-        </details>`).join('');
-
-    const noValueHTML = noValue.length ? `
-        <details class="og-group og-group-none">
-            <summary>
-                <span class="og-group-name">${escHtml(dimLabel)} 미입력</span>
-                <span class="og-group-count">${noValue.length}편</span>
-            </summary>
-            <div class="papers-grid">${noValue
-                .slice().sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0))
-                .map(paperCardHTML).join('')}</div>
-        </details>` : '';
-
-    container.innerHTML = `
-        <div class="section-header">
-            <span class="section-title">정리 — ${escHtml(dimLabel)}별</span>
-            <span class="og-summary">${sorted.length}개 ${escHtml(dimLabel)} · 논문 ${state.papers.length}편</span>
-        </div>
-        <div class="og-tabs">${tabs}</div>
-        ${groupHTML || `<p class="og-empty-dim">아직 ${escHtml(dimLabel)} 정보가 입력된 논문이 없습니다.</p>`}
-        ${noValueHTML}`;
-
-    bindOrgTabs(container);
-    bindCards(container);
-}
-
-function bindOrgTabs(container) {
-    container.querySelectorAll('.og-tab').forEach(btn => {
-        btn.addEventListener('click', () => {
-            state.organizeBy = btn.dataset.dim;
-            renderContent();
-        });
-    });
 }
 
 // ── 아이디어 / 마인드맵 뷰 ────────────────────────────────
@@ -1535,8 +1814,9 @@ async function buildBackupJson() {
         _fileEncoded: !!m.fileData,
     }));
     const notes = await dbGetAll(STORE_NOTES);
+    const proposals = await dbGetAll(STORE_PROPOSALS);   // 모형스케치북 미니 프로포절(첨부파일 없음 → 그대로)
     return JSON.stringify(
-        { version: 2, exportedAt: Date.now(), papers: exportable, materials: exportableMat, notes },
+        { version: 3, exportedAt: Date.now(), papers: exportable, materials: exportableMat, notes, proposals },
         null, 2);
 }
 
@@ -1628,7 +1908,8 @@ async function importData(file) {
         const papers = data.papers || [];
         const materials = data.materials || [];
         const importNotes = data.notes || [];
-        if (!data.papers && !data.materials && !data.notes) throw new Error('올바른 형식이 아닙니다');
+        const importProposals = data.proposals || [];
+        if (!data.papers && !data.materials && !data.notes && !data.proposals) throw new Error('올바른 형식이 아닙니다');
         if (!confirm(`논문 ${papers.length}편, 자료 ${materials.length}개, 메모 ${importNotes.length}개를 가져옵니다. 기존 데이터에 추가됩니다.`)) return;
 
         const existingPapers = await dbGetAll(STORE_PAPERS);
@@ -1675,6 +1956,16 @@ async function importData(file) {
                 continue;
             }
             await dbPut(STORE_NOTES, { ...n, projectId: state.currentProjectId });
+        }
+        // 프로포절(프로젝트당 1개, key=projectId) — 백업의 가장 알찬 것을 현재 프로젝트로.
+        // 단, 현재 프로젝트에 이미 프로포절이 있으면 덮어쓰지 않음(기존 작업 보호).
+        if (importProposals.length) {
+            const richest = importProposals.slice()
+                .sort((a, b) => proposalContentScore(b) - proposalContentScore(a))[0];
+            const current = await loadProposal(state.currentProjectId);
+            if (proposalContentScore(current) === 0 && proposalContentScore(richest) > 0) {
+                await dbPut(STORE_PROPOSALS, { ...richest, id: state.currentProjectId, updatedAt: Date.now() });
+            }
         }
         await loadData();
         renderContent();
@@ -1802,6 +2093,7 @@ async function clearCurrentProject() {
             for (const item of all) if (item.projectId === pid) await dbDelete(store, item.id);
         }
         await dbDelete(STORE_MINDMAPS, pid);
+        await dbDelete(STORE_PROPOSALS, pid);
     } finally { suppressAutoBackup = false; }
 
     await loadData();
@@ -1816,7 +2108,7 @@ async function wipeAllData() {
 
     suppressAutoBackup = true;
     try {
-        for (const store of [STORE_PAPERS, STORE_MATERIALS, STORE_NOTES, STORE_MINDMAPS, STORE_PROJECTS]) {
+        for (const store of [STORE_PAPERS, STORE_MATERIALS, STORE_NOTES, STORE_MINDMAPS, STORE_PROPOSALS, STORE_PROJECTS]) {
             await dbClearStore(store);
         }
         localStorage.removeItem('currentProjectId');
@@ -1838,6 +2130,9 @@ function showToast(msg, type = 'info') {
 
 // ── 이벤트 바인딩 ──────────────────────────────────────────
 function bindEvents() {
+    // 사이드바 접기/펴기 (앱 전체 — .sidebar에 collapsed 클래스만 토글)
+    initSidebarToggle();
+
     // 사이드바 네비
     document.querySelectorAll('.nav-item').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -2019,6 +2314,20 @@ function bindEvents() {
 }
 
 // ── 앱 시작 ────────────────────────────────────────────────
+// 사이드바 접기 상태는 localStorage('sidebarCollapsed')에 보관(앱 전체, 프로젝트 무관)
+function initSidebarToggle() {
+    const btn = document.getElementById('sidebar-toggle');
+    const sidebar = document.querySelector('.sidebar');
+    if (!btn || !sidebar) return;
+    if (localStorage.getItem('sidebarCollapsed') === '1') sidebar.classList.add('collapsed');
+    btn.onclick = () => {
+        const collapsed = sidebar.classList.toggle('collapsed');
+        localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0');
+        // 사이드바 폭이 바뀌면 모형스케치북 캔버스 크기도 다시 맞춤(전환 애니메이션 후)
+        if (typeof resizeBg === 'function') setTimeout(resizeBg, 220);
+    };
+}
+
 async function init() {
     await initDB();
     await requestPersistentStorage();
