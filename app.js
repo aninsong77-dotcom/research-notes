@@ -732,7 +732,8 @@ function paperRowDetailHTML(paper) {
         <div class="paper-row-detail">
             <div class="prd-body">${bodyHTML}</div>
             <div class="prd-actions">
-                <button type="button" class="btn-primary prd-edit" data-id="${paper.id}">✏️ 수정</button>
+                <button type="button" class="btn-primary prd-desk" data-id="${paper.id}">📖 책상에서 펼치기</button>
+                <button type="button" class="btn-secondary prd-edit" data-id="${paper.id}">✏️ 수정</button>
                 ${paper.pdfData ? `<button type="button" class="btn-secondary prd-pdf" data-id="${paper.id}">📎 PDF 열기</button>` : ''}
                 <button type="button" class="btn-secondary prd-qc" data-id="${paper.id}">${paper.inQuickCite ? '⚡ 빠른인용 해제' : '⚡ 빠른인용'}</button>
                 <button type="button" class="btn-delete prd-del" data-id="${paper.id}">🗑 삭제</button>
@@ -778,6 +779,8 @@ function bindRows(container, enableDrag = false) {
         });
     });
     if (enableDrag) bindRowDrag(container);
+    container.querySelectorAll('.prd-desk').forEach(b =>
+        b.addEventListener('click', e => { e.stopPropagation(); openDesk(b.dataset.id); }));
     container.querySelectorAll('.prd-edit').forEach(b =>
         b.addEventListener('click', e => { e.stopPropagation(); openForm(b.dataset.id, 'edit'); }));
     container.querySelectorAll('.prd-pdf').forEach(b =>
@@ -1467,6 +1470,286 @@ function openPdf(paper) {
     setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
+// ── 책상(Desk): 논문을 전체화면으로 펼쳐 읽는 작업공간 ──────────────
+// 1단계 = 골격. desk* 네임스페이스, 오버레이를 동적 생성/제거, DB 변경 없음.
+// (2단계: 오른쪽 패널에 발췌·메모. 4단계: 스케치북 같이.)
+let deskCtx = null;   // { overlay, pdfUrl, onKey, onMove, onUp, _pct }
+
+function openDesk(paperId) {
+    const paper = state.papers.find(p => p.id === paperId);
+    if (!paper) return;
+
+    // 이미 책상이 열려 있으면 새 탭으로 추가하고 그 탭으로 전환
+    if (deskCtx) {
+        if (!deskCtx.tabs.includes(paperId)) deskCtx.tabs.push(paperId);
+        deskActivate(paperId);
+        return;
+    }
+
+    const pct = Math.max(25, Math.min(80, parseInt(localStorage.getItem('deskLeftPct') || '60', 10) || 60));
+    const overlay = document.createElement('div');
+    overlay.className = 'desk-overlay';
+    overlay.innerHTML = `
+        <div class="desk-topbar">
+            <div class="desk-tabs" id="desk-tabs"></div>
+            <button type="button" class="desk-close">닫기 ✕</button>
+        </div>
+        <div class="desk-body">
+            <div class="desk-pane desk-left" id="desk-left" style="flex:0 0 ${pct}%"></div>
+            <div class="desk-resizer" id="desk-resizer" title="끌어서 폭 조절"></div>
+            <div class="desk-pane desk-right" id="desk-right"></div>
+        </div>`;
+    document.body.appendChild(overlay);
+    document.body.style.overflow = 'hidden';
+
+    deskCtx = { overlay, tabs: [paperId], activeId: null, pdfUrl: null };
+    overlay.querySelector('.desk-close').addEventListener('click', closeDesk);
+    const onKey = e => { if (e.key === 'Escape') closeDesk(); };
+    document.addEventListener('keydown', onKey);
+    deskCtx.onKey = onKey;
+    bindDeskResizer(overlay);
+    deskActivate(paperId);
+}
+
+// 탭 전환 — 왼쪽(PDF/본문)·오른쪽(발췌)을 그 논문으로 갈아끼움
+function deskActivate(paperId) {
+    if (!deskCtx) return;
+    const paper = state.papers.find(p => p.id === paperId);
+    if (!paper) return;
+    deskCtx.activeId = paperId;
+    // 이전 PDF blob URL 정리 후 새로 생성
+    if (deskCtx.pdfUrl) { URL.revokeObjectURL(deskCtx.pdfUrl); deskCtx.pdfUrl = null; }
+    deskCtx.pdfUrl = paper.pdfData
+        ? URL.createObjectURL(new Blob([paper.pdfData], { type: 'application/pdf' }))
+        : null;
+    const { overlay } = deskCtx;
+    overlay.querySelector('#desk-left').innerHTML = deskLeftHTML(paper, deskCtx.pdfUrl);
+    overlay.querySelector('#desk-right').innerHTML = deskRightHTML(paper);
+    bindDeskRight(overlay, paper);
+    deskRenderTabs();
+}
+
+// 상단 탭 줄 렌더 + 바인딩
+function deskRenderTabs() {
+    const { overlay, tabs, activeId } = deskCtx;
+    const tabsEl = overlay.querySelector('#desk-tabs');
+    const tabHTML = tabs.map(id => {
+        const p = state.papers.find(x => x.id === id);
+        if (!p) return '';
+        const title = p.title || '제목 없음';
+        return `
+            <div class="desk-tab ${id === activeId ? 'active' : ''}" data-id="${id}" title="${escHtml(title)}">
+                <span class="desk-tab-icon">${p.pdfData ? '📄' : '📝'}</span>
+                <span class="desk-tab-title">${escHtml(title)}</span>
+                <button type="button" class="desk-tab-close" data-id="${id}" title="이 논문 닫기">✕</button>
+            </div>`;
+    }).join('');
+    tabsEl.innerHTML = tabHTML +
+        `<button type="button" class="desk-tab-add" id="desk-tab-add" title="다른 논문 꺼내기">＋</button>`;
+
+    tabsEl.querySelectorAll('.desk-tab').forEach(t =>
+        t.addEventListener('click', e => {
+            if (e.target.closest('.desk-tab-close')) return;
+            deskActivate(t.dataset.id);
+        }));
+    tabsEl.querySelectorAll('.desk-tab-close').forEach(b =>
+        b.addEventListener('click', e => { e.stopPropagation(); deskCloseTab(b.dataset.id); }));
+    tabsEl.querySelector('#desk-tab-add').addEventListener('click', deskOpenPicker);
+}
+
+// 탭 닫기 — 마지막 하나면 책상 전체 닫힘
+function deskCloseTab(id) {
+    const i = deskCtx.tabs.indexOf(id);
+    if (i < 0) return;
+    deskCtx.tabs.splice(i, 1);
+    if (deskCtx.tabs.length === 0) { closeDesk(); return; }
+    if (deskCtx.activeId === id) deskActivate(deskCtx.tabs[Math.max(0, i - 1)]);
+    else deskRenderTabs();
+}
+
+// "＋ 다른 논문 꺼내기" — 현재 프로젝트 논문 중 안 열린 것 고르기
+function deskOpenPicker() {
+    const { overlay } = deskCtx;
+    overlay.querySelector('.desk-picker')?.remove();
+    const open = new Set(deskCtx.tabs);
+    const avail = sortPapers(state.papers.filter(p => !open.has(p.id)));
+    const pick = document.createElement('div');
+    pick.className = 'desk-picker';
+    pick.innerHTML = avail.length
+        ? avail.map(p => `
+            <button type="button" class="desk-pick-item" data-id="${p.id}">
+                <span>${p.pdfData ? '📄' : '📝'}</span>
+                <span class="desk-pick-title">${escHtml(p.title || '제목 없음')}</span>
+                <span class="desk-pick-meta">${escHtml([p.year, firstAuthor(p)].filter(Boolean).join(' · '))}</span>
+            </button>`).join('')
+        : `<div class="desk-pick-empty">더 꺼낼 논문이 없어요.</div>`;
+    overlay.querySelector('.desk-topbar').appendChild(pick);
+    pick.querySelectorAll('.desk-pick-item').forEach(b =>
+        b.addEventListener('click', () => { deskCtx.tabs.push(b.dataset.id); pick.remove(); deskActivate(b.dataset.id); }));
+    // 바깥 클릭 시 닫기
+    const off = e => {
+        if (!pick.contains(e.target) && !e.target.closest('#desk-tab-add')) {
+            pick.remove();
+            document.removeEventListener('mousedown', off);
+        }
+    };
+    setTimeout(() => document.addEventListener('mousedown', off), 0);
+}
+
+function deskLeftHTML(paper, pdfUrl) {
+    if (pdfUrl) return `<iframe class="desk-pdf" src="${pdfUrl}" title="PDF"></iframe>`;
+    // PDF 없음 → 가진 본문 정보로 대체
+    const meta = [paper.year, paper.authors, paper.source].filter(Boolean).map(escHtml).join(' · ');
+    const blocks = [];
+    const sec = (label, val) => { if (val && String(val).trim()) blocks.push(`<h4>${label}</h4><p>${escHtml(val)}</p>`); };
+    sec('초록', paper.abstract);
+    sec('연구방법', paper.methods);
+    sec('주요발견', paper.findings);
+    sec('내 메모', paper.myNote);
+    return `
+        <div class="desk-text">
+            <h2>${escHtml(paper.title || '제목 없음')}</h2>
+            ${meta ? `<div class="desk-text-meta">${meta}</div>` : ''}
+            ${blocks.join('') || '<p class="muted">이 논문엔 PDF도, 입력된 본문도 없어요. ✏️ 수정에서 채우거나 PDF를 올려보세요.</p>'}
+        </div>`;
+}
+
+function closeDesk() {
+    if (!deskCtx) return;
+    const { overlay, pdfUrl, onKey, onMove, onUp } = deskCtx;
+    if (onKey) document.removeEventListener('keydown', onKey);
+    if (onMove) window.removeEventListener('mousemove', onMove);
+    if (onUp)   window.removeEventListener('mouseup', onUp);
+    overlay.remove();
+    if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+    document.body.style.overflow = '';
+    deskCtx = null;
+}
+
+// 캔버스/패널 사이 핸들을 끌어 왼쪽 폭 조절(전역 비율 localStorage 저장)
+function bindDeskResizer(overlay) {
+    const left = overlay.querySelector('#desk-left');
+    const body = overlay.querySelector('.desk-body');
+    const resizer = overlay.querySelector('#desk-resizer');
+    let dragging = false;
+    resizer.addEventListener('mousedown', e => { dragging = true; e.preventDefault(); document.body.style.userSelect = 'none'; });
+    const onMove = e => {
+        if (!dragging) return;
+        const r = body.getBoundingClientRect();
+        let pct = ((e.clientX - r.left) / r.width) * 100;
+        pct = Math.max(25, Math.min(80, pct));
+        left.style.flex = `0 0 ${pct}%`;
+        deskCtx._pct = pct;
+    };
+    const onUp = () => {
+        if (!dragging) return;
+        dragging = false;
+        document.body.style.userSelect = '';
+        if (deskCtx && deskCtx._pct) localStorage.setItem('deskLeftPct', String(Math.round(deskCtx._pct)));
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    deskCtx.onMove = onMove;
+    deskCtx.onUp = onUp;
+}
+
+// ── 발췌(긁기) — 오른쪽 패널 (2단계) ────────────────────────────
+// 한 조각 = { id, cat, text, memo, color, createdAt }. paper.excerpts[]에 저장.
+// DB 버전 안 올림(papers store 스프레드 저장 → 백업/내보내기 자동 포함).
+const EXCERPT_CATS = [
+    ['keyword',  '키워드'],
+    ['opdef',    '조작적 정의'],
+    ['variable', '변인'],
+    ['method',   '연구방법'],
+    ['needs',    '연구필요성'],
+    ['free',     '자유'],
+];
+let deskAddCat = 'keyword';   // 담기 시 선택된 카테고리(세션 유지)
+
+function deskRightHTML(paper) {
+    const cats = EXCERPT_CATS.map(([k, l]) =>
+        `<button type="button" class="desk-cat cat-${k} ${k === deskAddCat ? 'active' : ''}" data-cat="${k}">${l}</button>`
+    ).join('');
+    return `
+        <div class="desk-right-inner">
+            <div class="desk-catch">
+                <div class="desk-catch-head">📋 붙여넣기 받는 칸</div>
+                <textarea class="desk-catch-text" placeholder="왼쪽에서 드래그 → 복사(Ctrl+C) → 여기 붙여넣기(Ctrl+V) → 분류 고르고 담기"></textarea>
+                <div class="desk-catch-bar">
+                    <div class="desk-cats">${cats}</div>
+                    <button type="button" class="desk-add btn-primary">담기</button>
+                </div>
+            </div>
+            <div class="desk-excerpts" id="desk-excerpts">${deskExcerptsHTML(paper)}</div>
+        </div>`;
+}
+
+// 카테고리별로 묶어 한눈에 (EXCERPT_CATS 순서)
+function deskExcerptsHTML(paper) {
+    const list = paper.excerpts || [];
+    if (!list.length) {
+        return `<div class="desk-ex-empty">아직 담은 게 없어요.<br>왼쪽에서 중요한 문장을 복사해 위 칸에 붙여넣고 담아보세요.</div>`;
+    }
+    return EXCERPT_CATS.map(([k, label]) => {
+        const items = list.filter(e => e.cat === k);
+        if (!items.length) return '';
+        const cards = items.map(e => `
+            <div class="desk-ex-card" data-eid="${e.id}">
+                <div class="desk-ex-text">${escHtml(e.text)}</div>
+                <button type="button" class="desk-ex-del" data-eid="${e.id}" title="삭제">✕</button>
+            </div>`).join('');
+        return `
+            <div class="desk-ex-group">
+                <div class="desk-ex-gtitle">
+                    <span class="desk-ex-badge cat-${k}">${label}</span>
+                    <span class="desk-ex-count">${items.length}</span>
+                </div>
+                ${cards}
+            </div>`;
+    }).join('');
+}
+
+function bindDeskRight(overlay, paper) {
+    overlay.querySelectorAll('.desk-cat').forEach(b =>
+        b.addEventListener('click', () => {
+            deskAddCat = b.dataset.cat;
+            overlay.querySelectorAll('.desk-cat').forEach(x => x.classList.toggle('active', x === b));
+        }));
+    overlay.querySelector('.desk-add').addEventListener('click', () => deskAddExcerpt(overlay, paper));
+    bindDeskExcerpts(overlay, paper);
+}
+
+function bindDeskExcerpts(overlay, paper) {
+    overlay.querySelectorAll('.desk-ex-del').forEach(b =>
+        b.addEventListener('click', () => deskDelExcerpt(overlay, paper, b.dataset.eid)));
+}
+
+function deskRenderExcerpts(overlay, paper) {
+    const box = overlay.querySelector('#desk-excerpts');
+    if (!box) return;
+    box.innerHTML = deskExcerptsHTML(paper);
+    bindDeskExcerpts(overlay, paper);
+}
+
+function deskAddExcerpt(overlay, paper) {
+    const ta = overlay.querySelector('.desk-catch-text');
+    const text = (ta.value || '').trim();
+    if (!text) { ta.focus(); return; }
+    if (!Array.isArray(paper.excerpts)) paper.excerpts = [];
+    // 같은 카테고리 맨 앞에 오도록 최신순 unshift (paper는 state.papers의 참조 → 메모리도 갱신)
+    paper.excerpts.unshift({ id: genId(), cat: deskAddCat, text, memo: '', color: '', createdAt: Date.now() });
+    dbPut(STORE_PAPERS, paper);
+    ta.value = '';
+    deskRenderExcerpts(overlay, paper);
+    ta.focus();
+}
+
+function deskDelExcerpt(overlay, paper, eid) {
+    paper.excerpts = (paper.excerpts || []).filter(e => e.id !== eid);
+    dbPut(STORE_PAPERS, paper);
+    deskRenderExcerpts(overlay, paper);
+}
+
 // ── 논문 추가/수정/보기 통합 모달 ───────────────────────────
 // mode: 'edit'(입력 가능) | 'view'(읽기 전용). 새 논문은 항상 'edit'.
 function openForm(editId = null, mode = null) {
@@ -1697,8 +1980,11 @@ async function savePaper(e) {
         pdfFilename = state.currentPdfFile.name;
     }
 
+    // 기존 논문을 펼쳐서 폼에 없는 필드(발췌 excerpts·빠른인용·참고문헌·정렬 등) 보존
+    const existing = state.editingId ? state.papers.find(p => p.id === state.editingId) : null;
     const val = id => document.getElementById(id).value.trim();
     const paper = {
+        ...(existing || {}),
         id: state.editingId || genId(),
         title,
         authors: val('f-authors'),

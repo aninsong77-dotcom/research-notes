@@ -2207,3 +2207,187 @@ body {
 .di-danger .di-title { color: var(--danger); }
 .di-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 .di-actions .btn-delete { flex: 1; min-width: 160px; }
+
+/* ── 책상(Desk) — 논문 전체화면 작업공간 ─────────────────────── */
+.desk-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg, #f7f7fb);
+}
+.desk-topbar {
+    position: relative;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 7px 16px 0;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+}
+.desk-close {
+    flex-shrink: 0;
+    margin-bottom: 6px;
+    padding: 7px 16px;
+    border: 1.5px solid var(--border);
+    border-radius: 18px;
+    background: var(--surface);
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.desk-close:hover { border-color: var(--accent-mid); color: var(--accent); }
+
+/* PDF 탭 — 여러 논문 펼쳐 전환 */
+.desk-tabs { display: flex; align-items: flex-end; gap: 4px; flex: 1; min-width: 0; overflow-x: auto; }
+.desk-tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    max-width: 220px;
+    padding: 7px 7px 7px 11px;
+    border: 1px solid var(--border);
+    border-bottom: none;
+    border-radius: 10px 10px 0 0;
+    background: var(--bg);
+    cursor: pointer;
+}
+.desk-tab.active { background: var(--surface); border-color: var(--accent-mid); }
+.desk-tab-icon { flex-shrink: 0; font-size: 12px; }
+.desk-tab-title {
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-size: 12.5px; font-weight: 600; color: var(--text-secondary);
+}
+.desk-tab.active .desk-tab-title { color: var(--text-primary); }
+.desk-tab-close {
+    flex-shrink: 0; border: 0; background: transparent; cursor: pointer;
+    color: var(--text-muted); font-size: 11px; line-height: 1; padding: 2px 4px; border-radius: 6px;
+}
+.desk-tab-close:hover { background: var(--border); color: var(--danger); }
+.desk-tab-add {
+    flex-shrink: 0; margin-bottom: 4px;
+    border: 1.5px dashed var(--border); background: transparent;
+    color: var(--text-muted); cursor: pointer;
+    font-size: 15px; line-height: 1; border-radius: 8px; padding: 5px 10px;
+}
+.desk-tab-add:hover { border-color: var(--accent-mid); color: var(--accent); }
+
+/* 논문 꺼내기 선택창 */
+.desk-picker {
+    position: absolute; top: 100%; left: 12px; z-index: 5;
+    margin-top: 4px;
+    background: var(--surface); border: 1.5px solid var(--border); border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.14);
+    padding: 6px; min-width: 300px; max-width: 480px; max-height: 60vh; overflow: auto;
+}
+.desk-pick-item {
+    display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+    border: 0; background: transparent; cursor: pointer;
+    padding: 8px 10px; border-radius: 8px; font-size: 13px; color: var(--text-primary);
+}
+.desk-pick-item:hover { background: var(--bg); }
+.desk-pick-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.desk-pick-meta { margin-left: auto; flex-shrink: 0; color: var(--text-muted); font-size: 11.5px; }
+.desk-pick-empty { padding: 14px; color: var(--text-muted); font-size: 13px; text-align: center; }
+
+.desk-body { flex: 1; display: flex; min-height: 0; }
+.desk-pane { min-width: 0; height: 100%; overflow: auto; }
+.desk-left { background: #fff; }
+.desk-pdf { width: 100%; height: 100%; border: 0; display: block; }
+.desk-text { padding: 28px 32px; max-width: 780px; }
+.desk-text h2 { font-size: 20px; font-weight: 700; color: var(--text-primary); margin: 0 0 8px; }
+.desk-text-meta { color: var(--text-muted); font-size: 13px; margin-bottom: 20px; }
+.desk-text h4 { font-size: 13px; font-weight: 700; color: var(--accent); margin: 18px 0 5px; }
+.desk-text p { font-size: 14px; line-height: 1.7; color: var(--text-secondary); white-space: pre-wrap; margin: 0; }
+
+.desk-resizer {
+    flex-shrink: 0;
+    width: 7px;
+    cursor: col-resize;
+    background: var(--border);
+    transition: background 0.15s;
+}
+.desk-resizer:hover { background: var(--accent-mid); }
+
+.desk-right { flex: 1; background: var(--surface); }
+.desk-right-inner { display: flex; flex-direction: column; min-height: 100%; }
+
+/* 붙여넣기 받는 칸 — 위에 고정 */
+.desk-catch {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 16px;
+}
+.desk-catch-head { font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 8px; }
+.desk-catch-text {
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 64px;
+    resize: vertical;
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    padding: 9px 11px;
+    font: inherit;
+    font-size: 13px;
+    line-height: 1.5;
+}
+.desk-catch-text:focus { outline: none; border-color: var(--accent-mid); }
+.desk-catch-bar { display: flex; align-items: center; gap: 10px; margin-top: 9px; flex-wrap: wrap; }
+.desk-cats { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; }
+.desk-cat {
+    padding: 4px 11px;
+    border-radius: 14px;
+    border: 1.5px solid var(--border);
+    background: var(--surface);
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.desk-cat.active { color: #fff; border-color: transparent; }
+.desk-add { flex-shrink: 0; padding: 7px 18px; }
+
+/* 발췌 목록 — 카테고리별 묶음 */
+.desk-excerpts { padding: 14px 16px; display: flex; flex-direction: column; gap: 16px; }
+.desk-ex-empty { color: var(--text-muted); font-size: 13px; line-height: 1.6; text-align: center; padding: 30px 10px; }
+.desk-ex-group { display: flex; flex-direction: column; gap: 7px; }
+.desk-ex-gtitle { display: flex; align-items: center; gap: 7px; }
+.desk-ex-badge { padding: 2px 9px; border-radius: 10px; font-size: 11px; font-weight: 700; color: #fff; }
+.desk-ex-count { font-size: 11px; color: var(--text-muted); }
+.desk-ex-card {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 9px 11px;
+}
+.desk-ex-text { flex: 1; font-size: 13px; line-height: 1.55; color: var(--text-primary); white-space: pre-wrap; }
+.desk-ex-del {
+    flex-shrink: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1;
+    padding: 2px 4px;
+}
+.desk-ex-del:hover { color: var(--danger); }
+
+/* 카테고리 색 (칩 active + 배지) */
+.cat-keyword.active,  .desk-ex-badge.cat-keyword  { background: #e8830c; }
+.cat-opdef.active,    .desk-ex-badge.cat-opdef    { background: #1a73e8; }
+.cat-variable.active, .desk-ex-badge.cat-variable { background: #188038; }
+.cat-method.active,   .desk-ex-badge.cat-method   { background: #7b2d8b; }
+.cat-needs.active,    .desk-ex-badge.cat-needs    { background: #b03a3a; }
+.cat-free.active,     .desk-ex-badge.cat-free     { background: #5f6368; }
