@@ -2364,25 +2364,53 @@ body {
 .desk-ex-count { font-size: 11px; color: var(--text-muted); }
 .desk-ex-card {
     display: flex;
-    gap: 8px;
-    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 9px 11px;
 }
-.desk-ex-text { flex: 1; font-size: 13px; line-height: 1.55; color: var(--text-primary); white-space: pre-wrap; }
+.desk-ex-text {
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    border-radius: 6px;
+}
+.desk-ex-text:focus { outline: none; box-shadow: 0 0 0 2px var(--accent-mid); background: var(--surface); }
+.desk-ex-memo {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    border-radius: 6px;
+    min-height: 1em;
+}
+.desk-ex-memo:empty::before { content: attr(data-ph); color: var(--text-muted); opacity: 0.6; }
+.desk-ex-memo:focus { outline: none; box-shadow: 0 0 0 2px var(--accent-mid); background: var(--surface); }
+.desk-ex-tools { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 1px; }
+.desk-ex-swatches { display: flex; gap: 5px; }
+.desk-ex-sw {
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    border: 1.5px solid var(--border);
+    cursor: pointer;
+    padding: 0;
+}
+.desk-ex-sw.on { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--text-secondary); }
 .desk-ex-del {
     flex-shrink: 0;
     border: 0;
     background: transparent;
     cursor: pointer;
     color: var(--text-muted);
-    font-size: 13px;
+    font-size: 12px;
     line-height: 1;
-    padding: 2px 4px;
+    padding: 3px 6px;
+    border-radius: 6px;
 }
-.desk-ex-del:hover { color: var(--danger); }
+.desk-ex-del:hover { background: var(--border); color: var(--danger); }
 
 /* 카테고리 색 (칩 active + 배지) */
 .cat-keyword.active,  .desk-ex-badge.cat-keyword  { background: #e8830c; }

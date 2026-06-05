@@ -1693,11 +1693,21 @@ function deskExcerptsHTML(paper) {
     return EXCERPT_CATS.map(([k, label]) => {
         const items = list.filter(e => e.cat === k);
         if (!items.length) return '';
-        const cards = items.map(e => `
-            <div class="desk-ex-card" data-eid="${e.id}">
-                <div class="desk-ex-text">${escHtml(e.text)}</div>
-                <button type="button" class="desk-ex-del" data-eid="${e.id}" title="삭제">✕</button>
-            </div>`).join('');
+        const cards = items.map(e => {
+            const style = e.color ? ` style="border-left:4px solid ${e.color}"` : '';
+            const sw = EX_COLORS.map(c =>
+                `<button type="button" class="desk-ex-sw ${e.color === c ? 'on' : ''}" data-eid="${e.id}" data-color="${c}" style="background:${c || '#ffffff'}" title="${c ? '색 칠하기' : '색 없음'}"></button>`
+            ).join('');
+            return `
+            <div class="desk-ex-card" data-eid="${e.id}"${style}>
+                <div class="desk-ex-text" contenteditable="true" data-eid="${e.id}">${escHtml(e.text)}</div>
+                <div class="desk-ex-memo" contenteditable="true" data-eid="${e.id}" data-ph="＋ 메모">${escHtml(e.memo || '')}</div>
+                <div class="desk-ex-tools">
+                    <div class="desk-ex-swatches">${sw}</div>
+                    <button type="button" class="desk-ex-del" data-eid="${e.id}" title="삭제">✕ 삭제</button>
+                </div>
+            </div>`;
+        }).join('');
         return `
             <div class="desk-ex-group">
                 <div class="desk-ex-gtitle">
@@ -1719,9 +1729,30 @@ function bindDeskRight(overlay, paper) {
     bindDeskExcerpts(overlay, paper);
 }
 
+// 발췌 카드 색(왼쪽 띠). 빈 문자열 = 색 없음
+const EX_COLORS = ['', '#fcd34d', '#86efac', '#93c5fd', '#f9a8d4'];
+
 function bindDeskExcerpts(overlay, paper) {
     overlay.querySelectorAll('.desk-ex-del').forEach(b =>
         b.addEventListener('click', () => deskDelExcerpt(overlay, paper, b.dataset.eid)));
+    // 본문/메모 인라인 편집 — 포커스 잃을 때 저장(재렌더 안 함: 커서 유지)
+    overlay.querySelectorAll('.desk-ex-text').forEach(el =>
+        el.addEventListener('blur', () => deskUpdateExcerpt(paper, el.dataset.eid, 'text', el.textContent.trim())));
+    overlay.querySelectorAll('.desk-ex-memo').forEach(el =>
+        el.addEventListener('blur', () => deskUpdateExcerpt(paper, el.dataset.eid, 'memo', el.textContent.trim())));
+    // 색 칠하기 — 저장 후 다시 그려 띠 반영
+    overlay.querySelectorAll('.desk-ex-sw').forEach(b =>
+        b.addEventListener('click', () => {
+            deskUpdateExcerpt(paper, b.dataset.eid, 'color', b.dataset.color);
+            deskRenderExcerpts(overlay, paper);
+        }));
+}
+
+function deskUpdateExcerpt(paper, eid, field, value) {
+    const e = (paper.excerpts || []).find(x => x.id === eid);
+    if (!e || e[field] === value) return;
+    e[field] = value;
+    dbPut(STORE_PAPERS, paper);
 }
 
 function deskRenderExcerpts(overlay, paper) {
