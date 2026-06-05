@@ -502,36 +502,36 @@ function sortPapers(arr) {
     return a.sort((x, y) => (y.addedAt || 0) - (x.addedAt || 0)); // recent
 }
 
-// 상단 정렬/묶기 컨트롤 바
-function papersControlsHTML() {
-    const sortTabs = PAPER_SORTS.map(([k, label]) =>
-        `<button class="og-tab pc-sort ${k === state.paperSort ? 'active' : ''}" data-sort="${k}">${label}</button>`
+// 단일 선택 드롭다운(정렬·묶기): 버튼에 현재 선택값 표시, 클릭하면 보기 목록 펼침
+//  key = 'sort'|'group' → 항목 버튼 class=pc-${key}, data-${key} (bindPaperControls가 잡음)
+function ddSingle(label, key, options, current) {
+    const cur = options.find(o => o[0] === current) || options[0];
+    const chips = options.map(([k, l]) =>
+        `<button class="og-tab pc-${key} ${k === current ? 'active' : ''}" data-${key}="${k}">${l}</button>`
     ).join('');
+    return `
+        <details class="pc-dd" data-dd="${key}" name="paper-dd">
+            <summary><span class="pc-dd-label">${label}</span> <b>${escHtml(cur[1])}</b></summary>
+            <div class="pc-dd-pop"><div class="og-tabs">${chips}</div></div>
+        </details>`;
+}
+
+// 상단 정렬/묶기/표시 컨트롤 바 (전부 작은 드롭다운 한 줄)
+function papersControlsHTML() {
     // 묶기 = '안 묶음' + ORGANIZE_DIMS (렌더 시점에 계산 — ORGANIZE_DIMS는 파일 뒤쪽 선언)
     const groupOpts = [['none', '안 묶음'], ...ORGANIZE_DIMS.map(([k, label]) => [k, label])];
-    const groupTabs = groupOpts.map(([k, label]) =>
-        `<button class="og-tab pc-group ${k === state.groupBy ? 'active' : ''}" data-group="${k}">${label}</button>`
-    ).join('');
-    // 표시 항목(펼침에 보일 항목) — 드롭다운 안에서 여러 개 선택
+    // 표시 항목(펼침에 보일 항목) — 여러 개 선택(체크형)
     const sel = ensureRowFields();
     const fieldTabs = ROW_FIELDS.map(f =>
         `<button class="og-tab pc-field ${sel.includes(f.key) ? 'active' : ''}" data-field="${f.key}">${f.label}</button>`
     ).join('');
     return `
-        <div class="paper-controls">
-            <div class="pc-row pc-row-inline">
-                <span class="pc-label">정렬</span><div class="og-tabs">${sortTabs}</div>
-                <span class="pc-sep"></span>
-                <span class="pc-label">묶기</span><div class="og-tabs">${groupTabs}</div>
-            </div>
-            <div class="pc-row pc-row-fields">
-                <span class="pc-label">표시</span>
-                <details class="pc-fields-dd" ${state.fieldsOpen ? 'open' : ''}>
-                    <summary>펼침에 보일 항목 <span class="pc-fields-count">${sel.length}개</span></summary>
-                    <div class="pc-fields-pop"><div class="og-tabs">${fieldTabs}</div></div>
-                </details>
-            </div>
-        </div>`;
+        ${ddSingle('정렬', 'sort', PAPER_SORTS, state.paperSort)}
+        ${ddSingle('묶기', 'group', groupOpts, state.groupBy)}
+        <details class="pc-dd pc-fields-dd" name="paper-dd" ${state.fieldsOpen ? 'open' : ''}>
+            <summary><span class="pc-dd-label">표시</span> <b>${sel.length}개</b></summary>
+            <div class="pc-dd-pop"><div class="og-tabs">${fieldTabs}</div></div>
+        </details>`;
 }
 
 function renderPapers(container) {
@@ -539,8 +539,10 @@ function renderPapers(container) {
 
     if (state.papers.length === 0) {
         container.innerHTML = `
-            <div class="section-header"><span class="section-title">논문</span></div>
-            ${controls}
+            <div class="paper-header pc-row-inline">
+                <span class="section-title">논문</span>
+                ${controls}
+            </div>
             <div class="empty-state">
                 <div class="empty-icon">📄</div>
                 <h3>저장된 논문이 없습니다</h3>
@@ -560,11 +562,11 @@ function renderPapers(container) {
         ? `<span class="og-summary">⠿ 손잡이를 끌어 순서를 바꿀 수 있어요</span>` : '';
 
     container.innerHTML = `
-        <div class="section-header">
+        <div class="paper-header pc-row-inline">
             <span class="section-title">논문 ${state.papers.length}편</span>
+            ${controls}
             ${dragHint}
         </div>
-        ${controls}
         ${body}`;
 
     bindPaperControls(container);

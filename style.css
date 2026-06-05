@@ -556,11 +556,8 @@ body {
 }
 .pc-row .og-tabs { margin-bottom: 0; flex: 1; }
 
-/* 정렬·묶기를 한 줄에 — 자연 너비로 두고 좁으면 자동 줄바꿈 */
+/* 정렬·묶기·표시 드롭다운 한 줄 — 좁으면 자동 줄바꿈 */
 .pc-row-inline { flex-wrap: wrap; align-items: center; }
-.pc-row-inline .pc-label { width: auto; padding-top: 0; }
-.pc-row-inline .og-tabs { flex: 0 1 auto; }
-.pc-sep { width: 1px; align-self: stretch; min-height: 18px; background: var(--border); margin: 0 4px; }
 
 /* ── 논문 한 줄 목록 ───────────────────────────────────────── */
 .paper-list {
@@ -676,9 +673,21 @@ body {
 .pvd-item { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
 .pvd-item b { color: var(--text-primary); }
 
-/* 「표시」 항목 선택 — 접이식 드롭다운(평소엔 버튼 하나) */
-.pc-fields-dd { position: relative; }
-.pc-fields-dd > summary {
+/* 제목(논문 N편) + 정렬·묶기·표시 드롭다운을 한 줄에 */
+.paper-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 26px;
+    margin-bottom: 18px;
+}
+.paper-header .section-title { margin: 0 4px 0 0; }
+.paper-header .og-summary { margin-left: auto; }   /* 드래그 안내는 오른쪽 끝으로 */
+
+/* 정렬·묶기·표시 — 작은 접이식 드롭다운(평소엔 버튼 하나) */
+.pc-row-inline { gap: 26px; }
+.pc-dd { position: relative; display: inline-block; }
+.pc-dd > summary {
     display: inline-flex;
     align-items: center;
     gap: 7px;
@@ -691,14 +700,16 @@ body {
     color: var(--text-secondary);
     font-size: 12px;
     font-weight: 600;
+    white-space: nowrap;
     user-select: none;
 }
-.pc-fields-dd > summary::-webkit-details-marker { display: none; }
-.pc-fields-dd > summary::after { content: '▾'; font-size: 11px; color: var(--text-muted); }
-.pc-fields-dd[open] > summary::after { content: '▴'; }
-.pc-fields-dd > summary:hover { border-color: var(--accent-mid); color: var(--accent); }
-.pc-fields-count { color: var(--accent); font-weight: 700; }
-.pc-fields-pop {
+.pc-dd > summary::-webkit-details-marker { display: none; }
+.pc-dd > summary::after { content: '▾'; font-size: 11px; color: var(--text-muted); }
+.pc-dd[open] > summary::after { content: '▴'; }
+.pc-dd > summary:hover { border-color: var(--accent-mid); color: var(--accent); }
+.pc-dd-label { color: var(--text-muted); font-weight: 700; }
+.pc-dd > summary b { color: var(--accent); font-weight: 700; }
+.pc-dd-pop {
     position: absolute;
     z-index: 30;
     top: 100%;
@@ -712,8 +723,8 @@ body {
     border-radius: 14px;
     box-shadow: 0 8px 24px rgba(0,0,0,0.12);
 }
-.pc-fields-pop .og-tabs { margin-bottom: 0; }
-.pc-fields-pop .og-tab { padding: 5px 12px; font-size: 12px; }
+.pc-dd-pop .og-tabs { margin-bottom: 0; }
+.pc-dd-pop .og-tab { padding: 5px 12px; font-size: 12px; }
 .pc-field.active::before { content: '✓ '; }
 
 .prd-actions {
