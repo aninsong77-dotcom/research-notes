@@ -71,72 +71,93 @@ async function initMindmap(container, projectId) {
     container.innerHTML = `
         <div class="mm-wrap">
             <div class="mm-toolbar">
-                <span class="mm-tb-label">도형 추가</span>
-                <button class="mm-btn mm-btn-var" id="mm-add-var" title="관측변인 — 설문/측정된 변인 (사각형)">
-                    <svg width="14" height="12" viewBox="0 0 14 12" fill="none">
-                        <rect x="1" y="1" width="12" height="10" rx="2" stroke="currentColor" stroke-width="1.8"/>
-                    </svg>
-                    관측변인
-                </button>
-                <button class="mm-btn mm-btn-latent" id="mm-add-latent" title="잠재변인 — 구성개념/잠재요인 (타원)">
-                    <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
-                        <ellipse cx="8" cy="6" rx="7" ry="5" stroke="currentColor" stroke-width="1.8"/>
-                    </svg>
-                    잠재변인
-                </button>
-                <button class="mm-btn mm-btn-memo" id="mm-add-idea" title="메모 — 아이디어, 코멘트 (둥근 카드)">
-                    <svg width="14" height="12" viewBox="0 0 14 12" fill="none">
-                        <rect x="1" y="1" width="12" height="10" rx="5" stroke="currentColor" stroke-width="1.8"/>
-                        <line x1="4" y1="4.5" x2="10" y2="4.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-                        <line x1="4" y1="7.5" x2="8" y2="7.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-                    </svg>
-                    메모
-                </button>
-                <div class="mm-sep"></div>
-                <span class="mm-tb-label">묶기</span>
-                <button class="mm-btn mm-btn-group" id="mm-add-group-ellipse" title="변인들을 감싸는 큰 원 — 크기 조절 가능">
-                    <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
-                        <ellipse cx="8" cy="6" rx="7" ry="5" stroke="currentColor" stroke-width="1.6" stroke-dasharray="3 2"/>
-                    </svg>
-                    큰 원
-                </button>
-                <button class="mm-btn mm-btn-group" id="mm-add-group-rect" title="변인들을 감싸는 큰 박스 — 크기 조절 가능">
-                    <svg width="14" height="12" viewBox="0 0 14 12" fill="none">
-                        <rect x="1" y="1" width="12" height="10" rx="3" stroke="currentColor" stroke-width="1.6" stroke-dasharray="3 2"/>
-                    </svg>
-                    큰 박스
-                </button>
-                <div class="mm-sep"></div>
-                <button class="mm-btn mm-btn-tags" id="mm-vars-toggle" title="논문에 등록한 변인을 도형으로 가져오기">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-                    변인 태그
-                </button>
-                <div class="mm-sep"></div>
-                <button class="mm-btn mm-icon-btn" id="mm-undo" title="되돌리기 (Ctrl+Z)">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.75"/></svg>
-                </button>
-                <button class="mm-btn mm-icon-btn" id="mm-redo" title="다시 (Ctrl+Y)">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.49-3.75"/></svg>
-                </button>
-                <div class="mm-sep"></div>
-                <button class="mm-btn" id="mm-save-snap">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-                    모형 저장
-                </button>
-                <select class="mm-select" id="mm-snap-list">
-                    <option value="">── 저장된 모형 불러오기 ──</option>
-                </select>
-                <div class="mm-sep"></div>
-                <button class="mm-btn mm-btn-style" id="mm-style-toggle" title="보기 전환 — 작업용(컬러) ↔ 학술용(흑백 타원·회색선, 제출·발표용)">🎨 작업용</button>
-                <div class="mm-sep"></div>
-                <button class="mm-btn mm-btn-export" id="mm-export-png">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                    PNG 내보내기
-                </button>
-                <div class="mm-sep"></div>
-                <button class="mm-btn mm-btn-prop" id="mm-prop-toggle" title="미니 프로포절 — 연구 필요성·목적·방법·대상·가설을 옆에 정리">
-                    📝 프로포절
-                </button>
+                <details class="mm-menu" name="mm-menu">
+                    <summary>도형</summary>
+                    <div class="mm-menu-pop">
+                        <button class="mm-menu-item" id="mm-add-var" title="관측변인 (사각형)">
+                            <svg width="15" height="13" viewBox="0 0 14 12" fill="none"><rect x="1" y="1" width="12" height="10" rx="2" stroke="currentColor" stroke-width="1.8"/></svg>
+                            관측변인 <span class="mm-mi-sub">사각형</span>
+                        </button>
+                        <button class="mm-menu-item" id="mm-add-latent" title="잠재변인 (타원)">
+                            <svg width="16" height="13" viewBox="0 0 16 12" fill="none"><ellipse cx="8" cy="6" rx="7" ry="5" stroke="currentColor" stroke-width="1.8"/></svg>
+                            잠재변인 <span class="mm-mi-sub">타원</span>
+                        </button>
+                        <button class="mm-menu-item" id="mm-add-idea" title="메모 (둥근 카드)">
+                            <svg width="15" height="13" viewBox="0 0 14 12" fill="none"><rect x="1" y="1" width="12" height="10" rx="5" stroke="currentColor" stroke-width="1.8"/><line x1="4" y1="4.5" x2="10" y2="4.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><line x1="4" y1="7.5" x2="8" y2="7.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+                            메모 <span class="mm-mi-sub">카드</span>
+                        </button>
+                        <div class="mm-menu-div"></div>
+                        <button class="mm-menu-item" id="mm-add-group-ellipse" title="변인들을 감싸는 큰 원">
+                            <svg width="16" height="13" viewBox="0 0 16 12" fill="none"><ellipse cx="8" cy="6" rx="7" ry="5" stroke="currentColor" stroke-width="1.6" stroke-dasharray="3 2"/></svg>
+                            큰 원 <span class="mm-mi-sub">묶기</span>
+                        </button>
+                        <button class="mm-menu-item" id="mm-add-group-rect" title="변인들을 감싸는 큰 박스">
+                            <svg width="15" height="13" viewBox="0 0 14 12" fill="none"><rect x="1" y="1" width="12" height="10" rx="3" stroke="currentColor" stroke-width="1.6" stroke-dasharray="3 2"/></svg>
+                            큰 박스 <span class="mm-mi-sub">묶기</span>
+                        </button>
+                    </div>
+                </details>
+
+                <details class="mm-menu" name="mm-menu">
+                    <summary>편집</summary>
+                    <div class="mm-menu-pop">
+                        <button class="mm-menu-item" id="mm-undo" title="되돌리기">
+                            <svg class="mm-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.75"/></svg>
+                            되돌리기 <span class="mm-mi-sub">Ctrl+Z</span>
+                        </button>
+                        <button class="mm-menu-item" id="mm-redo" title="다시">
+                            <svg class="mm-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.49-3.75"/></svg>
+                            다시 <span class="mm-mi-sub">Ctrl+Y</span>
+                        </button>
+                        <div class="mm-menu-div"></div>
+                        <button class="mm-menu-item" id="mm-save-snap" title="현재 모형 저장">
+                            <svg class="mm-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                            모형 저장
+                        </button>
+                        <div class="mm-menu-label">저장된 모형 불러오기</div>
+                        <select class="mm-select mm-menu-select" id="mm-snap-list">
+                            <option value="">── 선택 ──</option>
+                        </select>
+                    </div>
+                </details>
+
+                <details class="mm-menu" name="mm-menu">
+                    <summary>보기</summary>
+                    <div class="mm-menu-pop">
+                        <button class="mm-menu-item" id="mm-vars-toggle" title="논문에 등록한 변인을 도형으로 가져오기">
+                            <svg class="mm-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                            변인 태그 가져오기
+                        </button>
+                        <button class="mm-menu-item" id="mm-style-toggle" title="작업용(컬러) ↔ 학술용(흑백)">
+                            <svg class="mm-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                            작업용 ↔ 학술용 전환
+                        </button>
+                        <div class="mm-menu-div"></div>
+                        <button class="mm-menu-item" id="mm-prop-toggle" title="미니 프로포절 패널 열기/닫기">
+                            <svg class="mm-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                            미니 프로포절 열기
+                        </button>
+                    </div>
+                </details>
+
+                <details class="mm-menu" name="mm-menu">
+                    <summary>내보내기</summary>
+                    <div class="mm-menu-pop">
+                        <button class="mm-menu-item" id="mm-export-ppt" title="PPT 미리보기 후 .pptx 내보내기">
+                            <svg class="mm-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                            PPT 미리보기·내보내기
+                        </button>
+                        <button class="mm-menu-item" id="mm-export-png" title="모형을 PNG 그림으로 저장">
+                            <svg class="mm-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            PNG 그림 내보내기
+                        </button>
+                        <div class="mm-menu-div"></div>
+                        <button class="mm-menu-item" id="mm-open-desk" title="조금 전 펼쳐둔 논문들을 책상에 다시 펼침">
+                            <svg class="mm-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                            책상으로
+                        </button>
+                    </div>
+                </details>
                 <div class="mm-hint-text" id="mm-hint"></div>
             </div>
             <div class="mm-body" id="mm-body">
@@ -479,6 +500,13 @@ function mmBind() {
         if (e.target.value) mmLoadSnap(e.target.value);
     };
     document.getElementById('mm-export-png').onclick = mmExport;
+    document.getElementById('mm-export-ppt').onclick = mmOpenPPT;
+    document.getElementById('mm-open-desk').onclick = reopenDesk;
+    // 메뉴 항목 클릭 시 그 메뉴 닫기 (불러오기 select은 제외)
+    document.querySelectorAll('.mm-menu').forEach(d => {
+        const pop = d.querySelector('.mm-menu-pop');
+        if (pop) pop.addEventListener('click', e => { if (e.target.closest('.mm-menu-item')) d.open = false; });
+    });
     document.getElementById('mm-vars-toggle').onclick = mmToggleVarPanel;
     document.getElementById('mm-prop-toggle').onclick = mmToggleProp;
     document.getElementById('mm-style-toggle').onclick = mmToggleStyle;
@@ -1063,8 +1091,10 @@ function mmUpdateSnapList() {
 }
 
 // ── PNG 내보내기 ──────────────────────────────────────────────────────
-async function mmExport() {
-    if (S.nodes.length === 0 && S.groups.length === 0) { showToast('도형이 없습니다', 'error'); return; }
+// 모형을 PNG dataURL로 렌더해서 돌려줌(도형 없으면 null). 다운로드(mmExport)와 PPT(mmExportPPT)가 재사용.
+function mmRenderModelPNG() {
+  return new Promise((resolve, reject) => {
+    if (!S || (S.nodes.length === 0 && S.groups.length === 0)) { resolve(null); return; }
 
     const pad = 60;
     const allX = [
@@ -1130,12 +1160,174 @@ async function mmExport() {
 
         ctx.drawImage(img, 0, headerH, W, H);
         URL.revokeObjectURL(url);
-        const a = document.createElement('a');
-        a.download = '연구모형.png'; a.href = canvas.toDataURL('image/png'); a.click();
-        showToast('연구모형.png 저장됐습니다', 'success');
+        resolve(canvas.toDataURL('image/png'));
     };
-    img.onerror = () => { URL.revokeObjectURL(url); showToast('PNG 변환 실패', 'error'); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('PNG 변환 실패')); };
     img.src = url;
+  });
+}
+
+// 모형을 PNG 파일로 다운로드 (🖼 버튼)
+async function mmExport() {
+    let dataUrl;
+    try { dataUrl = await mmRenderModelPNG(); }
+    catch { showToast('PNG 변환 실패', 'error'); return; }
+    if (!dataUrl) { showToast('도형이 없습니다', 'error'); return; }
+    const a = document.createElement('a');
+    a.download = '연구모형.png'; a.href = dataUrl; a.click();
+    showToast('연구모형.png 저장됐습니다', 'success');
+}
+
+// ── 📊 PPT 미리보기 + .pptx 내보내기 ─────────────────────────────────
+// PptxGenJS는 내보낼 때만 동적 로드(앱 무게 안 늘림). 슬라이드 = 프로포절 + 연구모형 그림.
+function loadPptxLib() {
+    return new Promise((resolve, reject) => {
+        if (window.PptxGenJS) return resolve(window.PptxGenJS);
+        const s = document.createElement('script');
+        s.src = 'pptxgen.bundle.js';
+        s.onload = () => window.PptxGenJS ? resolve(window.PptxGenJS) : reject(new Error('PptxGenJS 전역 없음'));
+        s.onerror = () => reject(new Error('pptxgen.bundle.js 를 찾을 수 없어요'));
+        document.head.appendChild(s);
+    });
+}
+
+// 슬라이드 정의 — 지도 양식(미니 프로포절 6장) 기준. body=채운 내용, guide=빈칸 안내문(회색).
+function pptSlideDefs() {
+    const p = state.proposal || {};
+    const hyps = (p.hypotheses || []).filter(h => h && (h.text || '').trim()).map((h, i) => `H${i + 1}. ${h.text.trim()}`);
+    const j2 = (a, b) => [a, b].filter(v => v && String(v).trim()).join('\n\n');
+    const subj = (p.subjects || '').trim(), meth = (p.method || '').trim();
+    return [
+        { kind: 'title', title: (p.title || '').trim() || '[연구 제목]', sub: (p.subtitle || '').trim() },
+        { kind: 'text', head: '연구의 필요성 및 목적',
+          body: j2((p.needs || '').trim(), (p.purpose || '').trim()),
+          guide: '이 주제를 연구해야 하는 이유는 무엇인지 서술합니다.\n\n(이 주제가 상담/정신건강 분야에서 왜 중요한지, 선행연구의 한계는 무엇인지, 본 연구에서 그러한 한계를 어떻게 해결하고자 하는지)' },
+        { kind: 'text', head: '이론적 배경',
+          body: (p.theory || '').trim(),
+          guide: '· 주요 연구 변인 개념 정의\n· 연구 변인에 대한 이론 및 선행연구 결과들\n   - 본 연구와 관련되는 주요한 내용들 위주로 제시합니다\n   - 인용한 내용이라면 참고문헌(저자명, 연도)도 표기합니다\n· 선행연구들을 기반으로, 연구자는 어떤 예측을 하였는가?' },
+        { kind: 'hyps-model', head: '연구 문제 및 가설',
+          items: hyps,
+          guide: '본 연구의 문제와 가설(또는 연구질문)을 작성합니다.\n(질적 연구라면 ‘연구 질문’ 기술 / 필요시 연구모형 그림을 제시)' },
+        { kind: 'text', head: '연구 방법',
+          body: j2(subj ? '◾ 연구대상\n' + subj : '', meth ? '◾ 연구절차 및 분석 방법\n' + meth : ''),
+          guide: '· 연구대상\n   - 연령/인원수 등\n· 연구절차 및 분석 방법\n   - 질적연구라면, 자료 수집 방법과 자료 분석 방법 제시\n   - 양적연구라면, 측정도구와 분석방법 제시' },
+        { kind: 'text', head: '기대 효과',
+          body: (p.expected || '').trim(),
+          guide: '본 연구의 결과가 상담 및 심리치료 연구 및 실무 영역에 기여할 수 있는 점은 무엇인지 기술합니다.' },
+    ];
+}
+
+async function mmOpenPPT() {
+    const defs = pptSlideDefs();
+    const overlay = document.createElement('div');
+    overlay.className = 'ppt-overlay';
+    overlay.innerHTML = `
+        <div class="ppt-topbar">
+            <span class="ppt-title">📊 PPT 미리보기</span>
+            <div class="ppt-actions">
+                <button type="button" class="ppt-export btn-primary">⬇ PPT로 내보내기 (.pptx)</button>
+                <button type="button" class="ppt-close btn-secondary">닫기 ✕</button>
+            </div>
+        </div>
+        <div class="ppt-deck" id="ppt-deck">
+            ${defs.map((d, i) => pptSlideHTML(d, i)).join('')}
+        </div>`;
+    document.body.appendChild(overlay);
+    document.body.style.overflow = 'hidden';
+    overlay.querySelector('.ppt-close').onclick = () => { overlay.remove(); document.body.style.overflow = ''; };
+    overlay.querySelector('.ppt-export').onclick = () => mmExportPPT(overlay);
+    const onKey = e => { if (e.key === 'Escape') { overlay.remove(); document.body.style.overflow = ''; document.removeEventListener('keydown', onKey); } };
+    document.addEventListener('keydown', onKey);
+
+    // 모형 그림은 비동기로 채움
+    try {
+        const png = await mmRenderModelPNG();
+        const holder = overlay.querySelector('.ppt-model-img');
+        if (holder) holder.innerHTML = png
+            ? `<img src="${png}" alt="연구 모형">`
+            : `<div class="ppt-empty">아직 모형(도형)이 없어요 — 🎨 모형에서 그려보세요</div>`;
+    } catch {}
+}
+
+function pptSlideHTML(d, i) {
+    let inner = '';
+    if (d.kind === 'title') {
+        inner = `<div class="ppt-s-title">${escHtml(d.title)}</div>`
+              + (d.sub ? `<div class="ppt-s-sub">— ${escHtml(d.sub)} —</div>` : '')
+              + `<div class="ppt-s-presenter">발표자</div>`;
+    } else if (d.kind === 'hyps-model') {
+        const hyp = d.items.length
+            ? d.items.map(t => `<div class="ppt-hyp">${escHtml(t)}</div>`).join('')
+            : `<div class="ppt-guide">${escHtml(d.guide)}</div>`;
+        inner = `<div class="ppt-s-head">${escHtml(d.head)}</div>`
+              + `<div class="ppt-s-body ppt-hm"><div class="ppt-hm-text">${hyp}</div>`
+              + `<div class="ppt-model-img"><div class="ppt-muted">모형 불러오는 중…</div></div></div>`;
+    } else {
+        const body = d.body
+            ? `<div>${escHtml(d.body)}</div>`
+            : `<div class="ppt-guide">${escHtml(d.guide)}</div>`;
+        inner = `<div class="ppt-s-head">${escHtml(d.head)}</div><div class="ppt-s-body">${body}</div>`;
+    }
+    return `<div class="ppt-slide ${d.kind === 'title' ? 'ppt-slide-title' : ''}"><div class="ppt-slide-no">${i + 1}</div>${inner}</div>`;
+}
+
+async function mmExportPPT(overlay) {
+    let Pptx;
+    try { Pptx = await loadPptxLib(); }
+    catch (e) { showToast('PPT 라이브러리 로드 실패: ' + e.message, 'error'); return; }
+    showToast('PPT 만드는 중…', 'info');
+
+    const p = state.proposal || {};
+    const pptx = new Pptx();
+    pptx.layout = 'LAYOUT_WIDE';   // 13.33 x 7.5 inch
+    const BLUE = '1a73e8', DARK = '2b2b2b', RED = 'b03a3a', BODY = '333333';
+    const W = 13.33;
+
+    const GRAY = '808080';
+    const head = (sl, t) => sl.addText(t, { x: 0.6, y: 0.4, w: W - 1.2, h: 0.8, fontSize: 28, bold: true, color: BLUE });
+    // 채운 내용은 진하게, 빈칸은 양식 안내문을 회색·이탤릭으로
+    const fillOrGuide = (sl, body, guide, y, h) => {
+        const has = !!(body && body.trim());
+        sl.addText(has ? body : guide, { x: 0.7, y, w: W - 1.4, h, fontSize: has ? 18 : 15,
+            color: has ? BODY : GRAY, italic: !has, valign: 'top' });
+    };
+    const imgDims = dataUrl => new Promise(res => {
+        const im = new Image();
+        im.onload = () => res({ w: im.naturalWidth || 16, h: im.naturalHeight || 9 });
+        im.onerror = () => res({ w: 16, h: 9 });
+        im.src = dataUrl;
+    });
+
+    for (const d of pptSlideDefs()) {
+        const sl = pptx.addSlide();
+        if (d.kind === 'title') {
+            sl.addText(d.title, { x: 0.5, y: 2.4, w: W - 1, h: 1.6, fontSize: 40, bold: true, align: 'center', color: DARK });
+            if (d.sub) sl.addText('— ' + d.sub + ' —', { x: 0.5, y: 4.0, w: W - 1, h: 0.7, fontSize: 22, align: 'center', color: RED });
+            sl.addText('발표자', { x: 0.5, y: 6.3, w: W - 1, h: 0.5, fontSize: 16, align: 'center', color: GRAY });
+        } else if (d.kind === 'hyps-model') {
+            head(sl, d.head);
+            fillOrGuide(sl, d.items.join('\n'), d.guide, 1.4, 1.9);
+            let png = null;
+            try { png = await mmRenderModelPNG(); } catch {}
+            if (png) {
+                const dm = await imgDims(png);
+                const boxW = W - 1.4, boxH = 3.5, boxY = 3.45;
+                let iw = boxW, ih = boxW * dm.h / dm.w;
+                if (ih > boxH) { ih = boxH; iw = boxH * dm.w / dm.h; }
+                sl.addImage({ data: png, x: 0.7 + (boxW - iw) / 2, y: boxY + (boxH - ih) / 2, w: iw, h: ih });
+            }
+        } else {
+            head(sl, d.head);
+            fillOrGuide(sl, d.body, d.guide, 1.5, 5.3);
+        }
+    }
+    const fname = ((p.title || '').trim() || '연구_프로포절') + '.pptx';
+    try {
+        await pptx.writeFile({ fileName: fname });
+        showToast('PPT로 내보냈어요 ✅', 'success');
+    } catch (e) {
+        showToast('PPT 저장 실패: ' + e.message, 'error');
+    }
 }
 
 // 글자 단위 줄바꿈(한글은 공백이 없어 문자 기준이 안전) — PNG 헤더 제목/부제용
@@ -1189,11 +1381,14 @@ const MM_UI_KEY = 'mm-ui';
 let mmUI = {};
 
 // 텍스트 4칸: [key, 라벨, placeholder]
+// 지도 양식(미니 프로포절 6장) 기준. 순서: 필요성·목적·이론적배경·대상·방법·기대효과 (가설은 아래 별도)
 const PROP_FIELDS = [
-    ['needs',    '연구 필요성', '왜 이 연구가 필요한가? 문제의식·배경'],
-    ['purpose',  '연구 목적',   '이 연구로 무엇을 밝히려 하는가?'],
-    ['method',   '연구 방법',   '연구 설계·분석 방법 (예: 설문조사, 구조방정식)'],
-    ['subjects', '연구 대상',   '누구를 대상으로? 표본·모집 방법'],
+    ['needs',    '연구 필요성',  '왜 이 연구가 필요한가? 문제의식·배경'],
+    ['purpose',  '연구 목적',    '이 연구로 무엇을 밝히려 하는가?'],
+    ['theory',   '이론적 배경',  '주요 변인 개념 정의 · 이론/선행연구 결과 · 연구자의 예측'],
+    ['subjects', '연구 대상',    '누구를 대상으로? 표본·연령·인원수'],
+    ['method',   '연구 방법',    '연구 절차·측정도구·분석 방법 (질적/양적)'],
+    ['expected', '기대 효과',    '상담·심리치료 연구/실무에 기여하는 점'],
 ];
 
 async function mmInitProp() {
@@ -1221,8 +1416,8 @@ function mmSyncStyleBtn() {
     const btn = document.getElementById('mm-style-toggle');
     if (!btn) return;
     const academic = mmStyleMode() === 'academic';
-    btn.textContent = academic ? '🎓 학술용' : '🎨 작업용';
     btn.classList.toggle('active', academic);
+    btn.title = academic ? '학술용 보기 (흑백·발표용) — 눌러서 작업용으로' : '작업용 보기 (컬러) — 눌러서 학술용으로';
 }
 
 // 캔버스 상단 제목·부제(오버레이). 데이터는 state.proposal.title/subtitle.

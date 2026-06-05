@@ -276,7 +276,7 @@ async function loadData() {
 function defaultProposal(pid) {
     return {
         id: pid, title: '', subtitle: '',
-        needs: '', purpose: '', method: '', subjects: '',
+        needs: '', purpose: '', theory: '', subjects: '', method: '', expected: '',
         hypotheses: [],   // [{ id, label('H1' 자동 재계산), text }]
         updatedAt: 0,
     };
@@ -1474,6 +1474,20 @@ function openPdf(paper) {
 // 1단계 = 골격. desk* 네임스페이스, 오버레이를 동적 생성/제거, DB 변경 없음.
 // (2단계: 오른쪽 패널에 발췌·메모. 4단계: 스케치북 같이.)
 let deskCtx = null;   // { overlay, pdfUrl, onKey, onMove, onUp, _pct }
+let deskLastTabs = [];   // 🎨 스케치북으로 나갈 때 기억한 펼친 논문들 → 「📖 책상」으로 복귀
+let deskLastActive = null;
+
+// 스케치북의 「📖 책상」 버튼 — 기억해둔 논문들로 책상 다시 펼침
+function reopenDesk() {
+    const ids = (deskLastTabs || []).filter(id => state.papers.some(p => p.id === id));
+    if (!ids.length) {
+        showToast('책상에 펼쳐둔 논문이 없어요 — 논문 목록에서 「📖 책상에서 펼치기」로 여세요', 'info');
+        return;
+    }
+    openDesk(ids[0]);
+    ids.slice(1).forEach(id => { if (deskCtx && !deskCtx.tabs.includes(id)) deskCtx.tabs.push(id); });
+    deskActivate(deskLastActive && ids.includes(deskLastActive) ? deskLastActive : ids[0]);
+}
 
 function openDesk(paperId) {
     const paper = state.papers.find(p => p.id === paperId);
@@ -1492,6 +1506,7 @@ function openDesk(paperId) {
     overlay.innerHTML = `
         <div class="desk-topbar">
             <div class="desk-tabs" id="desk-tabs"></div>
+            <button type="button" class="desk-sketch" title="펼친 논문을 기억하고 모형스케치북으로 — 거기서 「📖 책상」으로 돌아옴">🎨 스케치북</button>
             <button type="button" class="desk-close">닫기 ✕</button>
         </div>
         <div class="desk-body">
@@ -1504,6 +1519,13 @@ function openDesk(paperId) {
 
     deskCtx = { overlay, tabs: [paperId], activeId: null, pdfUrl: null };
     overlay.querySelector('.desk-close').addEventListener('click', closeDesk);
+    overlay.querySelector('.desk-sketch').addEventListener('click', () => {
+        // 펼친 논문들 기억 → 책상 닫고 모형스케치북으로 (거기서 「📖 책상」으로 복귀)
+        deskLastTabs = [...deskCtx.tabs];
+        deskLastActive = deskCtx.activeId;
+        closeDesk();
+        document.querySelector('.nav-item[data-view="sketch"]')?.click();
+    });
     const onKey = e => { if (e.key === 'Escape') closeDesk(); };
     document.addEventListener('keydown', onKey);
     deskCtx.onKey = onKey;
@@ -1671,17 +1693,79 @@ function deskRightHTML(paper) {
         `<button type="button" class="desk-cat cat-${k} ${k === deskAddCat ? 'active' : ''}" data-cat="${k}">${l}</button>`
     ).join('');
     return `
-        <div class="desk-right-inner">
-            <div class="desk-catch">
-                <div class="desk-catch-head">📋 붙여넣기 받는 칸</div>
-                <textarea class="desk-catch-text" placeholder="왼쪽에서 드래그 → 복사(Ctrl+C) → 여기 붙여넣기(Ctrl+V) → 분류 고르고 담기"></textarea>
-                <div class="desk-catch-bar">
-                    <div class="desk-cats">${cats}</div>
-                    <button type="button" class="desk-add btn-primary">담기</button>
+        <div class="desk-right-top" id="desk-right-top">
+            <div class="desk-right-inner">
+                <div class="desk-catch">
+                    <div class="desk-catch-head">
+                        <span>📋 붙여넣기 받는 칸</span>
+                        <button type="button" class="desk-model-toggle" id="desk-model-toggle">🎨 모형 보기</button>
+                    </div>
+                    <textarea class="desk-catch-text" placeholder="왼쪽에서 드래그 → 복사(Ctrl+C) → 여기 붙여넣기(Ctrl+V) → 분류 고르고 담기"></textarea>
+                    <div class="desk-catch-bar">
+                        <div class="desk-cats">${cats}</div>
+                        <button type="button" class="desk-add btn-primary">담기</button>
+                    </div>
                 </div>
+                <div class="desk-excerpts" id="desk-excerpts">${deskExcerptsHTML(paper)}</div>
             </div>
-            <div class="desk-excerpts" id="desk-excerpts">${deskExcerptsHTML(paper)}</div>
+        </div>
+        <div class="desk-model-pane" id="desk-model-pane"></div>`;
+}
+
+// 하단 "모형 미리보기" — 프로포절 칸·가설·변인을 읽기전용으로 표시(발췌 보낼 때마다 갱신).
+// 스케치북 에디터(S)는 안 띄움 → 안전.
+function deskModelPreviewHTML() {
+    const p = state.proposal || {};
+    const field = (key, label) => {
+        const v = (p[key] || '').trim();
+        return `<div class="dmp-field"><div class="dmp-k">${label}</div><div class="dmp-v ${v ? '' : 'muted'}">${v ? escHtml(v) : '(비어 있음 — 발췌를 보내보세요)'}</div></div>`;
+    };
+    const hyps = (p.hypotheses || []).filter(h => h && (h.text || '').trim());
+    const hypHTML = hyps.length
+        ? `<div class="dmp-field"><div class="dmp-k">가설</div><div class="dmp-hyps">${hyps.map((h, i) => `<div class="dmp-hyp"><b>H${i + 1}</b> ${escHtml(h.text)}</div>`).join('')}</div></div>`
+        : '';
+    const vars = deskCollectVariables();
+    const varHTML = `<div class="dmp-field"><div class="dmp-k">변인</div><div class="dmp-vars">${vars.length ? vars.map(v => `<span class="tag tag-variable">${escHtml(v)}</span>`).join('') : '<span class="muted">아직 없음 — 변인 발췌를 보내보세요</span>'}</div></div>`;
+    return `
+        <div class="desk-model-head">🎨 모형 미리보기 <span class="muted">· 편집은 모형스케치북에서</span></div>
+        <div class="desk-model-body">
+            ${field('needs', '연구 필요성')}
+            ${field('purpose', '연구 목적')}
+            ${field('theory', '이론적 배경')}
+            ${field('subjects', '연구 대상')}
+            ${field('method', '연구 방법')}
+            ${field('expected', '기대 효과')}
+            ${hypHTML}
+            ${varHTML}
         </div>`;
+}
+
+// 현재 프로젝트 논문들에서 변인 수집(paper.variables + 정밀분석 변수명, 중복 제거)
+function deskCollectVariables() {
+    const seen = new Set(); const out = [];
+    (state.papers || []).forEach(p => {
+        const a = p.analysis?.variables || {};
+        const fromAnalysis = VAR_ROLES.flatMap(([role]) => (a[role] || []).map(v => v && v.name).filter(Boolean));
+        [...(p.variables || []), ...fromAnalysis].forEach(v => {
+            const k = String(v).toLowerCase();
+            if (v && !seen.has(k)) { seen.add(k); out.push(v); }
+        });
+    });
+    return out;
+}
+
+function deskToggleModel(overlay, forceOn) {
+    const right = overlay.querySelector('#desk-right');
+    const open = forceOn !== undefined ? forceOn : !right.classList.contains('model-open');
+    right.classList.toggle('model-open', open);
+    if (open) deskRenderModel(overlay);
+    const tg = overlay.querySelector('#desk-model-toggle');
+    if (tg) tg.classList.toggle('active', open);
+}
+
+function deskRenderModel(overlay) {
+    const pane = overlay.querySelector('#desk-model-pane');
+    if (pane) pane.innerHTML = deskModelPreviewHTML();
 }
 
 // 카테고리별로 묶어 한눈에 (EXCERPT_CATS 순서)
@@ -1704,7 +1788,14 @@ function deskExcerptsHTML(paper) {
                 <div class="desk-ex-memo" contenteditable="true" data-eid="${e.id}" data-ph="＋ 메모">${escHtml(e.memo || '')}</div>
                 <div class="desk-ex-tools">
                     <div class="desk-ex-swatches">${sw}</div>
-                    <button type="button" class="desk-ex-del" data-eid="${e.id}" title="삭제">✕ 삭제</button>
+                    <div class="desk-ex-tbtns">
+                        <button type="button" class="desk-ex-send" data-eid="${e.id}">→ 모형으로</button>
+                        <button type="button" class="desk-ex-del" data-eid="${e.id}" title="삭제">✕ 삭제</button>
+                    </div>
+                </div>
+                <div class="desk-ex-sendmenu" data-eid="${e.id}" hidden>
+                    <span class="desk-ex-sendlabel">보낼 곳:</span>
+                    ${EX_SEND_DESTS.map(([d, l]) => `<button type="button" class="desk-ex-dest" data-eid="${e.id}" data-dest="${d}">${l}</button>`).join('')}
                 </div>
             </div>`;
         }).join('');
@@ -1726,11 +1817,30 @@ function bindDeskRight(overlay, paper) {
             overlay.querySelectorAll('.desk-cat').forEach(x => x.classList.toggle('active', x === b));
         }));
     overlay.querySelector('.desk-add').addEventListener('click', () => deskAddExcerpt(overlay, paper));
+    const mt = overlay.querySelector('#desk-model-toggle');
+    if (mt) mt.addEventListener('click', () => deskToggleModel(overlay));
+    // 탭 전환 등으로 #desk-right 안이 다시 그려질 때, 모형이 열린 상태였으면 미리보기 복원
+    const right = overlay.querySelector('#desk-right');
+    if (right && right.classList.contains('model-open')) {
+        deskRenderModel(overlay);
+        if (mt) mt.classList.add('active');
+    }
     bindDeskExcerpts(overlay, paper);
 }
 
 // 발췌 카드 색(왼쪽 띠). 빈 문자열 = 색 없음
 const EX_COLORS = ['', '#fcd34d', '#86efac', '#93c5fd', '#f9a8d4'];
+
+// 발췌 → 모형 보내기 목적지: 프로포절 텍스트칸 4개 + 변인 태그
+const EX_SEND_DESTS = [
+    ['needs',     '필요성'],
+    ['purpose',   '목적'],
+    ['theory',    '이론배경'],
+    ['subjects',  '대상'],
+    ['method',    '방법'],
+    ['expected',  '기대효과'],
+    ['variables', '변인 태그'],
+];
 
 function bindDeskExcerpts(overlay, paper) {
     overlay.querySelectorAll('.desk-ex-del').forEach(b =>
@@ -1746,6 +1856,46 @@ function bindDeskExcerpts(overlay, paper) {
             deskUpdateExcerpt(paper, b.dataset.eid, 'color', b.dataset.color);
             deskRenderExcerpts(overlay, paper);
         }));
+    // → 모형으로 보내기: 버튼은 메뉴 토글, 메뉴 항목은 실제 보내기
+    overlay.querySelectorAll('.desk-ex-send').forEach(b =>
+        b.addEventListener('click', () => {
+            deskToggleModel(overlay, true);   // 복붙창 쪼개고 하단에 모형 미리보기
+            const menu = overlay.querySelector(`.desk-ex-sendmenu[data-eid="${b.dataset.eid}"]`);
+            if (menu) menu.hidden = !menu.hidden;
+        }));
+    overlay.querySelectorAll('.desk-ex-dest').forEach(b =>
+        b.addEventListener('click', () => deskSendExcerpt(overlay, paper, b.dataset.eid, b.dataset.dest)));
+}
+
+// 발췌 한 조각을 모형(미니프로포절 칸 / 변인 태그)으로 보냄.
+// 스케치북 내부 상태 S는 안 건드리고, 저장소(proposals/papers)에만 기록 → 다음에 스케치북 열면 반영.
+function deskSendExcerpt(overlay, paper, eid, dest) {
+    const e = (paper.excerpts || []).find(x => x.id === eid);
+    const text = (e?.text || '').trim();
+    if (!text) { showToast('내용이 비어 있어요', 'error'); return; }
+
+    if (dest === 'variables') {
+        if (!Array.isArray(paper.variables)) paper.variables = [];
+        if (paper.variables.some(v => String(v).toLowerCase() === text.toLowerCase())) {
+            showToast('이미 변인 태그에 있어요', 'info');
+        } else {
+            paper.variables.push(text);
+            dbPut(STORE_PAPERS, paper);
+            showToast('변인 태그로 보냈어요 — 스케치북 변인 패널에 떠요', 'success');
+        }
+    } else {
+        if (!state.proposal) state.proposal = defaultProposal(state.currentProjectId);
+        const cur = state.proposal[dest] || '';
+        state.proposal[dest] = (cur.trim() ? cur.trimEnd() + '\n' : '') + text;
+        saveProposalNow();
+        const label = { needs: '필요성', purpose: '목적', theory: '이론적 배경', subjects: '대상', method: '방법', expected: '기대 효과' }[dest] || dest;
+        showToast(`프로포절 「${label}」 칸으로 보냈어요`, 'success');
+    }
+    // 하단 모형 미리보기가 열려 있으면 즉시 갱신(자라는 게 보이게)
+    const right = overlay.querySelector('#desk-right');
+    if (right && right.classList.contains('model-open')) deskRenderModel(overlay);
+    const menu = overlay.querySelector(`.desk-ex-sendmenu[data-eid="${eid}"]`);
+    if (menu) menu.hidden = true;
 }
 
 function deskUpdateExcerpt(paper, eid, field, value) {
