@@ -132,11 +132,6 @@ async function initMindmap(container, projectId) {
                             <svg class="mm-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                             작업용 ↔ 학술용 전환
                         </button>
-                        <div class="mm-menu-div"></div>
-                        <button class="mm-menu-item" id="mm-prop-toggle" title="미니 프로포절 패널 열기/닫기">
-                            <svg class="mm-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                            미니 프로포절 열기
-                        </button>
                     </div>
                 </details>
 
@@ -145,20 +140,26 @@ async function initMindmap(container, projectId) {
                     <div class="mm-menu-pop">
                         <button class="mm-menu-item" id="mm-export-ppt" title="PPT 미리보기 후 .pptx 내보내기">
                             <svg class="mm-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-                            PPT 미리보기·내보내기
+                            발표자료 만들기
                         </button>
                         <button class="mm-menu-item" id="mm-export-png" title="모형을 PNG 그림으로 저장">
                             <svg class="mm-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                             PNG 그림 내보내기
                         </button>
-                        <div class="mm-menu-div"></div>
-                        <button class="mm-menu-item" id="mm-open-desk" title="조금 전 펼쳐둔 논문들을 책상에 다시 펼침">
-                            <svg class="mm-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-                            책상으로
-                        </button>
                     </div>
                 </details>
+
                 <div class="mm-hint-text" id="mm-hint"></div>
+                <div class="mm-tool-right">
+                    <button class="mm-btn mm-tool" id="mm-prop-toggle" title="미니 프로포절 패널 열기/닫기">
+                        <svg class="mm-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                        미니 프로포절
+                    </button>
+                    <button class="mm-btn mm-tool" id="mm-open-desk" title="연구 책상 화면으로 이동">
+                        <svg class="mm-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                        책상으로
+                    </button>
+                </div>
             </div>
             <div class="mm-body" id="mm-body">
                 <div class="mm-canvas-wrap" id="mm-cwrap">
@@ -373,13 +374,29 @@ function renderNode(node) {
 
 function renderEdge(edge) {
     const from = S.nodes.find(n => n.id === edge.from);
-    const to   = S.nodes.find(n => n.id === edge.to);
-    if (!from || !to) return;
+    if (!from) return;
 
+    // 조절효과 화살표: to가 다른 두 변인 사이의 화살표(엣지) id →
+    // 그 경로의 중점을 향해 화살촉이 꽂힌다(도형→화살표 연결).
+    let sx, sy, ex, ey, axis;
+    if (edge.toEdge) {
+        const mid = edgeMidpoint(S.edges.find(e => e.id === edge.to));
+        if (!mid) return;                                   // 대상 화살표가 사라졌으면 안 그림
+        ({ sx, sy, ex, ey, axis } = endpointsNodeToPoint(from, mid.x, mid.y));
+    } else {
+        const to = S.nodes.find(n => n.id === edge.to);
+        if (!to) return;
+        ({ sx, sy, ex, ey, axis } = endpoints(from, to));
+    }
+
+    // 학술모드: 색·화살촉만 회색으로 빼고, 점선 패턴은 관계별 그대로 둔다
+    // (매개·조절·부적영향의 점선은 흑백에서도 관계를 구분해 주는 표시이므로 유지).
     const academic = mmStyleMode() === 'academic';
-    const style = academic ? ACADEMIC_EDGE : EDGE_STYLES[edge.label];
+    const base  = EDGE_STYLES[edge.label] || EDGE_STYLES['정적영향(+)'];
+    const style = academic
+        ? { color: ACADEMIC_EDGE.color, marker: ACADEMIC_EDGE.marker, dash: base.dash }
+        : base;
     const isSel = S.sel?.type === 'edge' && S.sel.id === edge.id;
-    const { sx, sy, ex, ey, axis } = endpoints(from, to);
     const mx = (sx + ex) / 2;
     const my = (sy + ey) / 2;
     // 기본은 부드러운 곡선(기존 동작). edge.straight면 직선.
@@ -411,8 +428,12 @@ function renderEdge(edge) {
     const labelText  = hypoNum ? ('H' + hypoNum) : edge.label;
     const labelColor = hypoNum ? '#b03a3a' : style.color;
     const bw = hypoNum ? 30 : 68;
-    const lx = sx + (ex - sx) * 0.5;
-    const ly = sy + (ey - sy) * 0.5 - 13;
+    // 이 경로에 조절 화살표가 꽂혀 있으면 화살촉이 경로 중점을 덮으므로,
+    // 라벨을 중앙에서 시작점 쪽(30%)으로 비켜 놓아 가려지지 않게 한다.
+    const moderated = !edge.toEdge && S.edges.some(e => e.toEdge && e.to === edge.id);
+    const labelT = moderated ? 0.3 : 0.5;
+    const lx = sx + (ex - sx) * labelT;
+    const ly = sy + (ey - sy) * labelT - 13;
     g.appendChild(el('rect', {
         x: lx - bw / 2, y: ly - 10, width: bw, height: 19,
         rx: 9, fill: 'white',
@@ -458,6 +479,34 @@ function endpoints(from, to) {
         ex = tx; ey = dy > 0 ? to.y        : to.y + th;
     }
     return { sx, sy, ex, ey, axis };
+}
+
+// 화살표(엣지)의 중점 좌표 — 조절 화살표가 꽂힐 지점.
+// 대상이 정상 도형↔도형 연결일 때만 계산(조절 화살표끼리는 막음).
+function edgeMidpoint(edge) {
+    if (!edge || edge.toEdge) return null;
+    const from = S.nodes.find(n => n.id === edge.from);
+    const to   = S.nodes.find(n => n.id === edge.to);
+    if (!from || !to) return null;
+    const { sx, sy, ex, ey } = endpoints(from, to);
+    return { x: (sx + ex) / 2, y: (sy + ey) / 2 };
+}
+
+// 도형 → 임의의 점(px,py)으로 가는 화살표의 시작·끝점.
+// 시작점은 도형 테두리 중 대상 방향 면에서 나간다.
+function endpointsNodeToPoint(from, px, py) {
+    const { w: fw, h: fh } = nodeSize(from);
+    const fx = from.x + fw/2, fy = from.y + fh/2;
+    const dx = px - fx, dy = py - fy;
+    let sx, sy, axis;
+    if (Math.abs(dx) >= Math.abs(dy)) {
+        axis = 'h';
+        sx = dx > 0 ? from.x + fw : from.x; sy = fy;
+    } else {
+        axis = 'v';
+        sx = fx; sy = dy > 0 ? from.y + fh : from.y;
+    }
+    return { sx, sy, ex: px, ey: py, axis };
 }
 
 // ── 좌표 변환 ─────────────────────────────────────────────────────────
@@ -574,6 +623,23 @@ function onDown(e) {
         e.stopPropagation(); e.preventDefault(); return;
     }
 
+    // 연결 중 화살표(경로)를 클릭 → 조절효과: 도형이 그 경로를 조절.
+    // 화살촉이 다른 두 변인 사이의 화살표에 꽂히는 학술 표준 그림.
+    if (S.mode === 'connecting') {
+        const teg = e.target.closest('.mm-eg');
+        if (teg) {
+            const targetEid = teg.dataset.eid;
+            const tEdge = S.edges.find(ed => ed.id === targetEid);
+            if (tEdge && !tEdge.toEdge && tEdge.from !== S.connectFrom && tEdge.to !== S.connectFrom) {
+                addModerationEdge(targetEid);
+            } else {
+                showToast('조절은 다른 두 도형 사이의 화살표에만 연결할 수 있어요', 'error');
+                cancelConnect();
+            }
+            e.stopPropagation(); e.preventDefault(); return;
+        }
+    }
+
     if (ng) {
         const nid = ng.dataset.nid;
         const now = Date.now();
@@ -679,7 +745,7 @@ function onRight(e) {
     S.sel = { type: 'node', id: nid };
     S.mode = 'connecting'; S.connectFrom = nid;
     mmRender();
-    mmHint('연결할 대상 도형을 클릭하세요 (Esc 취소)');
+    mmHint('대상 도형을 클릭 = 일반 연결 | 다른 두 변인 사이의 화살표를 클릭 = 조절효과 (Esc 취소)');
 }
 
 function onDbl(e) {
@@ -775,14 +841,7 @@ function showPopup(cx, cy, targetId) {
         <div class="mm-pop-divider"></div>
         <div class="mm-pop-item mm-pop-cancel" data-rel="">✕ 취소</div>`;
 
-    popup.style.cssText = `display:block; left:${cx - wrapR.left + 12}px; top:${cy - wrapR.top + 12}px;`;
-
-    requestAnimationFrame(() => {
-        const pr = popup.getBoundingClientRect();
-        const wr = S.cwrap.getBoundingClientRect();
-        if (pr.right  > wr.right)  popup.style.left = (cx - wrapR.left - pr.width  - 12) + 'px';
-        if (pr.bottom > wr.bottom) popup.style.top  = (cy - wrapR.top  - pr.height - 12) + 'px';
-    });
+    mmPlacePopup(popup, cx, cy);
 
     popup.querySelectorAll('.mm-pop-item').forEach(item => {
         item.addEventListener('mousedown', e => {
@@ -806,6 +865,32 @@ function hidePopup() {
     if (p) p.style.display = 'none';
 }
 
+// 팝업을 커서 근처에 띄우되 캔버스(cwrap) 밖으로 잘리지 않게 맞춘다.
+// 가설이 많아 메뉴가 길어지면 최대 높이를 주고 세로 스크롤(잘림 방지).
+function mmPlacePopup(popup, cx, cy) {
+    const wrapR = S.cwrap.getBoundingClientRect();
+    const M = 10;                                   // 가장자리 여백
+    // 먼저 길이 제한(스크롤)부터 적용해야 측정 크기가 실제 표시 크기와 일치
+    popup.style.maxHeight = Math.max(120, wrapR.height - M * 2) + 'px';
+    popup.style.overflowY = 'auto';
+    popup.style.display = 'block';
+    popup.style.left = (cx - wrapR.left + 12) + 'px';
+    popup.style.top  = (cy - wrapR.top  + 12) + 'px';
+
+    requestAnimationFrame(() => {
+        const pr = popup.getBoundingClientRect();
+        let left = cx - wrapR.left + 12;
+        let top  = cy - wrapR.top  + 12;
+        if (pr.right  > wrapR.right)  left = cx - wrapR.left - pr.width  - 12;  // 오른쪽 넘침 → 커서 왼쪽
+        if (pr.bottom > wrapR.bottom) top  = cy - wrapR.top   - pr.height - 12;  // 아래 넘침 → 커서 위쪽
+        // 그래도 위/왼쪽으로 넘치면 가장자리에 붙여 항상 안에 들어오게
+        left = Math.max(M, Math.min(left, wrapR.width  - pr.width  - M));
+        top  = Math.max(M, Math.min(top,  wrapR.height - pr.height - M));
+        popup.style.left = left + 'px';
+        popup.style.top  = top  + 'px';
+    });
+}
+
 // ── 화살표(엣지) 선택 팝업 — 관계 변경 / 삭제 ────────────────────────────
 function showEdgePopup(edge, cx, cy) {
     const popup = document.getElementById('mm-rel-popup');
@@ -819,7 +904,8 @@ function showEdgePopup(edge, cx, cy) {
             <div class="mm-pop-item mm-pop-hypo ${edge.hypoId === h.id ? 'mm-pop-active' : ''}" data-hypo="${h.id}">
                 <span class="mm-pop-htag">H${i + 1}</span>${escHtml((h.text || '').slice(0, 16) || '(내용 없음)')}${edge.hypoId === h.id ? ' ✓' : ''}
             </div>`).join('')
-        : `<div class="mm-pop-hint">📝 프로포절에서 가설을 먼저 추가하세요</div>`}
+        : `<div class="mm-pop-hint">아래 버튼으로 새 가설을 만들어 연결하세요</div>`}
+        <div class="mm-pop-item mm-pop-hypo mm-pop-newhypo" data-act="new-hypo">➕ 새 가설 만들어 연결 (H${hypos.length + 1})</div>
         ${edge.hypoId ? `<div class="mm-pop-item mm-pop-hypo" data-hypo="">⨯ 가설 연결 해제</div>` : ''}`;
 
     popup.innerHTML = `
@@ -831,17 +917,10 @@ function showEdgePopup(edge, cx, cy) {
         ${hypoSection}
         <div class="mm-pop-divider"></div>
         <div class="mm-pop-item" data-act="toggle-straight">${edge.straight ? '↝ 곡선으로' : '╱ 직선으로'}</div>
-        <div class="mm-pop-item mm-pop-del" data-act="delete">🗑 이 화살표 삭제</div>
+        <div class="mm-pop-item mm-pop-del" data-act="delete">${icon('trash', 14)} 이 화살표 삭제</div>
         <div class="mm-pop-item mm-pop-cancel" data-act="cancel">✕ 닫기</div>`;
 
-    popup.style.cssText = `display:block; left:${cx - wrapR.left + 12}px; top:${cy - wrapR.top + 12}px;`;
-
-    requestAnimationFrame(() => {
-        const pr = popup.getBoundingClientRect();
-        const wr = S.cwrap.getBoundingClientRect();
-        if (pr.right  > wr.right)  popup.style.left = (cx - wrapR.left - pr.width  - 12) + 'px';
-        if (pr.bottom > wr.bottom) popup.style.top  = (cy - wrapR.top  - pr.height - 12) + 'px';
-    });
+    mmPlacePopup(popup, cx, cy);
 
     popup.querySelectorAll('.mm-pop-item').forEach(item => {
         item.addEventListener('mousedown', e => {
@@ -863,6 +942,19 @@ function showEdgePopup(edge, cx, cy) {
                 saveHistory();
                 edge.hypoId = hypo || null;
                 mmSaveToDB();
+            } else if (act === 'new-hypo') {
+                // 새 가설을 프로포절에 추가하고 이 화살표에 바로 연결 → H번호 자동 부여
+                if (state && state.proposal) {
+                    saveHistory();
+                    if (!state.proposal.hypotheses) state.proposal.hypotheses = [];
+                    const h = { id: genId(), text: '' };
+                    state.proposal.hypotheses.push(h);
+                    edge.hypoId = h.id;
+                    if (typeof saveProposalNow === 'function') saveProposalNow();
+                    mmSaveToDB();
+                    mmRenderProp();   // 프로포절 패널 열려 있으면 새 가설 줄도 바로 반영
+                    showToast(`H${state.proposal.hypotheses.length} 가설을 만들어 연결했어요`, 'success');
+                }
             } else if (act === 'toggle-straight') {
                 saveHistory();
                 edge.straight = !edge.straight;
@@ -877,6 +969,18 @@ function cancelConnect() {
     S.mode = 'idle'; S.connectFrom = null;
     mmHint('도형 추가 → 드래그 이동 → 우클릭으로 화살표 연결 → 더블클릭으로 이름 입력 → 화살표 클릭으로 수정·삭제');
     mmRender();
+}
+
+// 조절효과 화살표 만들기: connectFrom 도형 → targetEid 화살표(경로).
+// label '조절', toEdge:true, 직선으로(경로를 가리키는 그림이 선명하도록).
+function addModerationEdge(targetEid) {
+    const dup = S.edges.find(ed => ed.toEdge && ed.from === S.connectFrom && ed.to === targetEid);
+    if (dup) { showToast('이미 연결된 조절 화살표예요', 'error'); cancelConnect(); return; }
+    saveHistory();
+    S.edges.push({ id: genId(), from: S.connectFrom, to: targetEid, label: '조절', toEdge: true, straight: true });
+    mmSaveToDB();
+    cancelConnect();   // mmRender 포함
+    showToast('조절효과 화살표를 연결했어요', 'success');
 }
 
 function startPlacing(type) {
@@ -934,7 +1038,7 @@ function mmRenderVarPanel() {
     const used   = new Set(S.nodes.map(n => (n.text || '').trim().toLowerCase()).filter(Boolean));
 
     const body = !groups.length
-        ? `<div class="mm-vp-empty">이 프로젝트 논문에 등록된 변인이 없습니다.<br>논문 추가/수정 화면의 변인 또는 📊 정밀 분석에서 변인을 입력하면 여기에 모입니다.</div>`
+        ? `<div class="mm-vp-empty">이 프로젝트 논문에 등록된 변인이 없습니다.<br>논문 추가/수정 화면의 변인 또는 ${icon('bar-chart', 13)} 정밀 분석에서 변인을 입력하면 여기에 모입니다.</div>`
         : groups.map(g => `
             <div class="mm-vp-group">
                 <div class="mm-vp-group-label">${escHtml(g.label)} <span>${g.names.length}</span></div>
@@ -949,7 +1053,7 @@ function mmRenderVarPanel() {
     ];
     panel.innerHTML = `
         <div class="mm-vp-head">
-            <span>🏷 변인 태그</span>
+            <span>${icon('tag', 14)} 변인 태그</span>
             <button class="mm-vp-close" id="mm-vp-close" title="닫기">✕</button>
         </div>
         <div class="mm-vp-typesel">
@@ -1013,8 +1117,15 @@ function mmDelete() {
     } else {
         S.edges = S.edges.filter(e => e.id !== S.sel.id);
     }
+    pruneOrphanModEdges();   // 대상 화살표가 사라진 조절 화살표도 같이 정리
     S.sel = null;
     mmSaveToDB(); mmRender();
+}
+
+// 대상(경로) 화살표가 더 이상 없는 조절 화살표를 제거한다.
+function pruneOrphanModEdges() {
+    const ids = new Set(S.edges.filter(e => !e.toEdge).map(e => e.id));
+    S.edges = S.edges.filter(e => !e.toEdge || ids.has(e.to));
 }
 
 // ── 언두/리두 ─────────────────────────────────────────────────────────
@@ -1223,20 +1334,50 @@ async function mmOpenPPT() {
     overlay.className = 'ppt-overlay';
     overlay.innerHTML = `
         <div class="ppt-topbar">
-            <span class="ppt-title">📊 PPT 미리보기</span>
+            <span class="ppt-title">${icon('bar-chart', 15)} 발표자료 만들기</span>
+            <div class="ppt-nav">
+                <button type="button" class="ppt-prev" title="이전 슬라이드 (←)">◀ 이전</button>
+                <span class="ppt-counter">1 / ${defs.length}</span>
+                <button type="button" class="ppt-next" title="다음 슬라이드 (→)">다음 ▶</button>
+            </div>
             <div class="ppt-actions">
                 <button type="button" class="ppt-export btn-primary">⬇ PPT로 내보내기 (.pptx)</button>
                 <button type="button" class="ppt-close btn-secondary">닫기 ✕</button>
             </div>
         </div>
-        <div class="ppt-deck" id="ppt-deck">
+        <div class="ppt-deck ppt-deck-single" id="ppt-deck">
             ${defs.map((d, i) => pptSlideHTML(d, i)).join('')}
         </div>`;
     document.body.appendChild(overlay);
     document.body.style.overflow = 'hidden';
-    overlay.querySelector('.ppt-close').onclick = () => { overlay.remove(); document.body.style.overflow = ''; };
+
+    // 한 장씩 넘겨 보기 — 현재 슬라이드만 표시(◀/▶ 버튼·좌우 화살표 키)
+    const deck    = overlay.querySelector('#ppt-deck');
+    const slides  = [...overlay.querySelectorAll('.ppt-slide')];
+    const counter = overlay.querySelector('.ppt-counter');
+    const prevBtn = overlay.querySelector('.ppt-prev');
+    const nextBtn = overlay.querySelector('.ppt-next');
+    let cur = 0;
+    const showSlide = i => {
+        cur = Math.max(0, Math.min(slides.length - 1, i));
+        slides.forEach((s, k) => s.classList.toggle('is-current', k === cur));
+        counter.textContent = `${cur + 1} / ${slides.length}`;
+        prevBtn.disabled = cur === 0;
+        nextBtn.disabled = cur === slides.length - 1;
+        deck.scrollTop = 0;
+    };
+    prevBtn.onclick = () => showSlide(cur - 1);
+    nextBtn.onclick = () => showSlide(cur + 1);
+    showSlide(0);
+
+    const close = () => { overlay.remove(); document.body.style.overflow = ''; document.removeEventListener('keydown', onKey); };
+    overlay.querySelector('.ppt-close').onclick = close;
     overlay.querySelector('.ppt-export').onclick = () => mmExportPPT(overlay);
-    const onKey = e => { if (e.key === 'Escape') { overlay.remove(); document.body.style.overflow = ''; document.removeEventListener('keydown', onKey); } };
+    const onKey = e => {
+        if (e.key === 'Escape') close();
+        else if (e.key === 'ArrowLeft')  showSlide(cur - 1);
+        else if (e.key === 'ArrowRight') showSlide(cur + 1);
+    };
     document.addEventListener('keydown', onKey);
 
     // 모형 그림은 비동기로 채움
@@ -1245,7 +1386,7 @@ async function mmOpenPPT() {
         const holder = overlay.querySelector('.ppt-model-img');
         if (holder) holder.innerHTML = png
             ? `<img src="${png}" alt="연구 모형">`
-            : `<div class="ppt-empty">아직 모형(도형)이 없어요 — 🎨 모형에서 그려보세요</div>`;
+            : `<div class="ppt-empty">아직 모형(도형)이 없어요 — ${icon('nodes', 13)} 모형에서 그려보세요</div>`;
     } catch {}
 }
 
@@ -1487,7 +1628,7 @@ function mmRenderProp() {
 
     panel.innerHTML = `
         <div class="mm-prop-head">
-            <span>📝 미니 프로포절</span>
+            <span>${icon('note', 14)} 미니 프로포절</span>
             <button class="mm-prop-close" id="mm-prop-close" title="패널 닫기">✕</button>
         </div>
         <div class="mm-prop-body">${textSections}${hypoSection}</div>`;

@@ -18,10 +18,14 @@
     --shadow: 0 1px 3px rgba(60,64,67,0.1), 0 4px 8px rgba(60,64,67,0.08);
     --shadow-lg: 0 4px 8px rgba(60,64,67,0.1), 0 8px 24px rgba(60,64,67,0.12);
     --radius: 12px;
-    --sidebar-width: 220px;
+    --sidebar-width: 185px;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* 인라인 라인 아이콘 — 글자 옆에 자연스럽게 정렬 */
+.ico { display: inline-block; vertical-align: -0.18em; flex-shrink: 0; }
+.empty-icon .ico { width: 44px; height: 44px; opacity: 0.7; }
 
 body {
     font-family: 'Noto Sans KR', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -76,7 +80,12 @@ body {
     display: flex;
     align-items: center;
     gap: 10px;
+    cursor: pointer;          /* 누르면 홈으로 */
+    border-radius: 8px;
+    padding: 2px 4px;
+    transition: background .15s ease;
 }
+.logo:hover { background: var(--accent-light); }
 .logo-icon {
     flex-shrink: 0;
     filter: drop-shadow(0 2px 4px rgba(26,115,232,0.25));
@@ -1484,11 +1493,19 @@ body {
 .mm-sep { width: 1px; height: 24px; background: var(--border); margin: 0 2px; flex-shrink: 0; }
 
 .mm-hint-text {
-    font-size: 12px;
+    font-size: 10.5px;
     color: var(--text-muted);
-    margin-left: auto;
+    margin-left: auto;           /* 메뉴들과 떨어져 오른쪽으로 */
     font-style: italic;
+    line-height: 1.3;
+    max-width: 230px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;       /* 작은 글씨 두 줄까지만 */
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
+/* 미니 프로포절·책상으로 — 두 버튼 묶어서 우측 끝에 */
+.mm-tool-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 
 .mm-select {
     padding: 7px 12px;
@@ -1691,6 +1708,9 @@ body {
     background: #fdecec; border-radius: 6px; padding: 1px 6px;
 }
 .mm-pop-hint { font-size: 11.5px; color: var(--text-muted); padding: 6px 12px; font-weight: 500; }
+/* 새 가설 만들어 연결 — 추가 액션이라 살짝 강조 */
+.mm-pop-newhypo { color: #1a56c4; font-weight: 700; }
+.mm-pop-newhypo:hover { background: #eaf1ff; }
 
 /* ── 변인 태그 패널 ──────────────────────────────────────── */
 .mm-var-panel {
@@ -2258,6 +2278,44 @@ body {
     flex-direction: column;
     background: var(--bg, #f7f7fb);
 }
+/* 책상을 사이드바 화면으로 — .content 안을 꽉 채움 */
+.desk-view {
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg, #f7f7fb);
+}
+/* 논문을 아직 안 펼친 빈 책상 안내(왼쪽) */
+.desk-empty {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    text-align: center;
+    padding: 24px;
+    color: var(--text-secondary);
+}
+.desk-empty .ico { color: var(--accent); opacity: .85; }
+.desk-empty h3 { font-size: 18px; color: var(--text-primary); }
+.desk-empty p { font-size: 13px; line-height: 1.65; }
+.desk-empty .btn-primary { margin-top: 4px; }
+/* 오른쪽 패널 빈 안내(복사붙이기 탭, 논문 없을 때) */
+.desk-rpanel-empty {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    text-align: center;
+    padding: 20px;
+    color: var(--text-muted);
+}
+.desk-rpanel-empty .ico { color: var(--accent-mid); }
+.desk-rpanel-empty p { font-size: 12.5px; line-height: 1.6; }
 .desk-topbar {
     position: relative;
     flex-shrink: 0;
@@ -2369,20 +2427,24 @@ body {
 .desk-resizer:hover { background: var(--accent-mid); }
 
 .desk-right { flex: 1; background: var(--surface); display: flex; flex-direction: column; overflow: hidden; }
-.desk-right-top { flex: 1 1 auto; min-height: 0; overflow: auto; }
+/* 우측 패널 탭 줄 (복사붙이기 분류 ↔ 발표자료 만들기) */
+.desk-rtabs { display: flex; flex-shrink: 0; border-bottom: 1px solid var(--border); background: var(--bg); }
+.desk-rtab {
+    flex: 1; border: none; background: none; cursor: pointer;
+    padding: 10px 8px; font-size: 12.5px; font-weight: 700;
+    color: var(--text-muted); border-bottom: 2px solid transparent;
+    transition: color .12s ease, border-color .12s ease;
+}
+.desk-rtab:hover { color: var(--accent); }
+.desk-rtab.active { color: var(--accent); border-bottom-color: var(--accent); background: var(--surface); }
+
+/* 두 탭 패널 공통 — 영역을 꽉 채우고 내부에서만 스크롤 */
+.desk-rpanel { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.desk-rpanel[hidden] { display: none; }
 .desk-right-inner { display: flex; flex-direction: column; min-height: 100%; }
 
-/* 하단 모형 미리보기(세로 분할) — 기본 숨김, 모형 보기 켜면 표시 */
-.desk-model-pane {
-    display: none;
-    flex: 0 0 44%;
-    min-height: 0;
-    overflow: auto;
-    border-top: 3px solid var(--accent-mid);
-    background: var(--bg);
-    padding: 12px 16px;
-}
-.desk-right.model-open .desk-model-pane { display: block; }
+/* 발표자료 미리보기 패널 */
+.desk-model-pane { background: var(--bg); padding: 12px 16px; }
 .desk-model-head { font-size: 12px; font-weight: 700; color: var(--accent); margin-bottom: 10px; }
 .desk-model-head .muted { color: var(--text-muted); font-weight: 500; }
 .desk-model-body { display: flex; flex-direction: column; gap: 11px; }
@@ -2560,6 +2622,20 @@ body {
 }
 .ppt-title { font-size: 16px; font-weight: 700; color: var(--text-primary); }
 .ppt-actions { display: flex; gap: 8px; }
+/* 한 장씩 보기 네비게이션 */
+.ppt-nav { display: flex; align-items: center; gap: 10px; }
+.ppt-nav button {
+    padding: 6px 12px; font-size: 13px; font-weight: 600;
+    background: var(--surface); color: var(--text-primary);
+    border: 1px solid var(--border); border-radius: 8px; cursor: pointer;
+}
+.ppt-nav button:hover:not([disabled]) { background: var(--bg); }
+.ppt-nav button[disabled] { opacity: 0.4; cursor: default; }
+.ppt-counter { font-size: 13px; font-weight: 700; color: var(--text-muted); min-width: 52px; text-align: center; }
+/* 단일 보기: 현재 슬라이드만 노출 */
+.ppt-deck-single { justify-content: flex-start; }
+.ppt-deck-single .ppt-slide { display: none; }
+.ppt-deck-single .ppt-slide.is-current { display: flex; }
 .ppt-deck {
     flex: 1; overflow: auto;
     padding: 26px 20px 60px;
@@ -2568,6 +2644,7 @@ body {
 .ppt-slide {
     width: min(920px, 96%);
     aspect-ratio: 16 / 9;
+    flex-shrink: 0;            /* 세로 덱에서 슬라이드가 찌그러져 내용이 잘리는 것 방지 */
     background: #fff;
     border: 1px solid var(--border);
     border-radius: 10px;
@@ -2595,3 +2672,120 @@ body {
 .ppt-hm { display: flex; flex-direction: column; gap: 12px; height: 100%; }
 .ppt-hm-text { flex-shrink: 0; }
 .ppt-hm .ppt-model-img { flex: 1; min-height: 0; }
+
+/* ── 홈 대시보드 (2×2 4분할: 모형·메모·논문·자료) ──────────────── */
+/* 홈일 때 콘텐츠를 세로 플렉스로 — 그리드가 화면 높이를 꽉 채우게 */
+.content:has(.home-grid) { display: flex; flex-direction: column; }
+
+.home-head {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 16px;
+    flex-shrink: 0;
+}
+
+/* 2칸 × 2줄 = 4분할, 칸끼리 16px 간격, 남는 높이 균등 분배 */
+.home-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 16px;
+    min-height: 0;            /* 카드 내부 스크롤이 그리드를 밀지 않게 */
+}
+
+/* 각 칸 = 누르면 그 화면으로 가는 카드(버튼) */
+.home-card {
+    display: flex;
+    flex-direction: column;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    padding: 18px 20px;
+    cursor: pointer;
+    overflow: hidden;
+    min-height: 0;
+    transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+}
+.home-card:hover {
+    border-color: var(--accent-mid);
+    box-shadow: var(--shadow);
+    transform: translateY(-2px);
+}
+
+/* 칸 머리: 제목 + 개수 뱃지 */
+.home-card-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+    flex-shrink: 0;
+}
+.home-badge {
+    background: var(--accent-light);
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 1px 9px;
+    border-radius: 999px;
+}
+
+/* 칸 본문: 최근 항목 미리보기(넘치면 그 칸 안에서만 스크롤) */
+.home-card-body {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    color: var(--text-secondary);
+}
+.home-card-foot {
+    margin-top: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    flex-shrink: 0;
+}
+
+/* 최근 항목 목록 */
+.home-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.home-list li {
+    position: relative;
+    padding-left: 14px;
+    font-size: 13px;
+    line-height: 1.5;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.home-list li::before {
+    content: '·';
+    position: absolute;
+    left: 2px;
+    color: var(--text-muted);
+}
+.home-card .muted { color: var(--text-muted); font-size: 13px; }
+
+/* 모형 칸: 제목을 가운데 크게 */
+.home-model {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 6px;
+    text-align: center;
+}
+.home-model-title { font-size: 17px; font-weight: 700; color: var(--text-primary); }
+.home-model-sub   { font-size: 13px; color: var(--text-secondary); }
