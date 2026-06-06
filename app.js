@@ -194,6 +194,8 @@ const ICON_PATHS = {
     'alert':      '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
     'check':      '<path d="M20 6 9 17l-5-5"/>',
     'eye':        '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
+    'chat':       '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+    'bot':        '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
 };
 function icon(name, size = 16) {
     const p = ICON_PATHS[name];
@@ -2843,12 +2845,89 @@ function showToast(msg, type = 'info') {
 }
 
 // ── 이벤트 바인딩 ──────────────────────────────────────────
+// ── 사용 안내 챗봇 (서버/AI 없이 정해진 Q&A) ──────────────────
+const GUIDE_INTRO = '안녕하세요! 연구노트 사용 안내예요 😊\n궁금한 걸 아래에서 골라 눌러보세요.';
+const GUIDE_TOPICS = [
+    { q: '이 앱은 뭐예요?',
+      a: '논문을 읽고 정리해서 내 연구(논문 쓰기)를 돕는 앱이에요. 왼쪽 메뉴로 연구 책상·분류 모아보기·모형스케치북·아이디어·논문·자료·참고문헌을 오갈 수 있어요.\n자료는 이 브라우저(이 컴퓨터)에 저장돼요.' },
+    { q: '메뉴가 뭐가 있어요?',
+      a: '왼쪽 메뉴는:\n• 연구 책상 — 논문 읽으며 발췌·분류\n• 분류 모아보기 — 여러 논문을 항목별로 비교\n• 모형스케치북 — 연구모형 그리기\n• 아이디어 — 자유 메모\n• 논문 / 자료 — 목록 관리\n• 참고문헌 — APA 목록\n좌상단 로고를 누르면 홈으로 가요.' },
+    { q: '홈 화면은요?',
+      a: '좌상단 「내 연구노트」를 누르면 홈으로 가요.\n홈은 모형·아이디어·논문·자료를 4칸으로 요약해 보여주고, 칸을 누르면 그 화면으로 바로 이동해요.' },
+    { q: '연구 책상이 뭐예요?',
+      a: '논문을 펼쳐 읽으며 중요한 문장을 발췌하고 분류하는 공간이에요.\n왼쪽엔 PDF, 오른쪽엔 「복사붙이기 분류」와 「발표자료 만들기」 탭이 있어요. 논문을 안 골라도 열려요.' },
+    { q: '발췌(분류)는 어떻게 해요?',
+      a: '연구 책상에서:\n① PDF 문장을 드래그→복사(Ctrl+C)\n② 오른쪽 「붙여넣기 받는 칸」에 붙여넣기(Ctrl+V)\n③ 분류(예: 연구방법)를 고르고\n④ 「담기」\n그 논문에 항목별로 차곡차곡 쌓여요.' },
+    { q: '담은 내용은 어디서 봐요?',
+      a: '그 논문의 「보기」를 열면 맨 아래 "담은 발췌"가 항목별로 모여 보이고, 거기서 바로 고치거나 지울 수 있어요.\n또 위쪽 「논문 보기…」 드롭다운으로 어느 화면에서나 꺼내볼 수 있어요.' },
+    { q: '분류 모아보기는요?',
+      a: '여러 논문을 같은 항목으로 비교해요. 예를 들어 「연구의 필요성」을 고르면 여러 논문의 필요성 발췌가 한눈에 모여요.\n각 논문 「보기」로 세부도 볼 수 있어요.' },
+    { q: '모형스케치북은요?',
+      a: '연구모형(변인 그림)을 그리는 곳이에요.\n도형 추가 → 드래그로 이동 → 우클릭으로 화살표 연결 → 더블클릭으로 이름 입력.\n「미니 프로포절」에 연구 계획을 적고, 「발표자료 만들기」로 PPT를 내보내고, 「모형 저장」으로 여러 버전을 보관해요.' },
+    { q: '아이디어 메뉴는요?',
+      a: '「아이디어」는 떠오르는 생각·메모를 자유롭게 적어두는 공간이에요.\n논문과 별개로, 연구하다 떠오른 아이디어를 모아둘 수 있어요.' },
+    { q: '논문은 어떻게 추가해요?',
+      a: '「논문 추가」 버튼(왼쪽 아래 또는 오른쪽 위)을 눌러요.\nRISS 인용문이나 DOI를 붙여넣어 자동 입력할 수 있고, 「정밀 분석」에서 정독하며 항목을 채울 수 있어요.' },
+    { q: '자료 메뉴는요?',
+      a: '「자료」는 논문이 아닌 자료를 보관해요 — 척도·도서·웹자료·보고서·강의자료 등.\n파일도 첨부할 수 있어요.' },
+    { q: '참고문헌은요?',
+      a: '「참고문헌」은 등록한 논문들의 APA 참고문헌을 한 목록으로 보여줘요.\n복사해서 논문 끝에 붙일 수 있어요.' },
+    { q: '백업은 어떻게 해요?',
+      a: '자료는 이 브라우저에 저장돼요(IndexedDB). 왼쪽 아래에서:\n• 「백업」 = 파일로 자동 저장\n• 「보냄」 = 내보내기\n• 「받음」 = 가져오기\n다른 컴퓨터로 옮길 땐 보냄 → 받음 하세요.' },
+    { q: '빠른 인용이 뭐예요?',
+      a: '위쪽 「빠른 인용」 버튼을 누르면 작은 창이 떠요.\n논문 목록에서 「빠른 인용」으로 표시해 둔 논문들의 인용을 빠르게 복사할 수 있어요.' },
+];
+
+function openGuide() {
+    if (document.querySelector('.guide-overlay')) return;
+    const overlay = document.createElement('div');
+    overlay.className = 'guide-overlay';
+    overlay.innerHTML = `
+        <div class="guide-chat">
+            <div class="guide-head">
+                <span>${icon('bot')} 사용 안내 챗봇</span>
+                <button type="button" class="guide-close" title="닫기">✕</button>
+            </div>
+            <div class="guide-msgs" id="guide-msgs"></div>
+            <div class="guide-chips" id="guide-chips"></div>
+        </div>`;
+    document.body.appendChild(overlay);
+
+    const msgs = overlay.querySelector('#guide-msgs');
+    const addMsg = (who, text) => {
+        const d = document.createElement('div');
+        d.className = `guide-msg guide-msg-${who}`;
+        d.innerHTML = escHtml(text).replace(/\n/g, '<br>');
+        msgs.appendChild(d);
+        msgs.scrollTop = msgs.scrollHeight;
+    };
+    addMsg('bot', GUIDE_INTRO);
+
+    overlay.querySelector('#guide-chips').innerHTML =
+        GUIDE_TOPICS.map((t, i) => `<button type="button" class="guide-chip" data-i="${i}">${escHtml(t.q)}</button>`).join('');
+    overlay.querySelectorAll('.guide-chip').forEach(b =>
+        b.addEventListener('click', () => {
+            const t = GUIDE_TOPICS[+b.dataset.i];
+            addMsg('user', t.q);
+            setTimeout(() => addMsg('bot', t.a), 160);
+        }));
+
+    const close = () => overlay.remove();
+    overlay.querySelector('.guide-close').addEventListener('click', close);
+    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+    const onKey = e => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } };
+    document.addEventListener('keydown', onKey);
+}
+
 function bindEvents() {
     // 사이드바 접기/펴기 (앱 전체 — .sidebar에 collapsed 클래스만 토글)
     initSidebarToggle();
 
     // 좌상단 "내 연구노트" 로고 — 누르면 항상 메인(홈)으로
     document.querySelector('.logo')?.addEventListener('click', () => goToView('home'));
+
+    // 사용 안내 챗봇 버튼
+    document.getElementById('guide-btn')?.addEventListener('click', openGuide);
 
     // 탑바 "논문 보기" 드롭다운 — 어느 화면에서나 논문 골라 정리 내용 보기
     document.getElementById('paper-jump')?.addEventListener('change', e => {
