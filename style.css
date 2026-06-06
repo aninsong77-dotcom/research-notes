@@ -248,6 +248,8 @@ body {
 
 .sidebar-nav {
     flex: 1;
+    min-height: 0;          /* 내용 많으면 줄어들 수 있게 */
+    overflow-y: auto;       /* 메뉴가 넘치면 여기서 스크롤 → footer는 항상 보임 */
     padding: 8px;
     display: flex;
     flex-direction: column;
@@ -304,6 +306,7 @@ body {
 }
 
 .sidebar-footer {
+    flex-shrink: 0;         /* footer는 줄지 않고 항상 전체가 보이게 */
     padding: 12px 8px;
     border-top: 1px solid var(--border);
     display: flex;
