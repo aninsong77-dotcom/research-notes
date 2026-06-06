@@ -193,6 +193,7 @@ const ICON_PATHS = {
     'tag':        '<path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/>',
     'alert':      '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
     'check':      '<path d="M20 6 9 17l-5-5"/>',
+    'eye':        '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
 };
 function icon(name, size = 16) {
     const p = ICON_PATHS[name];
@@ -489,6 +490,9 @@ function renderContent() {
     if (addTop)  addTop.textContent  = addLabelText;
     if (addSide) addSide.textContent = addLabelText;
 
+    // 탑바 "논문 보기" 드롭다운 — 현재 논문 목록으로 갱신
+    refreshPaperJump();
+
     // 책상에서 다른 화면으로 나가면 책상 리소스 정리(펼쳐둔 논문 목록은 유지)
     if (state.view !== 'desk' && deskCtx) deskTeardown();
 
@@ -509,6 +513,7 @@ function renderContent() {
     }
     if (state.view === 'home') renderHome(container);
     else if (state.view === 'desk') renderDesk(container);
+    else if (state.view === 'catview') renderCatView(container);
     else if (state.view === 'papers') renderPapers(container);
     else if (state.view === 'materials') renderMaterials(container);
     else if (state.view === 'references') renderReferences(container);
@@ -774,7 +779,7 @@ function paperRowDetailHTML(paper) {
             <div class="prd-body">${bodyHTML}</div>
             <div class="prd-actions">
                 <button type="button" class="btn-primary prd-desk" data-id="${paper.id}">${icon('book-open')} 책상에서 펼치기</button>
-                <button type="button" class="btn-secondary prd-edit" data-id="${paper.id}">${icon('pencil')} 수정</button>
+                <button type="button" class="btn-secondary prd-view" data-id="${paper.id}">${icon('eye')} 보기</button>
                 ${paper.pdfData ? `<button type="button" class="btn-secondary prd-pdf" data-id="${paper.id}">${icon('paperclip')} PDF 열기</button>` : ''}
                 <button type="button" class="btn-secondary prd-qc" data-id="${paper.id}">${icon('zap')} ${paper.inQuickCite ? '빠른인용 해제' : '빠른인용'}</button>
                 <button type="button" class="btn-delete prd-del" data-id="${paper.id}">${icon('trash')} 삭제</button>
@@ -822,8 +827,8 @@ function bindRows(container, enableDrag = false) {
     if (enableDrag) bindRowDrag(container);
     container.querySelectorAll('.prd-desk').forEach(b =>
         b.addEventListener('click', e => { e.stopPropagation(); openDesk(b.dataset.id); }));
-    container.querySelectorAll('.prd-edit').forEach(b =>
-        b.addEventListener('click', e => { e.stopPropagation(); openForm(b.dataset.id, 'edit'); }));
+    container.querySelectorAll('.prd-view').forEach(b =>
+        b.addEventListener('click', e => { e.stopPropagation(); openForm(b.dataset.id, 'view'); }));
     container.querySelectorAll('.prd-pdf').forEach(b =>
         b.addEventListener('click', e => {
             e.stopPropagation();
@@ -1211,6 +1216,59 @@ function homeListHTML(items, emptyMsg) {
     return `<ul class="home-list">${items.map(t => `<li>${escHtml(t)}</li>`).join('')}</ul>`;
 }
 
+// 탑바 "논문 보기" 드롭다운 옵션 갱신 (어느 화면에서나 논문 골라 보기 모달 열기)
+function refreshPaperJump() {
+    const sel = document.getElementById('paper-jump');
+    if (!sel) return;
+    const opts = sortPapers(state.papers).map(p =>
+        `<option value="${p.id}">${escHtml((p.title || '제목 없음').slice(0, 60))}</option>`).join('');
+    sel.innerHTML = `<option value="">논문 보기…</option>${opts}`;
+}
+
+// ── 분류 모아보기 — 카테고리 하나를 골라 여러 논문의 그 항목 발췌를 한눈에 ──
+function renderCatView(container) {
+    const known = new Set(EXCERPT_CATS.map(([k]) => k));
+    const catOf = e => (known.has(e.cat) ? e.cat : 'free');
+    const cur = (state.catViewCat && known.has(state.catViewCat)) ? state.catViewCat : EXCERPT_CATS[0][0];
+    state.catViewCat = cur;
+
+    const rows = sortPapers(state.papers)
+        .map(p => ({ p, items: (p.excerpts || []).filter(e => catOf(e) === cur) }))
+        .filter(r => r.items.length);
+    const total = rows.reduce((n, r) => n + r.items.length, 0);
+    const catOptions = EXCERPT_CATS.map(([k, l]) =>
+        `<option value="${k}" ${k === cur ? 'selected' : ''}>${l}</option>`).join('');
+
+    const body = rows.length
+        ? rows.map(({ p, items }) => `
+            <div class="cv-paper">
+                <div class="cv-paper-head">
+                    <span class="cv-paper-title">${escHtml(p.title || '제목 없음')}</span>
+                    <span class="cv-paper-meta">${escHtml([firstAuthor(p), p.year].filter(Boolean).join(', '))}</span>
+                    <button type="button" class="cv-open btn-secondary" data-id="${p.id}">${icon('eye', 14)} 보기</button>
+                </div>
+                <ul class="cv-ex-list">
+                    ${items.map(e => `<li>${escHtml(e.text)}${e.memo ? `<span class="cv-ex-memo"> — ${escHtml(e.memo)}</span>` : ''}</li>`).join('')}
+                </ul>
+            </div>`).join('')
+        : `<div class="empty-state"><div class="empty-icon">${icon('clipboard', 44)}</div><h3>이 분류로 담은 발췌가 없어요</h3><p class="muted">연구 책상에서 논문을 읽으며 「${escHtml(CAT_LABEL[cur] || '')}」(으)로 담아보세요.</p></div>`;
+
+    container.innerHTML = `
+        <div class="cv-head">
+            <span class="cv-title">분류 모아보기</span>
+            <select class="cv-cat-select" id="cv-cat">${catOptions}</select>
+            <span class="cv-count">${rows.length}편 · ${total}개</span>
+        </div>
+        <div class="cv-list">${body}</div>`;
+
+    container.querySelector('#cv-cat')?.addEventListener('change', e => {
+        state.catViewCat = e.target.value;
+        renderCatView(container);
+    });
+    container.querySelectorAll('.cv-open').forEach(b =>
+        b.addEventListener('click', () => openForm(b.dataset.id, 'view')));
+}
+
 // 사이드바 클릭과 동일하게 화면 전환(홈 카드·로고에서 호출)
 function goToView(view) {
     state.view = view;
@@ -1526,7 +1584,8 @@ function renderViewExtras(paper) {
                     <span class="ve-related-name">${escHtml(r.paper.title || '제목 없음')}${r.paper.year ? ` (${escHtml(r.paper.year)})` : ''}</span>
                     <span class="ve-related-reason">${escHtml(r.reason)}</span>
                 </div>`).join('')}
-        </div>` : ''}`;
+        </div>` : ''}
+        ${viewExcerptsHTML(paper)}`;
 
     if (paper.pdfData) box.querySelector('#ve-pdf').onclick = () => openPdf(paper);
     box.querySelector('#ve-cite').onclick = async () => {
@@ -1540,6 +1599,52 @@ function renderViewExtras(paper) {
     box.querySelectorAll('.ve-related-item').forEach(el => {
         el.onclick = () => openForm(el.dataset.id, 'view');
     });
+    bindViewExcerpts(box, paper);
+}
+
+// 보기 모달 — 담은 발췌를 카테고리(=내용 항목)별로 묶어 표시. 미지정/옛 cat은 '자유/기타'로.
+function viewExcerptsHTML(paper) {
+    const list = paper.excerpts || [];
+    if (!list.length) return '';
+    const known = new Set(EXCERPT_CATS.map(([k]) => k));
+    const catOf = e => (known.has(e.cat) ? e.cat : 'free');
+    const groupsHTML = EXCERPT_CATS.map(([k, label]) => {
+        const items = list.filter(e => catOf(e) === k);
+        if (!items.length) return '';
+        const cards = items.map(e => `
+            <div class="ve-ex-card" data-eid="${e.id}">
+                <div class="ve-ex-text" contenteditable="true" data-eid="${e.id}">${escHtml(e.text)}</div>
+                <div class="ve-ex-memo" contenteditable="true" data-eid="${e.id}" data-ph="＋ 메모">${escHtml(e.memo || '')}</div>
+                <button type="button" class="ve-ex-del" data-eid="${e.id}" title="이 발췌 삭제">${icon('trash', 13)}</button>
+            </div>`).join('');
+        return `
+            <div class="ve-ex-group">
+                <div class="ve-ex-gtitle"><span class="desk-ex-badge">${escHtml(label)}</span><span class="desk-ex-count">${items.length}</span></div>
+                ${cards}
+            </div>`;
+    }).join('');
+    return `
+        <div class="ve-excerpts">
+            <div class="ve-excerpts-title">${icon('clipboard', 14)} 담은 발췌 ${list.length}개 <span class="muted">· 연구 책상에서 분류한 내용</span></div>
+            ${groupsHTML}
+        </div>`;
+}
+
+function bindViewExcerpts(box, paper) {
+    box.querySelectorAll('.ve-ex-text, .ve-ex-memo').forEach(el =>
+        el.addEventListener('blur', () => {
+            const e = (paper.excerpts || []).find(x => x.id === el.dataset.eid);
+            if (!e) return;
+            const field = el.classList.contains('ve-ex-memo') ? 'memo' : 'text';
+            const val = el.textContent.trim();
+            if (e[field] !== val) { e[field] = val; dbPut(STORE_PAPERS, paper); }
+        }));
+    box.querySelectorAll('.ve-ex-del').forEach(b =>
+        b.addEventListener('click', () => {
+            paper.excerpts = (paper.excerpts || []).filter(x => x.id !== b.dataset.eid);
+            dbPut(STORE_PAPERS, paper);
+            renderViewExtras(paper);
+        }));
 }
 
 // ── 관련 논문 ──────────────────────────────────────────────
@@ -1784,20 +1889,61 @@ function bindDeskResizer(overlay) {
 // ── 발췌(긁기) — 오른쪽 패널 (2단계) ────────────────────────────
 // 한 조각 = { id, cat, text, memo, color, createdAt }. paper.excerpts[]에 저장.
 // DB 버전 안 올림(papers store 스프레드 저장 → 백업/내보내기 자동 포함).
+// 분류 카테고리 = 논문 수정폼의 "내용 항목"(서지정보 제외). key는 paper의 필드와 매핑(CAT_FIELD).
 const EXCERPT_CATS = [
-    ['keyword',  '키워드'],
-    ['opdef',    '조작적 정의'],
-    ['variable', '변인'],
-    ['method',   '연구방법'],
-    ['needs',    '연구필요성'],
-    ['free',     '자유'],
+    ['abstract',     '초록'],
+    ['keyword',      '키워드'],
+    ['variable',     '변인'],
+    ['tag',          '태그'],
+    ['method',       '연구방법'],
+    ['findings',     '주요 발견/결론'],
+    ['note',         '내 메모'],
+    ['needs',        '연구의 필요성'],
+    ['priorlimits',  '선행연구 한계점'],
+    ['theory',       '사용한 이론'],
+    ['mainstudies',  '주요 연구'],
+    ['subjects',     '연구대상자'],
+    ['model',        '연구모형'],
+    ['anmethod',     '분석방법'],
+    ['results',      '분석결과'],
+    ['implications', '시사점·제언'],
+    ['limitations',  '한계점'],
+    ['impressive',   '인상 깊은 점'],
+    ['further',      '더 읽고 싶은 참고문헌'],
+    ['free',         '자유/기타'],
 ];
+// 카테고리 key → paper 안의 실제 필드 경로. 보기 모달에서 "해당 항목 아래"에 담은 발췌를 모아 보이기 위함.
+// kind: 'top'=paper 직속, 'analysis'=paper.analysis 안, 'tags'=배열 필드
+const CAT_FIELD = {
+    abstract:     { kind: 'top',      key: 'abstract' },
+    keyword:      { kind: 'analysis', key: 'keywords' },
+    variable:     { kind: 'array',    key: 'variables' },
+    tag:          { kind: 'array',    key: 'tags' },
+    method:       { kind: 'top',      key: 'methods' },
+    findings:     { kind: 'top',      key: 'findings' },
+    note:         { kind: 'top',      key: 'myNote' },
+    needs:        { kind: 'analysis', key: 'needs' },
+    priorlimits:  { kind: 'analysis', key: 'priorlimits' },
+    theory:       { kind: 'analysis', key: 'theory' },
+    mainstudies:  { kind: 'analysis', key: 'mainstudies' },
+    subjects:     { kind: 'analysis', key: 'subjects' },
+    model:        { kind: 'analysis', key: 'model' },
+    anmethod:     { kind: 'analysis', key: 'method' },
+    results:      { kind: 'analysis', key: 'results' },
+    implications: { kind: 'analysis', key: 'implications' },
+    limitations:  { kind: 'analysis', key: 'limitations' },
+    impressive:   { kind: 'analysis', key: 'impressive' },
+    further:      { kind: 'analysis', key: 'further' },
+    free:         null,
+};
+// 카테고리 라벨 빠른 조회
+const CAT_LABEL = Object.fromEntries(EXCERPT_CATS);
 let deskAddCat = 'keyword';   // 담기 시 선택된 카테고리(세션 유지)
 let deskRTab = 'excerpt';     // 우측 패널 탭: 'excerpt'(복사붙이기 분류) | 'model'(발표자료 만들기)
 
 function deskRightHTML(paper) {
     const cats = EXCERPT_CATS.map(([k, l]) =>
-        `<button type="button" class="desk-cat cat-${k} ${k === deskAddCat ? 'active' : ''}" data-cat="${k}">${l}</button>`
+        `<option value="${k}" ${k === deskAddCat ? 'selected' : ''}>${l}</option>`
     ).join('');
     const t = deskRTab;
     const excerptInner = paper ? `
@@ -1808,7 +1954,8 @@ function deskRightHTML(paper) {
                     </div>
                     <textarea class="desk-catch-text" placeholder="왼쪽에서 드래그 → 복사(Ctrl+C) → 여기 붙여넣기(Ctrl+V) → 분류 고르고 담기"></textarea>
                     <div class="desk-catch-bar">
-                        <div class="desk-cats">${cats}</div>
+                        <span class="desk-cat-label">분류</span>
+                        <select class="desk-cat-select" id="desk-cat-select">${cats}</select>
                         <button type="button" class="desk-add btn-primary">담기</button>
                     </div>
                 </div>
@@ -1906,13 +2053,8 @@ function deskExcerptsHTML(paper) {
                 <div class="desk-ex-tools">
                     <div class="desk-ex-swatches">${sw}</div>
                     <div class="desk-ex-tbtns">
-                        <button type="button" class="desk-ex-send" data-eid="${e.id}">→ 모형으로</button>
                         <button type="button" class="desk-ex-del" data-eid="${e.id}" title="삭제">✕ 삭제</button>
                     </div>
-                </div>
-                <div class="desk-ex-sendmenu" data-eid="${e.id}" hidden>
-                    <span class="desk-ex-sendlabel">보낼 곳:</span>
-                    ${EX_SEND_DESTS.map(([d, l]) => `<button type="button" class="desk-ex-dest" data-eid="${e.id}" data-dest="${d}">${l}</button>`).join('')}
                 </div>
             </div>`;
         }).join('');
@@ -1935,11 +2077,8 @@ function bindDeskRight(overlay, paper) {
     if (deskRTab === 'model') deskRenderModel(overlay);
     // 발췌(복사붙이기) 관련은 논문이 펼쳐져 있을 때만
     if (!paper) return;
-    overlay.querySelectorAll('.desk-cat').forEach(b =>
-        b.addEventListener('click', () => {
-            deskAddCat = b.dataset.cat;
-            overlay.querySelectorAll('.desk-cat').forEach(x => x.classList.toggle('active', x === b));
-        }));
+    const catSel = overlay.querySelector('#desk-cat-select');
+    if (catSel) catSel.addEventListener('change', () => { deskAddCat = catSel.value; });
     overlay.querySelector('.desk-add').addEventListener('click', () => deskAddExcerpt(overlay, paper));
     bindDeskExcerpts(overlay, paper);
 }
@@ -1972,14 +2111,6 @@ function bindDeskExcerpts(overlay, paper) {
             deskUpdateExcerpt(paper, b.dataset.eid, 'color', b.dataset.color);
             deskRenderExcerpts(overlay, paper);
         }));
-    // → 모형으로 보내기: 버튼은 "보낼 곳" 메뉴 토글, 메뉴 항목은 실제 보내기
-    overlay.querySelectorAll('.desk-ex-send').forEach(b =>
-        b.addEventListener('click', () => {
-            const menu = overlay.querySelector(`.desk-ex-sendmenu[data-eid="${b.dataset.eid}"]`);
-            if (menu) menu.hidden = !menu.hidden;
-        }));
-    overlay.querySelectorAll('.desk-ex-dest').forEach(b =>
-        b.addEventListener('click', () => deskSendExcerpt(overlay, paper, b.dataset.eid, b.dataset.dest)));
 }
 
 // 발췌 한 조각을 모형(미니프로포절 칸 / 변인 태그)으로 보냄.
@@ -2718,6 +2849,12 @@ function bindEvents() {
 
     // 좌상단 "내 연구노트" 로고 — 누르면 항상 메인(홈)으로
     document.querySelector('.logo')?.addEventListener('click', () => goToView('home'));
+
+    // 탑바 "논문 보기" 드롭다운 — 어느 화면에서나 논문 골라 정리 내용 보기
+    document.getElementById('paper-jump')?.addEventListener('change', e => {
+        const id = e.target.value;
+        if (id) { openForm(id, 'view'); e.target.value = ''; }
+    });
 
     // 사이드바 네비
     document.querySelectorAll('.nav-item').forEach(btn => {

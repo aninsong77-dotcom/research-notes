@@ -556,6 +556,14 @@ function mmBind() {
         const pop = d.querySelector('.mm-menu-pop');
         if (pop) pop.addEventListener('click', e => { if (e.target.closest('.mm-menu-item')) d.open = false; });
     });
+    // 메뉴 바깥을 클릭하면 열린 메뉴 접기 (document에 한 번만 등록)
+    if (!window.__mmMenuOutsideBound) {
+        window.__mmMenuOutsideBound = true;
+        document.addEventListener('mousedown', e => {
+            if (e.target.closest('.mm-menu')) return;   // 메뉴 자체 클릭은 제외
+            document.querySelectorAll('.mm-menu[open]').forEach(d => { d.open = false; });
+        });
+    }
     document.getElementById('mm-vars-toggle').onclick = mmToggleVarPanel;
     document.getElementById('mm-prop-toggle').onclick = mmToggleProp;
     document.getElementById('mm-style-toggle').onclick = mmToggleStyle;
@@ -1165,16 +1173,27 @@ function mmRedo() {
 async function mmSaveSnap() {
     const name = prompt('이 모형의 이름을 입력하세요:');
     if (!name?.trim()) return;
-    S.snapshots.push({
-        id: genId(), name: name.trim(),
+    const nm = name.trim();
+    const snapData = () => ({
         nodes:  JSON.parse(JSON.stringify(S.nodes)),
         edges:  JSON.parse(JSON.stringify(S.edges)),
         groups: JSON.parse(JSON.stringify(S.groups)),
         savedAt: Date.now(),
     });
+    const existing = S.snapshots.find(s => s.name === nm);
+    if (existing) {
+        // 같은 이름 → 덮어쓰기 확인 (취소하면 다른 이름으로 다시 저장 안내)
+        if (!confirm(`"${nm}" 이름의 모형이 이미 있어요.\n덮어쓸까요?\n\n[취소]를 누르면 다른 이름으로 다시 저장하세요.`)) {
+            showToast('덮어쓰기 취소 — 다른 이름으로 다시 저장하세요', 'info');
+            return;
+        }
+        Object.assign(existing, snapData());
+    } else {
+        S.snapshots.push({ id: genId(), name: nm, ...snapData() });
+    }
     await mmSaveToDB();
     mmUpdateSnapList();
-    showToast(`"${name.trim()}" 저장됐습니다`, 'success');
+    showToast(`"${nm}" ${existing ? '덮어썼습니다' : '저장됐습니다'}`, 'success');
 }
 
 function mmLoadSnap(snapId) {
