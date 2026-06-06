@@ -137,6 +137,7 @@
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px"><rect x="8" y="6" width="8" height="14" rx="4"/><path d="M19 7l-3 2M5 7l3 2M3 13h4M17 13h4M19 19l-3-2M5 19l3-2M12 2v4"/></svg>
                 디버그 로그<span class="debug-badge" id="debug-badge" style="display:none">0</span>
             </button>
+            <div class="auth-box" id="auth-box"></div>
         </div>
     </aside>
 
@@ -477,7 +478,12 @@
     <!-- 가져오기용 숨겨진 파일 입력 -->
     <input type="file" id="import-input" accept=".json" style="display:none">
 
+    <!-- Firebase (빌드 없이 CDN compat 버전) -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+
     <script src="mindmap.js"></script>
     <script src="app.js"></script>
+    <script src="auth.js"></script>
 </body>
 </html>

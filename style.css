@@ -343,6 +343,38 @@ body {
 }
 .btn-data:hover { background: var(--accent-light); color: var(--accent); border-color: var(--accent-mid); }
 
+/* 로그인 영역 (사이드바 맨 아래) */
+.auth-box { margin-top: 8px; }
+.auth-login-btn {
+    width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 9px; border: 1.5px solid var(--accent-mid); border-radius: 20px;
+    background: var(--accent-light); color: var(--accent);
+    font-size: 12.5px; font-weight: 700; font-family: inherit; cursor: pointer;
+}
+.auth-login-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+.auth-in { display: flex; align-items: center; gap: 6px; }
+.auth-email { flex: 1; min-width: 0; font-size: 11.5px; font-weight: 600; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.auth-logout { flex-shrink: 0; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); font-size: 11px; padding: 4px 9px; border-radius: 14px; cursor: pointer; font-family: inherit; }
+.auth-logout:hover { border-color: var(--danger); color: var(--danger); }
+.auth-offline { font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 5px; padding: 4px 2px; }
+.sidebar.collapsed .auth-box { display: none; }
+
+/* 로그인 모달 */
+.auth-overlay { position: fixed; inset: 0; z-index: 1200; background: rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; padding: 20px; }
+.auth-modal { width: 100%; max-width: 340px; background: var(--surface); border-radius: 16px; box-shadow: var(--shadow-lg); overflow: hidden; }
+.auth-modal-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: var(--accent); color: #fff; font-weight: 700; font-size: 15px; }
+.auth-modal-head .ico { vertical-align: -3px; margin-right: 4px; }
+.auth-x { border: none; background: rgba(255,255,255,0.22); color: #fff; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; font-size: 13px; line-height: 1; }
+.auth-x:hover { background: rgba(255,255,255,0.4); }
+.auth-modal-body { padding: 18px 18px 20px; display: flex; flex-direction: column; }
+.auth-modal-body label { font-size: 12px; font-weight: 700; color: var(--text-secondary); margin-bottom: 5px; }
+.auth-modal-body label small { color: var(--text-muted); font-weight: 500; }
+.auth-modal-body input { padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 10px; font-size: 14px; font-family: inherit; margin-bottom: 14px; }
+.auth-modal-body input:focus { outline: none; border-color: var(--accent-mid); }
+.auth-submit { width: 100%; padding: 11px; border-radius: 22px; font-size: 14px; }
+.auth-switch { text-align: center; font-size: 12px; color: var(--text-muted); margin-top: 12px; }
+.auth-switch button { border: none; background: none; color: var(--accent); font-weight: 700; cursor: pointer; font-size: 12px; font-family: inherit; text-decoration: underline; }
+
 /* ── 메인 ────────────────────────────────────────────────── */
 .main {
     flex: 1;
