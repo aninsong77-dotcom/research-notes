@@ -271,12 +271,13 @@
                             <textarea id="f-note" rows="3" placeholder="이 논문을 어디에 활용할지, 중요한 포인트 등 자유롭게 메모"></textarea>
                         </div>
                         <div class="form-group full">
-                            <label>PDF 파일</label>
+                            <label>PDF 파일 <small style="color:var(--text-muted)">— 이 기기에만 저장됨 (동기화 안 됨)</small></label>
                             <div class="file-upload">
                                 <input type="file" id="f-pdf" accept=".pdf" style="display:none">
                                 <button type="button" class="btn-file" id="btn-pick-pdf"><svg class="ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg> PDF 선택</button>
                                 <span id="pdf-filename">선택된 파일 없음</span>
                             </div>
+                            <small style="color:var(--text-muted)">여러 기기에서 보려면 구글 드라이브에 올리고 위의 PDF 링크를 사용하세요.</small>
                         </div>
                     </div>
 
