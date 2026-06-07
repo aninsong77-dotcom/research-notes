@@ -33,7 +33,7 @@ function initAuth() {
         firebase.initializeApp(firebaseConfig);
         fbAuth    = firebase.auth();
         fbDb      = firebase.firestore();
-        fbStorage = firebase.storage ? firebase.storage() : null;
+        fbStorage = null;   // Storage 미사용 — Spark 무료플랜 서울 리전은 무료 한도 없음
 
         fbAuth.onAuthStateChanged(user => {
             const wasLoggedIn = !!currentUser;
@@ -182,11 +182,20 @@ function cloudPut(store, item) {
     if (store === 'materials' && item.fileData) cloudPutFile('materials', item.id, item.fileData, item.fileName);
 }
 
-// 단일 항목 Firestore에서 삭제 (fire-and-forget)
+// 삭제 기록(tombstone) 컬렉션 참조
+function tombRef() {
+    if (!fbDb || !currentUser) return null;
+    return fbDb.collection('users').doc(currentUser.uid).collection('_tombstones');
+}
+
+// 단일 항목 Firestore에서 삭제 + 삭제 기록 남기기 (fire-and-forget)
 function cloudDelete(store, id) {
     if (!fbDb || !currentUser || !SYNC_STORES.includes(store)) return;
     colRef(store).doc(String(id)).delete()
         .catch(e => authLog('warn', `Firestore 삭제 실패 (${store}): ${e.message}`));
+    // 삭제 기록 — 다른 기기에서 로그인할 때 이 항목이 살아나지 않도록
+    tombRef().doc(`${store}_${id}`).set({ store, id: String(id), deletedAt: Date.now() })
+        .catch(e => authLog('warn', `삭제 기록 저장 실패 (${store}/${id}): ${e.message}`));
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -255,22 +264,47 @@ async function fullSync() {
         if (em) em.innerHTML = `${icon('cloud', 14)} 동기화 중…`;
     }
 
+    // 삭제 기록 먼저 읽기 — store별 삭제된 ID 목록
+    const tombMap = {}; // { store: Set<id> }
+    try {
+        const tsnap = await tombRef().get();
+        tsnap.forEach(doc => {
+            const { store, id } = doc.data();
+            if (!tombMap[store]) tombMap[store] = new Set();
+            tombMap[store].add(String(id));
+        });
+    } catch (e) {
+        authLog('warn', '삭제 기록 읽기 실패: ' + e.message);
+    }
+
     let uploadCount = 0, downloadCount = 0;
 
     for (const store of SYNC_STORES) {
         try {
+            const deleted = tombMap[store] || new Set();
+
             // 로컬 데이터 읽기
             const localItems = await dbGetAll(store);
             const localMap = {};
             localItems.forEach(i => { localMap[String(i.id)] = i; });
+
+            // 로컬에 남아있는 삭제 기록 항목 정리 (다른 기기에서 지운 것)
+            for (const id of deleted) {
+                if (localMap[id]) {
+                    const req = db.transaction(store, 'readwrite').objectStore(store).delete(id);
+                    await new Promise((res, rej) => { req.onsuccess = res; req.onerror = () => rej(req.error); });
+                    delete localMap[id];
+                }
+            }
 
             // Firestore 데이터 읽기
             const snap = await colRef(store).get();
             const remoteMap = {};
             snap.forEach(doc => { remoteMap[doc.id] = doc.data(); });
 
-            // 로컬 → Firestore (로컬이 더 새롭거나 클라우드에 없는 항목)
+            // 로컬 → Firestore (삭제된 항목 제외, 로컬이 더 새롭거나 클라우드에 없는 항목)
             for (const [id, local] of Object.entries(localMap)) {
+                if (deleted.has(id)) continue;
                 const remote = remoteMap[id];
                 if (!remote || (local.updatedAt || 0) >= (remote.updatedAt || 0)) {
                     const obj = { ...stripBinary(store, local), updatedAt: local.updatedAt || Date.now() };
@@ -282,8 +316,9 @@ async function fullSync() {
                 }
             }
 
-            // Firestore → 로컬 (클라우드에만 있거나 클라우드가 더 새로운 항목)
+            // Firestore → 로컬 (삭제된 항목 제외, 클라우드에만 있거나 클라우드가 더 새로운 항목)
             for (const [id, remote] of Object.entries(remoteMap)) {
+                if (deleted.has(id)) continue;
                 const local = localMap[id];
                 if (!local || (remote.updatedAt || 0) > (local.updatedAt || 0)) {
                     // pdfData/fileData 없음(클라우드엔 저장 안 함) — PDF는 열 때 lazy 다운로드
