@@ -238,7 +238,10 @@
                         </div>
                         <div class="form-group">
                             <label>PDF 링크 <small style="color:var(--text-muted)">(구글 드라이브 등)</small></label>
-                            <input type="url" id="f-pdflink" placeholder="https://drive.google.com/...">
+                            <div style="display:flex;gap:6px;align-items:center">
+                                <input type="url" id="f-pdflink" placeholder="https://drive.google.com/..." style="flex:1">
+                                <button type="button" id="btn-open-drive" class="btn-secondary" style="white-space:nowrap;font-size:12px" title="저장된 구글 드라이브 폴더 열기">드라이브 열기</button>
+                            </div>
                         </div>
                         <div class="form-group full">
                             <label>초록</label>

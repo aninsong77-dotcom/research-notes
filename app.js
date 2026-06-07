@@ -3115,6 +3115,20 @@ function bindEvents() {
         e.target.value = '';
     });
 
+    // 드라이브 폴더 열기
+    document.getElementById('btn-open-drive').addEventListener('click', () => {
+        const saved = localStorage.getItem('driveFolderUrl');
+        if (saved) {
+            window.open(saved, '_blank', 'noopener');
+        } else {
+            const url = prompt('구글 드라이브 폴더 링크를 입력하세요.\n(한 번만 입력하면 다음부터 바로 열려요)');
+            if (url && url.startsWith('http')) {
+                localStorage.setItem('driveFolderUrl', url);
+                window.open(url, '_blank', 'noopener');
+            }
+        }
+    });
+
     // PDF 선택
     document.getElementById('btn-pick-pdf').addEventListener('click', () => {
         document.getElementById('f-pdf').click();
