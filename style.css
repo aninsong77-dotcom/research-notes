@@ -384,6 +384,7 @@ body {
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    position: relative;   /* auth-pending-overlay 위치 기준점 */
     background: var(--surface);
     border-radius: 16px;
     box-shadow: var(--shadow);
@@ -2915,4 +2916,44 @@ body {
     text-align: center;
 }
 .home-model-title { font-size: 17px; font-weight: 700; color: var(--text-primary); }
+
+/* ── 로그인 게이트 ───────────────────────────────────────── */
+.auth-pending-overlay {
+    position: absolute;
+    inset: 0;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    z-index: 200;
+}
+.auth-pending-spinner {
+    width: 28px; height: 28px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: auth-spin 0.8s linear infinite;
+}
+@keyframes auth-spin { to { transform: rotate(360deg); } }
+.auth-pending-text { font-size: 13px; color: var(--text-muted); }
+
+.auth-locked-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    min-height: 60vh;
+    text-align: center;
+    padding: 40px 20px;
+}
+.auth-locked-icon {
+    font-size: 48px;
+    line-height: 1;
+    color: var(--text-muted);
+}
+.auth-locked-screen h2 { font-size: 20px; font-weight: 700; color: var(--text-primary); margin: 0; }
+.auth-locked-screen p  { font-size: 14px; color: var(--text-secondary); margin: 0; }
 .home-model-sub   { font-size: 13px; color: var(--text-secondary); }

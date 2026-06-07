@@ -143,6 +143,11 @@
 
     <!-- 메인 영역 -->
     <main class="main">
+        <!-- Firebase 인증 확인 전까지 내용 가림 — auth.js에서 제거 -->
+        <div id="auth-pending-overlay" class="auth-pending-overlay">
+            <div class="auth-pending-spinner"></div>
+            <span class="auth-pending-text">확인 중…</span>
+        </div>
         <div class="topbar">
             <div class="search-container">
                 <span class="search-icon">
@@ -492,8 +497,8 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
 
-    <script src="mindmap.js"></script>
-    <script src="app.js"></script>
-    <script src="auth.js"></script>
+    <script src="mindmap.js?v=20260607c"></script>
+    <script src="app.js?v=20260607c"></script>
+    <script src="auth.js?v=20260607c"></script>
 </body>
 </html>

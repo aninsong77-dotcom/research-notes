@@ -302,9 +302,13 @@ async function loadData() {
     const allNotes = await dbGetAll(STORE_NOTES);
     state.notes = allNotes.filter(n => n.projectId === state.currentProjectId);
     state.proposal = await loadProposal(state.currentProjectId);
-    document.getElementById('papers-count').textContent = state.papers.length;
-    document.getElementById('materials-count').textContent = state.materials.length;
-    document.getElementById('notes-count').textContent = state.notes.length;
+    // 개수 갱신 + 잠금화면에서 숨겼던 뱃지 다시 표시
+    [['papers-count', state.papers.length],
+     ['materials-count', state.materials.length],
+     ['notes-count', state.notes.length]].forEach(([id, n]) => {
+        const el = document.getElementById(id);
+        if (el) { el.textContent = n; el.style.display = ''; }
+    });
 }
 
 // ── 미니 프로포절 데이터층 (모형스케치북) ───────────────────
@@ -482,6 +486,13 @@ function renderProjectSelector() {
 
 // ── 렌더링 진입점 ──────────────────────────────────────────
 function renderContent() {
+    // 로그인 게이트 — Firebase 인증이 켜져 있는데 로그아웃 상태면
+    // 어떤 경로로 들어오든(시작·버튼클릭·동기화) 내용 대신 잠금화면을 그리고 끝낸다.
+    // (인터넷 없어 Firebase가 아예 안 뜬 오프라인 모드에서는 잠그지 않고 로컬 데이터 표시)
+    if (typeof fbAuth !== 'undefined' && fbAuth && !currentUser) {
+        if (typeof renderLockedScreen === 'function') { renderLockedScreen(); return; }
+    }
+
     const q = state.searchQuery.trim().toLowerCase();
     const container = document.getElementById('content');
 

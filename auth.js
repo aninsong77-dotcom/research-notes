@@ -27,6 +27,9 @@ function initAuth() {
     const box = document.getElementById('auth-box');
     if (typeof firebase === 'undefined' || !firebase.initializeApp) {
         if (box) box.innerHTML = `<div class="auth-offline">${icon('cloud-off', 14)} 오프라인 — 로그인은 웹에서만</div>`;
+        // Firebase 없으면 인증 불필요 → 오버레이 바로 제거
+        const ov = document.getElementById('auth-pending-overlay');
+        if (ov) ov.remove();
         return;
     }
     try {
@@ -38,8 +41,23 @@ function initAuth() {
         fbAuth.onAuthStateChanged(user => {
             const wasLoggedIn = !!currentUser;
             currentUser = user;
+
+            // 인증 상태 확정 → 로딩 오버레이 제거
+            const ov = document.getElementById('auth-pending-overlay');
+            if (ov) ov.remove();
+
             renderAuthBox();
-            if (user && !wasLoggedIn) fullSync();   // 새로 로그인할 때만 전체 동기화
+            if (user && !wasLoggedIn) {
+                fullSync();   // 새로 로그인할 때만 전체 동기화
+            } else if (!user) {
+                // 로그아웃(또는 미로그인) → 로컬 데이터 삭제 후 잠금 화면
+                // 데이터는 Firestore에 있으므로 다음 로그인 시 복원됨
+                if (wasLoggedIn) {
+                    clearLocalData().then(renderLockedScreen);
+                } else {
+                    renderLockedScreen();
+                }
+            }
         });
 
         patchDbFunctions();   // dbPut/dbDelete 후킹
@@ -47,6 +65,53 @@ function initAuth() {
         authLog('error', 'Firebase 초기화 실패: ' + (e.message || e));
         if (box) box.innerHTML = `<div class="auth-offline">로그인 사용 불가</div>`;
     }
+}
+
+// ── 로그아웃 시 로컬 데이터 삭제 ───────────────────────────────────
+async function clearLocalData() {
+    if (typeof db === 'undefined' || !db) return;
+    for (const store of SYNC_STORES) {
+        try {
+            await new Promise((res, rej) => {
+                const req = db.transaction(store, 'readwrite').objectStore(store).clear();
+                req.onsuccess = res;
+                req.onerror = () => rej(req.error);
+            });
+        } catch (e) {
+            authLog('warn', `로컬 삭제 실패 (${store}): ${e.message}`);
+        }
+    }
+    // 메모리 상태도 초기화 (app.js state 공유)
+    if (typeof state !== 'undefined') {
+        state.papers = [];
+        state.materials = [];
+    }
+    authLog('info', '로그아웃 — 로컬 데이터 삭제 완료');
+}
+
+// ── 로그인 잠금 화면 ────────────────────────────────────────────
+function renderLockedScreen() {
+    // 사이드바 개수 뱃지(논문·자료·아이디어)도 숨김 — 잠금 상태에서 "몇 개 있는지"까지 가린다.
+    // 로그인해서 내용을 보일 때 loadData()가 다시 보이게 함.
+    ['papers-count', 'materials-count', 'notes-count'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+
+    const container = document.getElementById('content');
+    if (!container) return;
+    container.innerHTML = `
+        <div class="auth-locked-screen">
+            <div class="auth-locked-icon">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </div>
+            <h2>로그인하면 연구 기록을 볼 수 있어요</h2>
+            <p>내 논문, 자료, 메모는 로그인 후에 표시됩니다.</p>
+            <button type="button" class="btn-primary" style="margin-top:6px" onclick="openAuthModal()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+                로그인하고 동기화
+            </button>
+        </div>`;
 }
 
 // ── 사이드바 하단 UI ────────────────────────────────────────────────────
@@ -334,16 +399,18 @@ async function fullSync() {
 
     _syncBusy = false;
     authLog('info', `동기화 완료: ↑${uploadCount} ↓${downloadCount}`);
+
+    // 동기화 도중 로그아웃됐으면 화면 갱신 없이 종료 (잠금화면 유지)
+    if (!currentUser) return;
+
     renderAuthBox();
 
-    // 받아온 항목 있으면 화면 갱신
-    if (downloadCount > 0) {
-        if (typeof loadData === 'function') await loadData();
-        if (typeof renderContent === 'function') renderContent();
-        showToast(`동기화 완료! (받아온 항목 ${downloadCount}개)`, 'success');
-    } else {
-        showToast('클라우드에 저장 완료!', 'success');
-    }
+    // 로그인 직후엔 잠금화면이 떠 있을 수 있으므로 항상 내용으로 새로 그린다.
+    if (typeof loadData === 'function') await loadData();
+    if (!currentUser) return;   // loadData 기다리는 사이에 로그아웃된 경우
+    if (typeof renderContent === 'function') renderContent();
+
+    showToast(downloadCount > 0 ? `동기화 완료! (받아온 항목 ${downloadCount}개)` : '클라우드에 저장 완료!', 'success');
 }
 
 // ════════════════════════════════════════════════════════════════════════
