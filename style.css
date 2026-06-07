@@ -250,7 +250,7 @@ body {
     flex: 1;
     min-height: 0;          /* 내용 많으면 줄어들 수 있게 */
     overflow-y: auto;       /* 메뉴가 넘치면 여기서 스크롤 → footer는 항상 보임 */
-    padding: 8px;
+    padding: 4px 8px;
     display: flex;
     flex-direction: column;
     gap: 1px;
@@ -260,7 +260,7 @@ body {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 6px 12px;
+    padding: 4px 12px;
     border-radius: 24px;
     border: none;
     background: none;
