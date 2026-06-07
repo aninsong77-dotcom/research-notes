@@ -85,6 +85,8 @@ async function clearLocalData() {
     if (typeof state !== 'undefined') {
         state.papers = [];
         state.materials = [];
+        state.notes = [];
+        state.projects = [];
     }
     authLog('info', '로그아웃 — 로컬 데이터 삭제 완료');
 }
@@ -97,6 +99,10 @@ function renderLockedScreen() {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
     });
+    // "내 연구노트" 밑 프로젝트 선택기도 숨김 — 로그아웃인데 프로젝트가 보이면 로그인된 것처럼 보임.
+    // 로그인 시 renderProjectSelector()가 다시 표시함.
+    const psel = document.getElementById('project-selector');
+    if (psel) psel.style.display = 'none';
 
     const container = document.getElementById('content');
     if (!container) return;
@@ -406,6 +412,13 @@ async function fullSync() {
     renderAuthBox();
 
     // 로그인 직후엔 잠금화면이 떠 있을 수 있으므로 항상 내용으로 새로 그린다.
+    // 프로젝트 목록도 (다른 기기에서 받아온 것 포함) 다시 읽어 선택기 갱신·표시.
+    try {
+        if (typeof dbGetAll === 'function' && typeof STORE_PROJECTS !== 'undefined') {
+            state.projects = await dbGetAll(STORE_PROJECTS);
+        }
+    } catch (e) { authLog('warn', '프로젝트 목록 갱신 실패: ' + e.message); }
+    if (typeof renderProjectSelector === 'function') renderProjectSelector();
     if (typeof loadData === 'function') await loadData();
     if (!currentUser) return;   // loadData 기다리는 사이에 로그아웃된 경우
     if (typeof renderContent === 'function') renderContent();

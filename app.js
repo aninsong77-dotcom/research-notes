@@ -416,6 +416,7 @@ async function deleteProject(id) {
 // ── 프로젝트 선택기 렌더링 ─────────────────────────────────
 function renderProjectSelector() {
     const container = document.getElementById('project-selector');
+    container.style.display = '';   // 잠금화면에서 숨겼다면 다시 표시
     const current = state.projects.find(p => p.id === state.currentProjectId);
 
     container.innerHTML = `
@@ -2815,6 +2816,13 @@ async function openDataInfo() {
                 <li><b>백업 파일</b>(눈에 보이는 내 파일): ${folderText}
                     <div class="di-sub">탐색기에서 보이는 <code>연구노트_최신백업.json</code> 파일이에요. 구글드라이브/원드라이브 폴더로 정하면 클라우드에도 보관돼요.</div>
                 </li>
+                <li><b>클라우드(로그인 시)</b>: ${(typeof currentUser !== 'undefined' && currentUser)
+                        ? `<span class="di-ok">${escHtml(currentUser.email || '로그인됨')} 로 동기화 중 ✅</span>`
+                        : '<span class="di-warn">로그아웃 상태 — 동기화 꺼짐</span>'}
+                    <div class="di-sub">로그인하면 논문·자료·메모·모형의 <b>글자 정보가 클라우드(서버)에 자동 저장</b>돼, 다른 컴퓨터에서 로그인해도 똑같이 보여요.
+                    <b>로그아웃하면 이 컴퓨터에선 지워지지만 클라우드엔 남아</b> 다시 로그인하면 복원돼요.
+                    단, <b>PDF 원본 파일은 클라우드에 안 올라가요</b>(용량 때문) — PDF는 구글드라이브 공유 링크를 넣어 쓰세요.</div>
+                </li>
             </ul>
         </div>
         <div class="di-section di-danger">
@@ -2913,7 +2921,9 @@ const GUIDE_TOPICS = [
     { q: '참고문헌은요?',
       a: '「참고문헌」은 등록한 논문들의 APA 참고문헌을 한 목록으로 보여줘요.\n복사해서 논문 끝에 붙일 수 있어요.' },
     { q: '백업은 어떻게 해요?',
-      a: '자료는 이 브라우저에 저장돼요(IndexedDB). 왼쪽 아래에서:\n• 「백업」 = 파일로 자동 저장\n• 「보냄」 = 내보내기\n• 「받음」 = 가져오기\n다른 컴퓨터로 옮길 땐 보냄 → 받음 하세요.' },
+      a: '자료는 이 브라우저에 저장돼요(IndexedDB). 왼쪽 아래에서:\n• 「백업」 = 파일로 자동 저장\n• 「보냄」 = 내보내기\n• 「받음」 = 가져오기\n다른 컴퓨터로 옮길 땐 보냄 → 받음 하세요.\n로그인해 두면 클라우드로 자동 동기화돼서 옮기는 수고도 줄어요(아래 "로그인하면 뭐가 좋아요?" 참고).' },
+    { q: '로그인하면 뭐가 좋아요? (클라우드 동기화)',
+      a: '왼쪽 맨 아래 「로그인하고 동기화」로 가입·로그인하면:\n• 논문·자료·메모·모형의 글자 정보가 클라우드(서버)에 자동 저장돼요.\n• 다른 컴퓨터에서 같은 계정으로 로그인하면 똑같이 보여요(자동 동기화).\n• 한쪽에서 지우면 다른 기기에서도 지워져요.\n로그아웃하면 이 컴퓨터 화면에선 잠기고 내용이 안 보이지만, 클라우드엔 안전하게 남아 다시 로그인하면 복원돼요.\n※ PDF 원본 파일은 용량 때문에 클라우드에 안 올라가요 — PDF는 「PDF 링크」 칸에 구글드라이브 공유 링크를 넣으면 어디서나 열 수 있어요.' },
     { q: '빠른 인용이 뭐예요?',
       a: '위쪽 「빠른 인용」 버튼을 누르면 작은 창이 떠요.\n논문 목록에서 「빠른 인용」으로 표시해 둔 논문들의 인용을 빠르게 복사할 수 있어요.' },
 ];
