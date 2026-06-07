@@ -1585,6 +1585,7 @@ function renderViewExtras(paper) {
         <div class="ve-meta">${[paper.authors, paper.year, paper.source].filter(Boolean).map(escHtml).join(' · ') || '<span class="muted">서지정보 없음</span>'}</div>
         <div class="ve-actions">
             ${paper.pdfData ? `<button type="button" class="btn-pdf" id="ve-pdf">${icon('paperclip')} PDF 열기</button>` : ''}
+            ${paper.pdfLink ? `<a class="btn-secondary ve-pdflink" href="${escHtml(paper.pdfLink)}" target="_blank" rel="noopener">${icon('link', 14)} 드라이브에서 열기</a>` : ''}
             <button type="button" class="btn-cite" id="ve-cite">${icon('copy')} ${escHtml(inText || '본문 인용')} 복사</button>
             <button type="button" class="btn-apa-copy" id="ve-apa">${icon('clipboard')} APA 복사</button>
         </div>
@@ -2216,7 +2217,7 @@ function openForm(editId = null, mode = null) {
     formTags = [];
 
     const ids = ['f-title','f-authors','f-year','f-source','f-volume','f-issue',
-                 'f-pages','f-doi','f-abstract','f-methods','f-findings','f-note',
+                 'f-pages','f-doi','f-pdflink','f-abstract','f-methods','f-findings','f-note',
                  'doi-input','riss-input'];
     ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     document.getElementById('pdf-filename').textContent = '선택된 파일 없음';
@@ -2226,7 +2227,7 @@ function openForm(editId = null, mode = null) {
         const set = (id, val) => { if (val) document.getElementById(id).value = val; };
         set('f-title', paper.title); set('f-authors', paper.authors); set('f-year', paper.year);
         set('f-source', paper.source); set('f-volume', paper.volume); set('f-issue', paper.issue);
-        set('f-pages', paper.pages); set('f-doi', paper.doi); set('f-abstract', paper.abstract);
+        set('f-pages', paper.pages); set('f-doi', paper.doi); set('f-pdflink', paper.pdfLink); set('f-abstract', paper.abstract);
         set('f-methods', paper.methods); set('f-findings', paper.findings); set('f-note', paper.myNote);
         formVariables = [...(paper.variables || [])];
         formTags = [...(paper.tags || [])];
@@ -2449,6 +2450,7 @@ async function savePaper(e) {
         issue: val('f-issue'),
         pages: val('f-pages'),
         doi: val('f-doi'),
+        pdfLink: val('f-pdflink') || null,
         abstract: val('f-abstract'),
         methods: val('f-methods'),
         findings: val('f-findings'),

@@ -1100,9 +1100,6 @@ body {
     padding-right: 60px;
 }
 .btn-apa-copy {
-    position: absolute;
-    top: 12px;
-    right: 12px;
     padding: 5px 10px;
     background: var(--accent);
     color: white;
@@ -2146,6 +2143,7 @@ body {
 .ve-meta .muted { color: var(--text-muted); }
 .ve-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
 .ve-actions button { font-size: 13px; }
+.ve-pdflink { font-size: 13px; display: inline-flex; align-items: center; gap: 5px; text-decoration: none; }
 .ve-apa {
     background: var(--bg);
     border: 1px solid var(--border);
