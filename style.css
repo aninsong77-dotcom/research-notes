@@ -72,7 +72,7 @@ body {
 .sidebar.collapsed .nav-item { justify-content: center; padding-left: 0; padding-right: 0; }
 
 .sidebar-header {
-    padding: 20px 16px 16px;
+    padding: 12px 16px 12px;
     border-bottom: 1px solid var(--border);
 }
 
@@ -88,7 +88,7 @@ body {
 .logo:hover { background: var(--accent-light); }
 
 /* 헤더 상단 줄: 햄버거(≡) + 도움말 챗봇 버튼 나란히 */
-.sidebar-top-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.sidebar-top-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .sidebar-top-row .sidebar-toggle { margin-bottom: 0; }
 
 /* 도움말 챗봇 버튼 — 햄버거 옆 남는 폭을 채우는 직사각형(≈ 로고 길이), 살짝 움직임 */
@@ -260,7 +260,7 @@ body {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 7px 12px;
+    padding: 6px 12px;
     border-radius: 24px;
     border: none;
     background: none;
