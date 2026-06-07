@@ -1546,11 +1546,23 @@ async function deleteMaterial(id) {
     showToast('자료가 삭제되었습니다', 'success');
 }
 
-function openMaterialFile(m) {
-    if (!m.fileData) return;
+async function openMaterialFile(m) {
+    // 로컬에 파일 없으면 클라우드에서 lazy 다운로드
+    if (!m.fileData) {
+        if (typeof cloudGetFile === 'function' && currentUser) {
+            showToast('파일 다운로드 중…', 'info');
+            const data = await cloudGetFile(m.id, m.fileName);
+            if (data) {
+                m = { ...m, fileData: data };
+                await dbPut(STORE_MATERIALS, m);
+                const idx = state.materials.findIndex(x => x.id === m.id);
+                if (idx >= 0) state.materials[idx] = m;
+            }
+        }
+        if (!m.fileData) return;
+    }
     const blob = new Blob([m.fileData]);
     const url = URL.createObjectURL(blob);
-    // 새 탭으로 열되, 다운로드 가능하도록 파일명 지정
     const a = document.createElement('a');
     a.href = url;
     a.target = '_blank';
@@ -1671,8 +1683,21 @@ function findRelatedPapers(paper) {
 }
 
 // ── PDF 열기 ───────────────────────────────────────────────
-function openPdf(paper) {
-    if (!paper.pdfData) return;
+async function openPdf(paper) {
+    // 로컬에 PDF 없으면 클라우드에서 lazy 다운로드
+    if (!paper.pdfData) {
+        if (typeof cloudGetPdf === 'function' && currentUser) {
+            showToast('PDF 다운로드 중…', 'info');
+            const data = await cloudGetPdf(paper.id, paper.pdfFilename);
+            if (data) {
+                paper = { ...paper, pdfData: data };
+                await dbPut(STORE_PAPERS, paper);
+                const idx = state.papers.findIndex(p => p.id === paper.id);
+                if (idx >= 0) state.papers[idx] = paper;
+            }
+        }
+        if (!paper.pdfData) return;
+    }
     const blob = new Blob([paper.pdfData], { type: 'application/pdf' });
     const url = URL.createObjectURL(blob);
     window.open(url, '_blank');
