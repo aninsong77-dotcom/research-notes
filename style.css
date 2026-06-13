@@ -735,6 +735,74 @@ body {
 .paper-row-wrap.drag-over-top    { box-shadow: inset 0 3px 0 0 var(--accent); }
 .paper-row-wrap.drag-over-bottom { box-shadow: inset 0 -3px 0 0 var(--accent); }
 
+/* ── 논문 선택 삭제 모드 ──────────────────────────────────── */
+.btn-paper-select {
+    font-size: 12px; padding: 4px 10px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--bg-card);
+    color: var(--text-sub); cursor: pointer; margin-left: 8px;
+}
+.btn-paper-select:hover { border-color: var(--accent); color: var(--accent); }
+.btn-paper-select.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.paper-select-bar {
+    display: flex; gap: 8px; align-items: center;
+    padding: 8px 12px; margin-bottom: 8px;
+    background: var(--bg-card); border-radius: 8px;
+    border: 1px solid var(--border);
+}
+.paper-select-bar button {
+    font-size: 13px; padding: 5px 12px; border-radius: 6px;
+    border: 1px solid var(--border); cursor: pointer; background: var(--bg);
+    color: var(--text-sub);
+}
+.paper-select-bar button:hover { border-color: var(--accent); color: var(--accent); }
+.btn-sel-del {
+    background: #e53935 !important; color: #fff !important;
+    border-color: #e53935 !important;
+}
+.btn-sel-del:hover { background: #c62828 !important; border-color: #c62828 !important; }
+.btn-sel-cancel { margin-left: auto !important; }
+.pr-checkbox { width: 16px; height: 16px; cursor: pointer; margin-right: 4px; flex-shrink: 0; }
+.paper-row-wrap.pr-selected { background: color-mix(in srgb, var(--accent) 8%, var(--bg-card)); }
+
+/* 읽기 상태 배경 */
+.paper-row-wrap.pr-status-reading { background: color-mix(in srgb, #1976d2 6%, var(--surface)); border-color: #90caf9; }
+.paper-row-wrap.pr-status-read    { background: color-mix(in srgb, #388e3c 6%, var(--surface)); border-color: #a5d6a7; }
+
+/* 읽기 상태 배지 */
+.pr-status-badge {
+    font-size: 10px; font-weight: 600; padding: 2px 7px;
+    border-radius: 10px; color: #fff; white-space: nowrap;
+    flex-shrink: 0; letter-spacing: 0.2px;
+    cursor: pointer; user-select: none;
+}
+.pr-status-badge:hover { opacity: 0.8; transform: scale(1.05); }
+
+/* 변인 태그 (논문 행) */
+.pr-var-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-left: 6px; }
+.pr-var-tag {
+    font-size: 10px; padding: 1px 6px; border-radius: 10px;
+    background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+    color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+    white-space: nowrap;
+}
+
+/* 읽기 상태 바 (모달 헤더 아래 고정) */
+.read-status-bar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 24px; background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+}
+.read-status-label { font-size: 13px; color: var(--text-sub); white-space: nowrap; }
+.read-status-btns { display: flex; gap: 6px; align-items: center; }
+.rs-btn {
+    padding: 4px 12px; border-radius: 20px; font-size: 12px; cursor: pointer;
+    border: 2px solid var(--rs-color, #9e9e9e);
+    background: transparent; color: var(--rs-color, #9e9e9e);
+    transition: all .15s; white-space: nowrap;
+}
+.rs-btn.active { background: var(--rs-color, #9e9e9e); color: #fff; }
+.rs-btn:hover { opacity: 0.8; }
+
 /* ── 펼친 상세 (읽기 전용 요약) ───────────────────────────── */
 .paper-row-detail {
     border-top: 1px solid var(--border);
@@ -1961,6 +2029,18 @@ body {
 .analysis-block > summary small { font-weight: 400; color: var(--text-muted); margin-left: 6px; }
 .analysis-block > summary:hover { color: var(--accent); }
 .analysis-block[open] > summary { border-bottom: 1px solid var(--border); }
+/* ── 원문 텍스트 + 이미지 첨부 ────────────────────────────── */
+.fulltext-content { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.ft-img-item {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 8px; background: var(--bg); border-radius: 8px;
+    border: 1px solid var(--border);
+}
+.ft-img-thumb { width: 80px; height: 80px; object-fit: contain; border-radius: 4px; flex-shrink: 0; background: #f5f5f5; }
+.ft-img-desc { flex: 1; font-size: 13px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); }
+.ft-img-del { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 16px; padding: 4px; flex-shrink: 0; }
+.ft-img-del:hover { color: #e53935; }
+
 .analysis-content { padding: 16px; }
 .analysis-group-label {
     font-size: 12px;
@@ -2542,6 +2622,14 @@ body {
 .dmp-k { font-size: 11px; font-weight: 700; color: var(--text-muted); }
 .dmp-v { font-size: 13px; line-height: 1.55; color: var(--text-primary); white-space: pre-wrap; }
 .dmp-v.muted { color: var(--text-muted); font-style: italic; }
+.dmp-edit {
+    font-size: 13px; line-height: 1.55; color: var(--text-primary);
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 8px; resize: vertical;
+    width: 100%; box-sizing: border-box; font-family: inherit;
+}
+.dmp-edit:focus { outline: none; border-color: var(--accent); }
+.dmp-edit::placeholder { color: var(--text-muted); font-style: italic; }
 .dmp-hyps { display: flex; flex-direction: column; gap: 4px; }
 .dmp-hyp { font-size: 13px; color: var(--text-secondary); }
 .dmp-hyp b { color: #b03a3a; }

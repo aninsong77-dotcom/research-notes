@@ -616,27 +616,43 @@ function renderPapers(container) {
 
     // 묶음 없는 평면 목록일 때만 끌어다 놓기 가능
     const flat = state.groupBy === 'none';
-    const body = flat
-        ? `<div class="paper-list">${paperRowsHTML(sortPapers(state.papers), true)}</div>`
-        : groupedPapersHTML();
+    const selectMode = !!state.paperSelectMode;
+    const selectedIds = state.paperSelectedIds || new Set();
 
-    const dragHint = flat
+    const body = flat
+        ? `<div class="paper-list">${paperRowsHTML(sortPapers(state.papers), !selectMode, selectMode, selectedIds)}</div>`
+        : groupedPapersHTML(selectMode, selectedIds);
+
+    const dragHint = (flat && !selectMode)
         ? `<span class="og-summary">⠿ 손잡이를 끌어 순서를 바꿀 수 있어요</span>` : '';
+
+    const selectBar = selectMode ? `
+        <div class="paper-select-bar">
+            <button class="btn-sel-all" id="btn-sel-all">전체 선택</button>
+            <button class="btn-sel-none" id="btn-sel-none">전체 해제</button>
+            <button class="btn-sel-del" id="btn-sel-del">선택 삭제 (${selectedIds.size}편)</button>
+            <button class="btn-sel-cancel" id="btn-sel-cancel">취소</button>
+        </div>` : '';
 
     container.innerHTML = `
         <div class="paper-header pc-row-inline">
             <span class="section-title">논문 ${state.papers.length}편</span>
             ${controls}
+            <button class="btn-paper-select ${selectMode ? 'active' : ''}" id="btn-paper-select-mode">
+                ${selectMode ? '선택 중…' : '선택 삭제'}
+            </button>
             ${dragHint}
         </div>
+        ${selectBar}
         ${body}`;
 
     bindPaperControls(container);
-    bindRows(container, flat);
+    if (!selectMode) bindRows(container, flat);
+    bindPaperSelectMode(container);
 }
 
 // 묶기 기준이 선택됐을 때: 기준값별 접이식 그룹
-function groupedPapersHTML() {
+function groupedPapersHTML(selectMode = false, selectedIds = new Set()) {
     const [dimKey, dimLabel, dimCls] =
         ORGANIZE_DIMS.find(d => d[0] === state.groupBy) || ORGANIZE_DIMS[0];
 
@@ -664,7 +680,7 @@ function groupedPapersHTML() {
                 <span class="og-group-name ${dimCls}">${escHtml(g.label)}</span>
                 <span class="og-group-count">${g.papers.length}편</span>
             </summary>
-            <div class="paper-list">${paperRowsHTML(sortPapers(g.papers))}</div>
+            <div class="paper-list">${paperRowsHTML(sortPapers(g.papers), false, selectMode, selectedIds)}</div>
         </details>`).join('');
 
     const noValueHTML = noValue.length ? `
@@ -673,31 +689,50 @@ function groupedPapersHTML() {
                 <span class="og-group-name">${escHtml(dimLabel)} 미입력</span>
                 <span class="og-group-count">${noValue.length}편</span>
             </summary>
-            <div class="paper-list">${paperRowsHTML(sortPapers(noValue))}</div>
+            <div class="paper-list">${paperRowsHTML(sortPapers(noValue), false, selectMode, selectedIds)}</div>
         </details>` : '';
 
     return (groupHTML || `<p class="og-empty-dim">아직 ${escHtml(dimLabel)} 정보가 입력된 논문이 없습니다.</p>`) + noValueHTML;
 }
 
 // 한 줄 행 목록 (draggable=true면 끌어다 놓기 손잡이 표시)
-function paperRowsHTML(arr, draggable = false) {
-    return arr.map(p => paperRowHTML(p, draggable)).join('');
+function paperRowsHTML(arr, draggable = false, selectMode = false, selectedIds = new Set()) {
+    return arr.map(p => paperRowHTML(p, draggable, selectMode, selectedIds)).join('');
 }
 
-function paperRowHTML(paper, draggable = false) {
+// 읽기 상태 설정
+const READ_STATUS = [
+    { key: 'unread',  label: '안읽음', color: '#9e9e9e' },
+    { key: 'reading', label: '읽는중', color: '#1976d2' },
+    { key: 'read',    label: '읽음',   color: '#388e3c' },
+];
+function readStatusInfo(paper) {
+    return READ_STATUS.find(s => s.key === (paper.readStatus || 'unread')) || READ_STATUS[0];
+}
+
+function paperRowHTML(paper, draggable = false, selectMode = false, selectedIds = new Set()) {
     const open = state.expandedId === paper.id;
     const meta = [paper.year, firstAuthor(paper)].filter(Boolean).map(escHtml).join(' · ');
+    const checked = selectedIds.has(paper.id);
+    const rs = readStatusInfo(paper);
+    const varTags = (paper.variables || []).filter(Boolean).slice(0, 4)
+        .map(v => `<span class="pr-var-tag">${escHtml(v)}</span>`).join('');
+    const statusBadge = `<span class="pr-status-badge" style="background:${rs.color}" title="${rs.label}">${rs.label}</span>`;
     return `
-        <div class="paper-row-wrap ${open ? 'open' : ''}" data-id="${paper.id}">
+        <div class="paper-row-wrap ${open ? 'open' : ''} ${selectMode && checked ? 'pr-selected' : ''} pr-status-${rs.key}" data-id="${paper.id}">
             <div class="paper-row" data-id="${paper.id}" ${draggable ? 'draggable="true"' : ''}>
-                ${draggable ? '<span class="pr-grip" title="끌어서 순서 바꾸기">⠿</span>' : ''}
-                <span class="pr-caret">▸</span>
+                ${selectMode
+                    ? `<input type="checkbox" class="pr-checkbox" data-id="${paper.id}" ${checked ? 'checked' : ''}>`
+                    : (draggable ? '<span class="pr-grip" title="끌어서 순서 바꾸기">⠿</span>' : '')}
+                ${statusBadge}
+                <span class="pr-caret" ${selectMode ? 'style="display:none"' : ''}>▸</span>
                 <span class="pr-title">${escHtml(paper.title || '제목 없음')}</span>
                 <span class="pr-meta">${meta}</span>
+                ${varTags ? `<span class="pr-var-tags">${varTags}</span>` : ''}
                 ${paper.pdfData ? `<span class="pr-icon" title="PDF 있음">${icon('paperclip', 14)}</span>` : ''}
                 ${paper.inQuickCite ? `<span class="pr-icon" title="빠른 인용">${icon('zap', 14)}</span>` : ''}
             </div>
-            ${open ? paperRowDetailHTML(paper) : ''}
+            ${(!selectMode && open) ? paperRowDetailHTML(paper) : ''}
         </div>`;
 }
 
@@ -827,6 +862,65 @@ function bindPaperControls(container) {
     });
 }
 
+// ── 논문 선택 삭제 모드 ───────────────────────────────────────
+function bindPaperSelectMode(container) {
+    const toggleBtn = container.querySelector('#btn-paper-select-mode');
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', () => {
+            state.paperSelectMode = !state.paperSelectMode;
+            state.paperSelectedIds = new Set();
+            renderContent();
+        });
+    }
+
+    const cancelBtn = container.querySelector('#btn-sel-cancel');
+    if (cancelBtn) cancelBtn.addEventListener('click', () => {
+        state.paperSelectMode = false;
+        state.paperSelectedIds = new Set();
+        renderContent();
+    });
+
+    const selAllBtn = container.querySelector('#btn-sel-all');
+    if (selAllBtn) selAllBtn.addEventListener('click', () => {
+        state.paperSelectedIds = new Set(state.papers.map(p => p.id));
+        renderContent();
+    });
+
+    const selNoneBtn = container.querySelector('#btn-sel-none');
+    if (selNoneBtn) selNoneBtn.addEventListener('click', () => {
+        state.paperSelectedIds = new Set();
+        renderContent();
+    });
+
+    // 체크박스 클릭
+    container.querySelectorAll('.pr-checkbox').forEach(cb => {
+        cb.addEventListener('change', () => {
+            if (!state.paperSelectedIds) state.paperSelectedIds = new Set();
+            if (cb.checked) state.paperSelectedIds.add(cb.dataset.id);
+            else state.paperSelectedIds.delete(cb.dataset.id);
+            // 삭제 버튼 카운트만 갱신
+            const delBtn = container.querySelector('#btn-sel-del');
+            if (delBtn) delBtn.textContent = `선택 삭제 (${state.paperSelectedIds.size}편)`;
+            // 행 선택 스타일 갱신
+            const wrap = cb.closest('.paper-row-wrap');
+            if (wrap) wrap.classList.toggle('pr-selected', cb.checked);
+        });
+    });
+
+    const delBtn = container.querySelector('#btn-sel-del');
+    if (delBtn) delBtn.addEventListener('click', async () => {
+        const ids = [...(state.paperSelectedIds || [])];
+        if (ids.length === 0) { showToast('선택된 논문이 없어요', 'info'); return; }
+        if (!confirm(`선택한 ${ids.length}편을 삭제할까요?\n이 작업은 되돌릴 수 없어요.`)) return;
+        for (const id of ids) await dbDelete(STORE_PAPERS, id);
+        state.paperSelectMode = false;
+        state.paperSelectedIds = new Set();
+        await loadData();
+        renderContent();
+        showToast(`${ids.length}편이 삭제되었습니다`, 'success');
+    });
+}
+
 // 행 클릭(펼침/접힘) + 펼친 행의 동작 버튼 + (옵션)끌어다 놓기 바인딩
 let dragSrcId = null;        // 끌고 있는 논문 id
 let suppressRowClick = false; // 드래그 직후 클릭(펼침) 막기
@@ -862,6 +956,21 @@ function bindRows(container, enableDrag = false) {
             await dbPut(STORE_PAPERS, p);
             renderContent();
         }));
+
+    // 읽기 상태 배지 클릭 → 순환 변경 (안읽음→읽는중→읽음→안읽음)
+    container.querySelectorAll('.pr-status-badge').forEach(badge => {
+        badge.addEventListener('click', async e => {
+            e.stopPropagation();
+            const wrap = badge.closest('.paper-row-wrap');
+            const p = state.papers.find(x => x.id === wrap?.dataset.id);
+            if (!p) return;
+            const order = ['unread', 'reading', 'read'];
+            const cur = order.indexOf(p.readStatus || 'unread');
+            p.readStatus = order[(cur + 1) % order.length];
+            await dbPut(STORE_PAPERS, p);
+            renderContent();
+        });
+    });
 }
 
 // 끌어다 놓기(순서 바꾸기) — 평면 목록에서만
@@ -1778,7 +1887,7 @@ function deskRenderEmpty() {
     overlay.querySelector('#desk-left').innerHTML = `
         <div class="desk-empty">
             ${icon('book-open', 46)}
-            <h3>연구 책상</h3>
+            <h3>내 연구책상</h3>
             <p>논문을 펼쳐 읽으며 중요한 문장을 발췌하고,<br>오른쪽에서 발표자료를 정리하는 공간이에요.</p>
             <button type="button" class="btn-primary" id="desk-empty-pick">＋ 논문 펼치기</button>
         </div>`;
@@ -1883,8 +1992,20 @@ function deskOpenPicker() {
     setTimeout(() => document.addEventListener('mousedown', off), 0);
 }
 
+// 구글 드라이브 공유 링크 → iframe에 띄울 수 있는 미리보기(preview) URL로 변환
+// 예: .../file/d/FILEID/view?usp=sharing  또는  ...?id=FILEID  →  .../file/d/FILEID/preview
+function drivePreviewUrl(link) {
+    if (!link) return null;
+    const m = link.match(/\/file\/d\/([^/?#]+)/) || link.match(/[?&]id=([^&]+)/);
+    if (m) return `https://drive.google.com/file/d/${m[1]}/preview`;
+    return null;
+}
+
 function deskLeftHTML(paper, pdfUrl) {
     if (pdfUrl) return `<iframe class="desk-pdf" src="${pdfUrl}" title="PDF"></iframe>`;
+    // 로컬 PDF가 없으면 구글 드라이브 링크를 미리보기로 띄움
+    const preview = drivePreviewUrl(paper.pdfLink);
+    if (preview) return `<iframe class="desk-pdf" src="${preview}" title="PDF" allow="autoplay"></iframe>`;
     // PDF 없음 → 가진 본문 정보로 대체
     const meta = [paper.year, paper.authors, paper.source].filter(Boolean).map(escHtml).join(' · ');
     const blocks = [];
@@ -2021,8 +2142,11 @@ function deskRightHTML(paper) {
 function deskModelPreviewHTML() {
     const p = state.proposal || {};
     const field = (key, label) => {
-        const v = (p[key] || '').trim();
-        return `<div class="dmp-field"><div class="dmp-k">${label}</div><div class="dmp-v ${v ? '' : 'muted'}">${v ? escHtml(v) : '(비어 있음 — 발췌를 보내보세요)'}</div></div>`;
+        const v = (p[key] || '');
+        return `<div class="dmp-field">
+            <div class="dmp-k">${label}</div>
+            <textarea class="dmp-edit" data-key="${key}" rows="3" placeholder="(비어 있음 — 발췌를 보내거나 직접 입력)">${escHtml(v)}</textarea>
+        </div>`;
     };
     const hyps = (p.hypotheses || []).filter(h => h && (h.text || '').trim());
     const hypHTML = hyps.length
@@ -2031,7 +2155,7 @@ function deskModelPreviewHTML() {
     const vars = deskCollectVariables();
     const varHTML = `<div class="dmp-field"><div class="dmp-k">변인</div><div class="dmp-vars">${vars.length ? vars.map(v => `<span class="tag tag-variable">${escHtml(v)}</span>`).join('') : '<span class="muted">아직 없음 — 변인 발췌를 보내보세요</span>'}</div></div>`;
     return `
-        <div class="desk-model-head">${icon('bar-chart', 14)} 발표자료 만들기 <span class="muted">· 편집은 모형스케치북에서</span></div>
+        <div class="desk-model-head">${icon('bar-chart', 14)} 발표자료 만들기</div>
         <div class="desk-model-body">
             ${field('needs', '연구 필요성')}
             ${field('purpose', '연구 목적')}
@@ -2071,7 +2195,16 @@ function deskActivateRTab(overlay, tab) {
 
 function deskRenderModel(overlay) {
     const pane = overlay.querySelector('#desk-model-pane');
-    if (pane) pane.innerHTML = deskModelPreviewHTML();
+    if (!pane) return;
+    pane.innerHTML = deskModelPreviewHTML();
+    // textarea 변경 시 proposal에 반영 + 자동 저장
+    pane.querySelectorAll('.dmp-edit').forEach(ta => {
+        ta.addEventListener('input', () => {
+            if (!state.proposal) state.proposal = defaultProposal(state.currentProjectId);
+            state.proposal[ta.dataset.key] = ta.value;
+            scheduleSaveProposal();
+        });
+    });
 }
 
 // 카테고리별로 묶어 한눈에 (EXCERPT_CATS 순서)
@@ -2227,10 +2360,11 @@ function openForm(editId = null, mode = null) {
     state.currentPdfFile = null;
     formVariables = [];
     formTags = [];
+    formAttachedImages = [];
 
     const ids = ['f-title','f-authors','f-year','f-source','f-volume','f-issue',
                  'f-pages','f-doi','f-pdflink','f-abstract','f-methods','f-findings','f-note',
-                 'doi-input','riss-input'];
+                 'doi-input','riss-input','f-fulltext'];
     ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     document.getElementById('pdf-filename').textContent = '선택된 파일 없음';
 
@@ -2241,6 +2375,7 @@ function openForm(editId = null, mode = null) {
         set('f-source', paper.source); set('f-volume', paper.volume); set('f-issue', paper.issue);
         set('f-pages', paper.pages); set('f-doi', paper.doi); set('f-pdflink', paper.pdfLink); set('f-abstract', paper.abstract);
         set('f-methods', paper.methods); set('f-findings', paper.findings); set('f-note', paper.myNote);
+        set('f-fulltext', paper.fullText);
         formVariables = [...(paper.variables || [])];
         formTags = [...(paper.tags || [])];
         if (paper.pdfData) document.getElementById('pdf-filename').textContent = paper.pdfFilename || 'PDF 있음';
@@ -2249,6 +2384,9 @@ function openForm(editId = null, mode = null) {
     renderChips('variables-list', formVariables, 'variable');
     renderChips('tags-list', formTags, 'normal');
     fillAnalysis(paper?.analysis || null);
+    renderReadStatusButtons(paper?.readStatus || 'unread');
+    renderFtImages(paper?.attachedImages || []);
+    bindFtImageUpload();
     applyFormMode(mode, paper);
     document.getElementById('modal-form').style.display = 'flex';
 }
@@ -2281,6 +2419,83 @@ function closeForm() {
     document.getElementById('modal-form').style.display = 'none';
     state.editingId = null;
     state.formMode = 'edit';
+}
+
+// ── 읽기 상태 버튼 렌더링 ──────────────────────────────────
+function renderReadStatusButtons(current) {
+    const container = document.getElementById('read-status-btns');
+    if (!container) return;
+    container.innerHTML = READ_STATUS.map(s => `
+        <button type="button" class="rs-btn ${s.key === current ? 'active' : ''}"
+            data-rs="${s.key}" style="--rs-color:${s.color}">
+            ${s.label}
+        </button>`).join('');
+    container.querySelectorAll('.rs-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            container.querySelectorAll('.rs-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            // 보기 모드에서도 즉시 저장
+            if (state.formMode === 'view' && state.editingId) {
+                const paper = state.papers.find(p => p.id === state.editingId);
+                if (paper) {
+                    paper.readStatus = btn.dataset.rs;
+                    await dbPut(STORE_PAPERS, paper);
+                    renderContent();
+                }
+            }
+        });
+    });
+}
+
+// ── 원문 이미지 첨부 ────────────────────────────────────────
+let formAttachedImages = []; // [{id, data(base64), desc}]
+
+function renderFtImages(images) {
+    formAttachedImages = images ? [...images] : [];
+    const list = document.getElementById('ft-images-list');
+    if (!list) return;
+    list.innerHTML = formAttachedImages.map((img, i) => `
+        <div class="ft-img-item" data-i="${i}">
+            <img class="ft-img-thumb" src="${img.data}" alt="첨부 이미지 ${i + 1}">
+            <input class="ft-img-desc" type="text" placeholder="설명 입력 (예: Figure 2 — 집단 간 비교 그래프)"
+                value="${escHtml(img.desc || '')}" data-i="${i}">
+            <button type="button" class="ft-img-del edit-only" data-i="${i}">✕</button>
+        </div>`).join('');
+    list.querySelectorAll('.ft-img-desc').forEach(inp => {
+        inp.addEventListener('input', () => {
+            if (formAttachedImages[+inp.dataset.i]) formAttachedImages[+inp.dataset.i].desc = inp.value;
+        });
+    });
+    list.querySelectorAll('.ft-img-del').forEach(btn => {
+        btn.addEventListener('click', () => {
+            formAttachedImages.splice(+btn.dataset.i, 1);
+            renderFtImages(formAttachedImages);
+        });
+    });
+}
+
+function bindFtImageUpload() {
+    const btn = document.getElementById('btn-add-ft-image');
+    const input = document.getElementById('ft-image-input');
+    if (!btn || !input) return;
+    // 이전 리스너 제거 후 재등록 (openForm 재호출 시 중복 방지)
+    const newBtn = btn.cloneNode(true);
+    btn.parentNode.replaceChild(newBtn, btn);
+    const newInput = input.cloneNode(true);
+    input.parentNode.replaceChild(newInput, input);
+    newBtn.addEventListener('click', () => newInput.click());
+    newInput.addEventListener('change', async () => {
+        for (const file of newInput.files) {
+            const data = await new Promise(res => {
+                const r = new FileReader();
+                r.onload = e => res(e.target.result);
+                r.readAsDataURL(file);
+            });
+            formAttachedImages.push({ id: genId(), data, desc: '' });
+        }
+        renderFtImages(formAttachedImages);
+        newInput.value = '';
+    });
 }
 
 // ── 태그 칩 렌더링 ─────────────────────────────────────────
@@ -2470,6 +2685,9 @@ async function savePaper(e) {
         variables: [...formVariables],
         tags: [...formTags],
         analysis: collectAnalysis(),
+        readStatus: document.querySelector('.rs-btn.active')?.dataset.rs || existing?.readStatus || 'unread',
+        fullText: (document.getElementById('f-fulltext')?.value || '').trim() || existing?.fullText || '',
+        attachedImages: formAttachedImages.length ? formAttachedImages : (existing?.attachedImages || []),
         pdfData,
         pdfFilename,
         projectId: state.currentProjectId,
@@ -2478,6 +2696,23 @@ async function savePaper(e) {
             : Date.now(),
         updatedAt: Date.now(),
     };
+
+    // ── 중복 논문 체크 ──────────────────────────────────────
+    const doi = val('f-doi');
+    const duplicate = state.papers.find(p => {
+        if (state.editingId && p.id === state.editingId) return false; // 자기 자신 제외
+        if (doi && p.doi && doi.trim() && p.doi.trim() &&
+            doi.trim().toLowerCase() === p.doi.trim().toLowerCase()) return true;
+        const sameTitle = p.title.trim().toLowerCase() === title.toLowerCase();
+        const sameAuthors = (p.authors || '').trim().toLowerCase() === (val('f-authors') || '').trim().toLowerCase();
+        return sameTitle && sameAuthors;
+    });
+    if (duplicate) {
+        const confirm = window.confirm(
+            `⚠️ 이미 저장된 논문과 같아 보여요.\n\n제목: ${duplicate.title}\n저자: ${duplicate.authors || '(없음)'}\n\n그래도 저장할까요?`
+        );
+        if (!confirm) return;
+    }
 
     const wasEditing = !!state.editingId;
     await dbPut(STORE_PAPERS, paper);

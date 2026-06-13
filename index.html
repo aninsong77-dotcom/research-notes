@@ -58,7 +58,7 @@
                 <span class="nav-icon">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><path d="M12 3v18"/></svg>
                 </span>
-                <span>연구책상</span>
+                <span>내 연구책상</span>
             </button>
             <button class="nav-item" data-view="catview">
                 <span class="nav-icon">
@@ -181,6 +181,10 @@
                 <h2 id="modal-form-title">논문 추가</h2>
                 <button class="modal-close" id="close-form">✕</button>
             </div>
+            <div id="read-status-bar" class="read-status-bar">
+                <span class="read-status-label">읽기 상태</span>
+                <div id="read-status-btns" class="read-status-btns"></div>
+            </div>
             <div class="modal-body">
 
                 <!-- 보기 모드 전용: 메타 · 인용 · 관련 논문 -->
@@ -288,6 +292,26 @@
                             <small style="color:var(--text-muted)">여러 기기에서 보려면 구글 드라이브에 올리고 위의 PDF 링크를 사용하세요.</small>
                         </div>
                     </div>
+
+                    <!-- 원문 텍스트 + 이미지 첨부 -->
+                    <details class="analysis-block" id="fulltext-block">
+                        <summary>
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                            원문 텍스트 &amp; 이미지 <small>(논문 본문 붙여넣기 + 그림·표 첨부)</small>
+                        </summary>
+                        <div class="fulltext-content">
+                            <div class="form-group full">
+                                <label>원문 텍스트 <small style="color:var(--text-muted)">— PDF에서 복사해 붙여넣기</small></label>
+                                <textarea id="f-fulltext" rows="10" placeholder="논문 본문을 여기에 붙여넣으세요. 나중에 AI 요약·검색에 활용됩니다."></textarea>
+                            </div>
+                            <div class="form-group full">
+                                <label>이미지 첨부 <small style="color:var(--text-muted)">— 그림·표·수식 캡처본</small></label>
+                                <div id="ft-images-list"></div>
+                                <button type="button" class="btn-secondary edit-only" id="btn-add-ft-image">+ 이미지 추가</button>
+                                <input type="file" id="ft-image-input" accept="image/*" style="display:none">
+                            </div>
+                        </div>
+                    </details>
 
                     <!-- 논문 정밀 분석 (정리표) -->
                     <details class="analysis-block" id="analysis-block">
@@ -497,8 +521,8 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
 
-    <script src="mindmap.js?v=20260607d"></script>
-    <script src="app.js?v=20260607d"></script>
-    <script src="auth.js?v=20260607d"></script>
+    <script src="mindmap.js?v=20260607e"></script>
+    <script src="app.js?v=20260607e"></script>
+    <script src="auth.js?v=20260607e"></script>
 </body>
 </html>
