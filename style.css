@@ -2418,6 +2418,43 @@ body {
 }
 .onboarding-footer .btn-secondary:hover { background: var(--bg); }
 
+/* wizard 단계 표시 바 */
+.wizard-step-bar {
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px 28px 0; gap: 0;
+}
+.wizard-step-item {
+    display: flex; flex-direction: column; align-items: center; gap: 5px;
+    flex-shrink: 0;
+}
+.wizard-step-circle {
+    width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700;
+    background: var(--border); color: var(--text-secondary);
+    transition: all 0.2s;
+}
+.wizard-step-item.active .wizard-step-circle {
+    background: var(--accent); color: #fff;
+}
+.wizard-step-item.done .wizard-step-circle {
+    background: #16a34a; color: #fff;
+}
+.wizard-step-item span {
+    font-size: 11px; color: var(--text-secondary); white-space: nowrap;
+}
+.wizard-step-item.active span { color: var(--accent); font-weight: 600; }
+.wizard-step-item.done span { color: #16a34a; }
+.wizard-step-line {
+    flex: 1; height: 2px; background: var(--border);
+    margin: 0 6px; margin-bottom: 18px; min-width: 30px;
+    transition: background 0.2s;
+}
+.wizard-step-line.done { background: #16a34a; }
+.wizard-header { text-align: center; padding: 16px 28px 4px; }
+.wizard-header h2 { font-size: 18px; font-weight: 700; color: var(--text); margin: 8px 0 4px; }
+.wizard-header .onboarding-sub { color: var(--text-secondary); font-size: 13px; margin: 0; }
+
 /* ── 디버그 버튼 / 로그 모달 ──────────────────────────────── */
 .btn-debug {
     width: 100%;

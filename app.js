@@ -3164,6 +3164,7 @@ async function folderBackup() {
         }
         await writeBackupFile();
         showToast(`백업 폴더 연결 완료!`, 'success');
+        advanceWizardOnFolder();
     } catch (err) {
         if (err.name === 'AbortError') return;
         pushDebug('error', `폴더 백업 실패: ${err.message}`);
@@ -4409,64 +4410,151 @@ function initSidebarToggle() {
     };
 }
 
-function showOnboarding() {
-    if (document.getElementById('onboarding-overlay')) return;
-    const overlay = document.createElement('div');
-    overlay.id = 'onboarding-overlay';
-    const _ico = (path, size=18) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
-    overlay.innerHTML = `
-        <div class="onboarding-modal">
-            <div class="onboarding-header">
-                <div class="onboarding-logo">
-                    <svg viewBox="0 0 72 72" width="72" height="72" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <rect width="72" height="72" rx="18" fill="#EFF6FF"/>
-                        <rect x="14" y="14" width="34" height="44" rx="4" fill="#fff" stroke="#3B82F6" stroke-width="2"/>
-                        <line x1="21" y1="25" x2="41" y2="25" stroke="#BFDBFE" stroke-width="2" stroke-linecap="round"/>
-                        <line x1="21" y1="32" x2="41" y2="32" stroke="#BFDBFE" stroke-width="2" stroke-linecap="round"/>
-                        <line x1="21" y1="39" x2="34" y2="39" stroke="#BFDBFE" stroke-width="2" stroke-linecap="round"/>
-                        <path d="M38 46 L53 31 a3 3 0 0 1 4.2 4.2 L42 50 L37 51 Z" fill="#3B82F6" stroke="#3B82F6" stroke-width="1" stroke-linejoin="round"/>
-                        <path d="M50 33 L54 37" stroke="#93C5FD" stroke-width="1.5"/>
-                    </svg>
-                </div>
+// ── 3단계 온보딩 wizard ────────────────────────────────────
+const _wi = (path, size=18) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
+const WIZARD_LOGO = `<svg viewBox="0 0 72 72" width="56" height="56" fill="none"><rect width="72" height="72" rx="18" fill="#EFF6FF"/><rect x="14" y="14" width="34" height="44" rx="4" fill="#fff" stroke="#3B82F6" stroke-width="2"/><line x1="21" y1="25" x2="41" y2="25" stroke="#BFDBFE" stroke-width="2" stroke-linecap="round"/><line x1="21" y1="32" x2="41" y2="32" stroke="#BFDBFE" stroke-width="2" stroke-linecap="round"/><line x1="21" y1="39" x2="34" y2="39" stroke="#BFDBFE" stroke-width="2" stroke-linecap="round"/><path d="M38 46 L53 31 a3 3 0 0 1 4.2 4.2 L42 50 L37 51 Z" fill="#3B82F6" stroke="#3B82F6" stroke-width="1" stroke-linejoin="round"/><path d="M50 33 L54 37" stroke="#93C5FD" stroke-width="1.5"/></svg>`;
+
+function _wizardStepBar(current) {
+    return `<div class="wizard-step-bar">
+        ${[1,2,3].map(n => `
+            <div class="wizard-step-item ${n < current ? 'done' : n === current ? 'active' : ''}">
+                <div class="wizard-step-circle">${n < current ? _wi('<path d="M20 6 9 17l-5-5"/>',12) : n}</div>
+                <span>${['로그인','백업 폴더','AI 설정'][n-1]}</span>
+            </div>
+            ${n < 3 ? '<div class="wizard-step-line ' + (n < current ? 'done' : '') + '"></div>' : ''}
+        `).join('')}
+    </div>`;
+}
+
+function showWizard(startStep) {
+    let overlay = document.getElementById('onboarding-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'onboarding-overlay';
+        document.body.appendChild(overlay);
+    }
+    _renderWizardStep(overlay, startStep);
+}
+
+function _renderWizardStep(overlay, step) {
+    overlay.dataset.wizardStep = step;
+    let bodyHtml = '';
+    let footerHtml = '';
+
+    if (step === 1) {
+        bodyHtml = `
+            <div class="wizard-header">
+                <div class="onboarding-logo">${WIZARD_LOGO}</div>
                 <h2>내 연구노트에 오신 것을 환영해요!</h2>
-                <p class="onboarding-sub">논문 관리·AI 요약·마인드맵을 한 곳에서</p>
+                <p class="onboarding-sub">논문 관리 · AI 요약 · 마인드맵을 한 곳에서</p>
             </div>
             <div class="onboarding-body">
                 <div class="onboarding-section">
-                    <h3>${_ico('<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>')} 백업 폴더를 먼저 지정해 주세요</h3>
-                    <p>백업 폴더를 지정하면 논문을 추가할 때마다 PDF 포함 전체 자료가 자동으로 저장돼요. 가장 중요한 첫 설정이에요.</p>
+                    <h3>${_wi('<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>')} 내 연구노트란?</h3>
+                    <p>논문을 PDF째 붙여넣고 서지정보·메모·AI요약을 한 곳에서 관리해요. 마인드맵으로 변인 구조도 그릴 수 있어요.</p>
+                </div>
+                <div class="onboarding-section">
+                    <h3>${_wi('<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>')} 로그인하면 뭐가 좋아요?</h3>
+                    <p>로그인하면 서지정보·메모가 클라우드에 자동 저장돼서 다른 기기에서도 바로 볼 수 있어요. 로그인 없이도 이 기기에서 모든 기능을 쓸 수 있어요.</p>
+                </div>
+            </div>`;
+        footerHtml = `
+            <button id="wz-login" class="btn-primary">${_wi('<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>',16)} 로그인 / 회원가입</button>
+            <button id="wz-skip1" class="btn-secondary">로그인 없이 시작할게요</button>`;
+    } else if (step === 2) {
+        bodyHtml = `
+            <div class="wizard-header">
+                <h2>백업 폴더를 지정해 주세요</h2>
+                <p class="onboarding-sub">논문을 저장할 때마다 PDF 포함 자동으로 백업돼요</p>
+            </div>
+            <div class="onboarding-body">
+                <div class="onboarding-section">
+                    <h3>${_wi('<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>')} 어느 폴더든 지정할 수 있어요</h3>
                     <div class="onboarding-tip">
-                        <strong>${_ico('<path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/>',15)} 어느 폴더든 지정할 수 있어요</strong>
+                        <strong>${_wi('<path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/>',15)} 폴더 선택 가이드</strong>
                         <ul>
-                            <li><b>내 PC 폴더</b> — 같은 컴퓨터에서만 쓸 때 가장 간단해요</li>
-                            <li><b>구글 드라이브 폴더</b> — 다른 PC에서도 복원 가능, 여러 기기 사용 시 추천</li>
-                            <li>원드라이브·드롭박스 폴더도 구글 드라이브와 동일하게 사용 가능해요</li>
+                            <li><b>내 PC 폴더</b> — 이 컴퓨터에서만 쓸 때 가장 간단해요</li>
+                            <li><b>구글 드라이브 폴더</b> — 여러 기기에서 PDF까지 복원 가능 (추천)</li>
+                            <li>원드라이브·드롭박스도 구글 드라이브와 동일하게 사용 가능해요</li>
                         </ul>
                     </div>
                 </div>
-                <div class="onboarding-section">
-                    <h3>${_ico('<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>')} 로그인은 선택이에요</h3>
-                    <p>로그인 없이도 모든 기능을 쓸 수 있어요. 여러 기기에서 서지정보·메모를 동기화하고 싶을 때만 로그인하면 돼요.</p>
-                </div>
-                <div class="onboarding-section">
-                    <h3>${_ico('<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>')} 궁금하면 챗봇에 물어보세요</h3>
-                    <p>오른쪽 아래 채팅 버튼을 누르면 챗봇이 열려요. 앱 사용법을 편하게 물어보세요.</p>
-                </div>
+            </div>`;
+        footerHtml = `
+            <button id="wz-folder" class="btn-primary">${_wi('<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',16)} 폴더 지정하기</button>
+            <button id="wz-skip2" class="btn-secondary">나중에 할게요</button>`;
+    } else if (step === 3) {
+        const hasKey = !!localStorage.getItem(GEMINI_LS_KEY);
+        bodyHtml = `
+            <div class="wizard-header">
+                <h2>AI 요약 설정</h2>
+                <p class="onboarding-sub">Groq API 키를 입력하면 논문 AI 요약 기능을 쓸 수 있어요</p>
             </div>
-            <div class="onboarding-footer">
-                <button id="btn-onboarding-folder" class="btn-primary">${_ico('<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',16)} 백업 폴더 지정하기</button>
-                <button id="btn-onboarding-later" class="btn-secondary">나중에 할게요</button>
-            </div>
-        </div>`;
-    document.body.appendChild(overlay);
+            <div class="onboarding-body">
+                <div class="onboarding-section">
+                    <h3>${_wi('<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>')} Groq API 키 입력</h3>
+                    <p>Groq는 무료로 사용할 수 있어요. <b>console.groq.com</b> 에서 가입 후 API 키를 발급받으세요.</p>
+                    <input id="wz-api-key" type="password" placeholder="gsk_..." value="${escHtml(localStorage.getItem(GEMINI_LS_KEY)||'')}"
+                        style="width:100%;margin-top:10px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;background:var(--bg);color:var(--text);box-sizing:border-box;"/>
+                    ${hasKey ? '<p style="font-size:12px;color:#16a34a;margin-top:6px">✓ API 키가 저장되어 있어요</p>' : ''}
+                </div>
+            </div>`;
+        footerHtml = `
+            <button id="wz-save-ai" class="btn-primary">${_wi('<path d="M20 6 9 17l-5-5"/>',16)} 저장하고 시작하기</button>
+            <button id="wz-skip3" class="btn-secondary">나중에 할게요</button>`;
+    }
 
-    document.getElementById('btn-onboarding-folder').onclick = async () => {
-        overlay.remove();
-        await folderBackup();
-    };
-    document.getElementById('btn-onboarding-later').onclick = () => {
-        overlay.remove();
-    };
+    overlay.innerHTML = `
+        <div class="onboarding-modal">
+            ${_wizardStepBar(step)}
+            ${bodyHtml}
+            <div class="onboarding-footer">${footerHtml}</div>
+        </div>`;
+
+    // 버튼 이벤트
+    if (step === 1) {
+        overlay.querySelector('#wz-login').onclick = () => {
+            if (typeof openAuthModal === 'function') openAuthModal();
+        };
+        overlay.querySelector('#wz-skip1').onclick = () => _renderWizardStep(overlay, 2);
+    } else if (step === 2) {
+        overlay.querySelector('#wz-folder').onclick = async () => {
+            await folderBackup();
+            // folderBackup 성공 시 advanceWizardOnFolder()가 호출됨
+        };
+        overlay.querySelector('#wz-skip2').onclick = () => _renderWizardStep(overlay, 3);
+    } else if (step === 3) {
+        overlay.querySelector('#wz-save-ai').onclick = () => {
+            const key = (overlay.querySelector('#wz-api-key')?.value || '').trim();
+            if (key) { localStorage.setItem(GEMINI_LS_KEY, key); showToast('API 키 저장 완료!', 'success'); }
+            localStorage.setItem('onboardingComplete', '1');
+            overlay.remove();
+        };
+        overlay.querySelector('#wz-skip3').onclick = () => {
+            localStorage.setItem('onboardingComplete', '1');
+            overlay.remove();
+        };
+    }
+}
+
+// 로그인 완료 시 auth.js에서 호출
+function advanceWizardOnLogin() {
+    const overlay = document.getElementById('onboarding-overlay');
+    if (overlay && overlay.dataset.wizardStep === '1') _renderWizardStep(overlay, 2);
+}
+
+// 폴더 지정 완료 시 folderBackup()에서 호출
+function advanceWizardOnFolder() {
+    const overlay = document.getElementById('onboarding-overlay');
+    if (overlay && overlay.dataset.wizardStep === '2') _renderWizardStep(overlay, 3);
+}
+
+function showOnboarding() {
+    if (localStorage.getItem('onboardingComplete')) return;
+    // 로그인 상태면 2단계부터, 아니면 1단계부터
+    const isLoggedIn = typeof currentUser !== 'undefined' && !!currentUser;
+    const startStep = isLoggedIn ? (backupDirHandle ? 3 : 2) : 1;
+    showWizard(startStep);
 }
 
 async function init() {
@@ -4478,8 +4566,8 @@ async function init() {
     bindEvents();
     renderProjectSelector();
     renderContent();
-    // 백업 폴더 미설정이면 온보딩 표시
-    if (!backupDirHandle) {
+    // 온보딩 미완료 시 wizard 표시
+    if (!localStorage.getItem('onboardingComplete')) {
         setTimeout(showOnboarding, 600);
     }
 }

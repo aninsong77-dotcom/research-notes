@@ -49,6 +49,7 @@ function initAuth() {
             renderAuthBox();
             if (user && !wasLoggedIn) {
                 fullSync();   // 새로 로그인할 때만 전체 동기화
+                if (typeof advanceWizardOnLogin === 'function') advanceWizardOnLogin();
             } else if (!user) {
                 // 로그아웃 → 데이터는 삭제하지 않고 잠금화면만 표시
                 // (삭제하면 클라우드 미동기화 데이터까지 날아갈 위험 있음)
