@@ -812,11 +812,30 @@ body {
 }
 
 /* 읽기 상태 바 (모달 헤더 아래 고정) */
-.read-status-bar {
-    display: flex; align-items: center; gap: 10px;
-    padding: 10px 24px; background: var(--bg-card);
-    border-bottom: 1px solid var(--border);
+/* 모달 상단 고정 영역 */
+.modal-sticky-top {
+    position: sticky; top: 0; z-index: 10;
+    background: var(--surface);
+    border-radius: 20px 20px 0 0;
 }
+.read-status-bar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 16px; background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+}
+.status-bar-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; flex-shrink: 0; }
+.sbar-btn {
+    padding: 4px 12px; font-size: 12.5px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--surface);
+    color: var(--text); cursor: pointer; white-space: nowrap;
+    transition: background 0.15s;
+}
+.sbar-btn:hover { background: var(--bg); }
+.sbar-btn.sbar-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.sbar-btn.sbar-primary:hover { filter: brightness(1.1); }
+.sbar-btn.sbar-delete { color: #ef4444; border-color: #fca5a5; }
+.sbar-btn.sbar-delete:hover { background: #fef2f2; }
 .read-status-label { font-size: 13px; color: var(--text-sub); white-space: nowrap; }
 .read-status-btns { display: flex; gap: 6px; align-items: center; }
 .rs-btn {

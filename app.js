@@ -3602,6 +3602,10 @@ const GUIDE_TOPICS = [
       a: '「백업」 버튼을 누르면:\n• 폴더가 지정돼 있으면 → 그 폴더에 자동 저장\n• 폴더가 없으면 → 지금 바로 파일로 다운로드\n\n논문을 추가하거나 수정하면 백업 폴더에 자동으로 저장돼요. 매번 누를 필요 없어요.\n\n「받음」 버튼은 모든 게 날아갔을 때 백업 파일에서 복구하는 용도예요.' },
     { q: '로그인하면 뭐가 좋아요? (클라우드 동기화)',
       a: '왼쪽 맨 아래 「로그인하고 동기화」로 가입·로그인하면:\n• 서지정보·메모·AI요약·발췌 등 텍스트가 클라우드에 자동 저장돼요\n• 다른 컴퓨터에서 같은 계정으로 로그인하면 텍스트가 바로 복원돼요\n• 로그아웃해도 데이터는 안 지워져요 — 잠금화면만 표시돼요\n\n※ PDF·원문텍스트는 용량 때문에 클라우드에 안 올라가요. PDF는 백업 폴더(구글 드라이브 추천)로 관리해요.' },
+    { q: 'AI 사용량 한도가 있나요?',
+      a: 'Groq 무료 플랜 기준으로 분당 12,000 토큰 한도가 있어요.\n\n논문 한 편 분석에 약 6,000~9,000 토큰이 사용돼요.\n\n효율적으로 사용하는 방법:\n• 논문 한 편씩 차례로 분석하세요 (연속 2편 이상이면 1분 대기)\n• PDF가 첨부된 논문은 원문 전체를 분석해서 더 정확해요\n• 오류가 나면 1분 기다렸다가 다시 누르면 돼요\n\n사용량이 부족하면 Groq에서 유료 플랜을 선택하거나, API 키를 새로 발급받으면 초기화돼요.' },
+    { q: 'AI 전체 분석은 어떻게 써요?',
+      a: '논문을 열고 수정 모드에서 「🤖 AI 전체 분석」 버튼을 누르면 돼요.\n\nAI가 논문을 읽고 아래 항목들을 자동으로 채워줘요:\n• AI 요약 (연구목적·방법·결과·시사점)\n• 연구의 필요성\n• 주요 선행연구\n• 주요 이론\n• 연구방법\n• 주요 결과\n• 한계점\n• 시사점·제언\n\n이미 내용이 있는 칸은 덮어쓸지 물어봐요. 완료 후 자동 저장돼요.\n\n⚠️ AI 결과는 부정확할 수 있으니 반드시 원문과 대조해 확인하세요.' },
     { q: '빠른 인용이 뭐예요?',
       a: '위쪽 「빠른 인용」 버튼을 누르면 작은 창이 떠요.\n논문 목록에서 「빠른 인용」으로 표시해 둔 논문들의 인용을 빠르게 복사할 수 있어요.' },
 ];
@@ -3716,6 +3720,18 @@ function bindEvents() {
     // 논문 모달 닫기 / 보기↔수정 전환 / 삭제
     document.getElementById('close-form').addEventListener('click', closeForm);
     document.getElementById('btn-cancel-form').addEventListener('click', closeForm);
+    // 상단 sticky 바 버튼
+    document.getElementById('sbar-close').addEventListener('click', closeForm);
+    document.getElementById('sbar-cancel').addEventListener('click', closeForm);
+    document.getElementById('sbar-delete').addEventListener('click', () =>
+        document.getElementById('btn-delete-paper').click());
+    document.getElementById('sbar-edit').addEventListener('click', () => {
+        const paper = state.papers.find(p => p.id === state.editingId);
+        applyFormMode('edit', paper);
+    });
+    document.getElementById('sbar-save').addEventListener('click', () =>
+        document.getElementById('paper-form').requestSubmit());
+
     document.getElementById('btn-close-view').addEventListener('click', closeForm);
     document.getElementById('btn-switch-edit').addEventListener('click', () => {
         // 현재 폼 내용(AI 추출 변인 포함) 유지하면서 모드만 전환
@@ -4178,6 +4194,8 @@ ${bodyText}
         }
 
         showToast(`AI 분석 완료! 요약 + ${filled}개 항목을 채웠어요.`, 'success');
+        // Groq 무료 플랜 사용량 안내 (분당 12,000 토큰 한도)
+        setTimeout(() => showToast('💡 Groq 무료 플랜은 분당 12,000 토큰 한도예요. 연속 사용 시 1분 대기 후 다시 시도하세요.', 'info'), 2000);
         pushDebug('info', `AI 전체분석 완료 — ${filled}개 항목`);
     } catch(e) {
         const msg = e.message || '';

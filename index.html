@@ -175,14 +175,23 @@
     <!-- 논문 추가/수정 폼 모달 -->
     <div class="modal-overlay" id="modal-form" style="display:none">
         <div class="modal modal-large">
-            <div class="modal-header">
-                <h2 id="modal-form-title">논문 추가</h2>
-                <button class="modal-close" id="close-form">✕</button>
-            </div>
-            <div id="read-status-bar" class="read-status-bar">
-                <span class="read-status-label">읽기 상태</span>
-                <div id="read-status-btns" class="read-status-btns"></div>
-                <button type="button" class="btn-ai btn-ai-quick view-only" id="btn-ai-summarize-quick"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-1px;margin-right:4px"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>AI 요약</button>
+            <div class="modal-sticky-top">
+                <div class="modal-header">
+                    <h2 id="modal-form-title">논문 추가</h2>
+                    <button class="modal-close" id="close-form">✕</button>
+                </div>
+                <div id="read-status-bar" class="read-status-bar">
+                    <span class="read-status-label">읽기 상태</span>
+                    <div id="read-status-btns" class="read-status-btns"></div>
+                    <div class="status-bar-actions">
+                        <button type="button" class="btn-ai btn-ai-quick" id="btn-ai-summarize-quick"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-1px;margin-right:4px"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>AI 분석</button>
+                        <button type="button" class="sbar-btn view-only" id="sbar-delete">삭제</button>
+                        <button type="button" class="sbar-btn view-only" id="sbar-close">닫기</button>
+                        <button type="button" class="sbar-btn sbar-primary view-only" id="sbar-edit">수정</button>
+                        <button type="button" class="sbar-btn edit-only" id="sbar-cancel">취소</button>
+                        <button type="button" class="sbar-btn sbar-primary edit-only" id="sbar-save">저장</button>
+                    </div>
+                </div>
             </div>
             <div class="modal-body">
 
