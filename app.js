@@ -3902,9 +3902,8 @@ function bindEvents() {
     });
 
     // AI 도우미 버튼 (논문 모달)
-    document.getElementById('btn-ai-summarize').addEventListener('click', aiSummarizePaper);
-    document.getElementById('btn-ai-summarize-quick').addEventListener('click', aiSummarizePaper);
-    document.getElementById('btn-ai-autofill').addEventListener('click', aiAutoFillAnalysis);
+    document.getElementById('btn-ai-summarize').addEventListener('click', aiAnalyzePaper);
+    document.getElementById('btn-ai-summarize-quick').addEventListener('click', aiAnalyzePaper);
     document.getElementById('btn-ai-extract').addEventListener('click', aiExtractPaper);
 
     // ESC 키
@@ -4091,8 +4090,8 @@ async function aiSummarizePaper() {
     }
 }
 
-// ── AI 정밀 분석 자동 채우기 ──────────────────────────────────
-async function aiAutoFillAnalysis() {
+// ── AI 전체 분석 (요약 + 정밀 분석 칸 자동 채우기) ────────────
+async function aiAnalyzePaper() {
     const paper   = state.editingId ? state.papers.find(p => p.id === state.editingId) : null;
     const title   = document.getElementById('f-title')?.value?.trim() || paper?.title || '';
     const abstract = document.getElementById('f-abstract')?.value?.trim() || paper?.abstract || '';
@@ -4103,24 +4102,23 @@ async function aiAutoFillAnalysis() {
     const btn = document.getElementById('btn-ai-autofill');
     if (btn) { btn.disabled = true; btn.textContent = '🤖 분석 중…'; }
 
-    // 원문을 8000자로 제한 (토큰 한도 고려)
     const textBudget = 8000;
     const bodyText = fullText ? fullText.slice(0, textBudget) : abstract.slice(0, textBudget);
-    const prompt = `다음 논문을 읽고 아래 7가지 항목을 JSON 형식으로만 응답해주세요. JSON 외 다른 텍스트는 쓰지 마세요.
+    const prompt = `다음 논문을 읽고 아래 항목들을 JSON 형식으로만 응답해주세요. 해당 내용이 없으면 빈 문자열("")로 두세요. JSON 외 다른 텍스트는 쓰지 마세요.
 
 제목: ${title}
-${abstract ? `초록: ${abstract.slice(0,500)}\n` : ''}
-본문:
+${abstract ? `초록: ${abstract.slice(0,500)}\n` : ''}본문:
 ${bodyText}
 
 응답 형식 (JSON만):
 {
+  "summary": "[연구 목적] ...\n[연구 방법] ...\n[주요 결과] ...\n[시사점] ...",
   "needs": "연구의 필요성·배경 (2-3문장)",
   "mainstudies": "주요 선행연구 내용 (2-3문장)",
-  "theory": "주요 이론·개념 (1-2문장)",
+  "theory": "주요 이론·개념 (1-2문장, 없으면 빈 문자열)",
   "method": "연구방법·절차 (2-3문장)",
   "results": "주요 연구결과 (3-4문장)",
-  "limitations": "연구의 한계점 (1-2문장)",
+  "limitations": "연구의 한계점 (1-2문장, 없으면 빈 문자열)",
   "implications": "시사점·제언 (2-3문장)"
 }`;
 
@@ -4132,7 +4130,18 @@ ${bodyText}
         try { parsed = JSON.parse(jsonStr); }
         catch { throw new Error('AI 응답을 파싱하지 못했어요. 다시 시도해 주세요.\n' + raw.slice(0, 200)); }
 
-        // 각 칸에 입력
+        // AI 요약 박스 채우기
+        if (parsed.summary) {
+            const box = document.getElementById('ai-summary-result');
+            if (box) {
+                box.innerHTML = `<div class="ai-basis-badge">📄 AI 전체 분석</div><div class="ai-summary-text">${escHtml(parsed.summary)}</div>`;
+                box.style.display = 'block';
+            }
+            const aiBlock = document.getElementById('ai-block');
+            if (aiBlock) aiBlock.open = true;
+        }
+
+        // 정밀 분석 칸 채우기
         const fieldMap = {
             needs: 'a-needs', mainstudies: 'a-mainstudies', theory: 'a-theory',
             method: 'a-method', results: 'a-results',
@@ -4142,24 +4151,10 @@ ${bodyText}
         for (const [key, elId] of Object.entries(fieldMap)) {
             if (!parsed[key]) continue;
             const el = document.getElementById(elId);
-            if (el && !el.value.trim()) { el.value = parsed[key]; filled++; }
-            else if (el && el.value.trim()) {
-                // 이미 내용이 있으면 덮어쓸지 확인
-                if (confirm(`「${el.previousElementSibling?.textContent || elId}」 칸에 이미 내용이 있어요. 덮어쓸까요?`)) {
-                    el.value = parsed[key]; filled++;
-                }
-            }
-        }
-
-        // 자동 저장
-        if (state.editingId && filled > 0) {
-            const existing = state.papers.find(p => p.id === state.editingId);
-            if (existing) {
-                const updates = {};
-                for (const [key, elId] of Object.entries(fieldMap)) {
-                    updates[ANALYSIS_TEXT_FIELDS[elId] || key] = document.getElementById(elId)?.value || '';
-                }
-                await dbPut(STORE_PAPERS, { ...existing, ...updates, updatedAt: Date.now() });
+            if (!el) continue;
+            if (!el.value.trim()) { el.value = parsed[key]; filled++; }
+            else if (confirm(`「${el.labels?.[0]?.textContent || elId}」 칸에 이미 내용이 있어요. 덮어쓸까요?`)) {
+                el.value = parsed[key]; filled++;
             }
         }
 
@@ -4167,15 +4162,30 @@ ${bodyText}
         const block = document.getElementById('analysis-block');
         if (block) block.open = true;
 
-        showToast(`AI가 ${filled}개 항목을 채웠어요!`, 'success');
-        pushDebug('info', `AI 자동채우기 완료 — ${filled}개`);
+        // 자동 저장
+        if (state.editingId) {
+            const existing = state.papers.find(p => p.id === state.editingId);
+            if (existing) {
+                const updates = { aiSummary: parsed.summary || existing.aiSummary, aiSummaryBasis: 'AI 전체 분석' };
+                for (const [key, elId] of Object.entries(fieldMap)) {
+                    const storeKey = ANALYSIS_TEXT_FIELDS[elId];
+                    if (storeKey) updates[storeKey] = document.getElementById(elId)?.value || '';
+                }
+                await dbPut(STORE_PAPERS, { ...existing, ...updates, updatedAt: Date.now() });
+                const idx = state.papers.findIndex(p => p.id === state.editingId);
+                if (idx >= 0) state.papers[idx] = { ...state.papers[idx], ...updates };
+            }
+        }
+
+        showToast(`AI 분석 완료! 요약 + ${filled}개 항목을 채웠어요.`, 'success');
+        pushDebug('info', `AI 전체분석 완료 — ${filled}개 항목`);
     } catch(e) {
         const msg = e.message || '';
         const isRate = msg.includes('429') || msg.toLowerCase().includes('rate');
         showToast(isRate ? '요청이 너무 많아요 — 1분 후 다시 시도해 주세요.' : 'AI 자동 채우기 실패: ' + msg, 'error');
-        pushDebug('error', 'aiAutoFillAnalysis: ' + msg);
+        pushDebug('error', 'aiAnalyzePaper: ' + msg);
     } finally {
-        if (btn) { btn.disabled = false; btn.textContent = '🤖 AI 자동 채우기'; }
+        if (btn) { btn.disabled = false; btn.textContent = '🤖 AI 전체 분석'; }
     }
 }
 
