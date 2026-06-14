@@ -3904,6 +3904,7 @@ function bindEvents() {
     // AI 도우미 버튼 (논문 모달)
     document.getElementById('btn-ai-summarize').addEventListener('click', aiSummarizePaper);
     document.getElementById('btn-ai-summarize-quick').addEventListener('click', aiSummarizePaper);
+    document.getElementById('btn-ai-autofill').addEventListener('click', aiAutoFillAnalysis);
     document.getElementById('btn-ai-extract').addEventListener('click', aiExtractPaper);
 
     // ESC 키
@@ -4087,6 +4088,94 @@ async function aiSummarizePaper() {
         pushDebug('error', 'aiSummarizePaper: ' + msg);
     } finally {
         if (btn) { btn.disabled = false; btn.textContent = origText; }
+    }
+}
+
+// ── AI 정밀 분석 자동 채우기 ──────────────────────────────────
+async function aiAutoFillAnalysis() {
+    const paper   = state.editingId ? state.papers.find(p => p.id === state.editingId) : null;
+    const title   = document.getElementById('f-title')?.value?.trim() || paper?.title || '';
+    const abstract = document.getElementById('f-abstract')?.value?.trim() || paper?.abstract || '';
+    const fullText = document.getElementById('f-fulltext')?.value?.trim() || paper?.fullText || '';
+    if (!fullText && !abstract) {
+        showToast('원문 텍스트 또는 초록이 필요해요. 먼저 PDF를 첨부하거나 원문을 입력해 주세요.', 'warn'); return;
+    }
+    const btn = document.getElementById('btn-ai-autofill');
+    if (btn) { btn.disabled = true; btn.textContent = '🤖 분석 중…'; }
+
+    // 원문을 8000자로 제한 (토큰 한도 고려)
+    const textBudget = 8000;
+    const bodyText = fullText ? fullText.slice(0, textBudget) : abstract.slice(0, textBudget);
+    const prompt = `다음 논문을 읽고 아래 7가지 항목을 JSON 형식으로만 응답해주세요. JSON 외 다른 텍스트는 쓰지 마세요.
+
+제목: ${title}
+${abstract ? `초록: ${abstract.slice(0,500)}\n` : ''}
+본문:
+${bodyText}
+
+응답 형식 (JSON만):
+{
+  "needs": "연구의 필요성·배경 (2-3문장)",
+  "mainstudies": "주요 선행연구 내용 (2-3문장)",
+  "theory": "주요 이론·개념 (1-2문장)",
+  "method": "연구방법·절차 (2-3문장)",
+  "results": "주요 연구결과 (3-4문장)",
+  "limitations": "연구의 한계점 (1-2문장)",
+  "implications": "시사점·제언 (2-3문장)"
+}`;
+
+    try {
+        const raw = await callGemini(buildPaperParts(prompt));
+        // JSON 파싱 (응답에 ```json ... ``` 감싸인 경우도 처리)
+        const jsonStr = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+        let parsed;
+        try { parsed = JSON.parse(jsonStr); }
+        catch { throw new Error('AI 응답을 파싱하지 못했어요. 다시 시도해 주세요.\n' + raw.slice(0, 200)); }
+
+        // 각 칸에 입력
+        const fieldMap = {
+            needs: 'a-needs', mainstudies: 'a-mainstudies', theory: 'a-theory',
+            method: 'a-method', results: 'a-results',
+            limitations: 'a-limitations', implications: 'a-implications'
+        };
+        let filled = 0;
+        for (const [key, elId] of Object.entries(fieldMap)) {
+            if (!parsed[key]) continue;
+            const el = document.getElementById(elId);
+            if (el && !el.value.trim()) { el.value = parsed[key]; filled++; }
+            else if (el && el.value.trim()) {
+                // 이미 내용이 있으면 덮어쓸지 확인
+                if (confirm(`「${el.previousElementSibling?.textContent || elId}」 칸에 이미 내용이 있어요. 덮어쓸까요?`)) {
+                    el.value = parsed[key]; filled++;
+                }
+            }
+        }
+
+        // 자동 저장
+        if (state.editingId && filled > 0) {
+            const existing = state.papers.find(p => p.id === state.editingId);
+            if (existing) {
+                const updates = {};
+                for (const [key, elId] of Object.entries(fieldMap)) {
+                    updates[ANALYSIS_TEXT_FIELDS[elId] || key] = document.getElementById(elId)?.value || '';
+                }
+                await dbPut(STORE_PAPERS, { ...existing, ...updates, updatedAt: Date.now() });
+            }
+        }
+
+        // 정밀 분석 섹션 펼치기
+        const block = document.getElementById('analysis-block');
+        if (block) block.open = true;
+
+        showToast(`AI가 ${filled}개 항목을 채웠어요!`, 'success');
+        pushDebug('info', `AI 자동채우기 완료 — ${filled}개`);
+    } catch(e) {
+        const msg = e.message || '';
+        const isRate = msg.includes('429') || msg.toLowerCase().includes('rate');
+        showToast(isRate ? '요청이 너무 많아요 — 1분 후 다시 시도해 주세요.' : 'AI 자동 채우기 실패: ' + msg, 'error');
+        pushDebug('error', 'aiAutoFillAnalysis: ' + msg);
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '🤖 AI 자동 채우기'; }
     }
 }
 
