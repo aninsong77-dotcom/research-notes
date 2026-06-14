@@ -4348,30 +4348,19 @@ function showOnboarding() {
     if (document.getElementById('onboarding-overlay')) return;
     const overlay = document.createElement('div');
     overlay.id = 'onboarding-overlay';
+    const _ico = (path, size=18) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
     overlay.innerHTML = `
         <div class="onboarding-modal">
             <div class="onboarding-header">
                 <div class="onboarding-logo">
-                    <svg viewBox="0 0 80 80" width="80" height="80" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <rect width="80" height="80" rx="20" fill="#EEF2FF"/>
-                        <!-- 노트북 본체 -->
-                        <rect x="16" y="18" width="38" height="48" rx="4" fill="#fff" stroke="#6366F1" stroke-width="2.5"/>
-                        <!-- 스프링 고리 -->
-                        <circle cx="16" cy="28" r="3" fill="#fff" stroke="#6366F1" stroke-width="2"/>
-                        <circle cx="16" cy="38" r="3" fill="#fff" stroke="#6366F1" stroke-width="2"/>
-                        <circle cx="16" cy="48" r="3" fill="#fff" stroke="#6366F1" stroke-width="2"/>
-                        <circle cx="16" cy="58" r="3" fill="#fff" stroke="#6366F1" stroke-width="2"/>
-                        <!-- 줄 -->
-                        <line x1="24" y1="32" x2="46" y2="32" stroke="#C7D2FE" stroke-width="2" stroke-linecap="round"/>
-                        <line x1="24" y1="39" x2="46" y2="39" stroke="#C7D2FE" stroke-width="2" stroke-linecap="round"/>
-                        <line x1="24" y1="46" x2="38" y2="46" stroke="#C7D2FE" stroke-width="2" stroke-linecap="round"/>
-                        <!-- 연필 -->
-                        <g transform="rotate(-35 62 42)">
-                            <rect x="56" y="26" width="8" height="26" rx="2" fill="#6366F1"/>
-                            <polygon points="56,52 64,52 60,60" fill="#FCD34D"/>
-                            <line x1="56" y1="49" x2="64" y2="49" stroke="#fff" stroke-width="1.5"/>
-                            <rect x="56" y="26" width="8" height="5" rx="2" fill="#A5B4FC"/>
-                        </g>
+                    <svg viewBox="0 0 72 72" width="72" height="72" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect width="72" height="72" rx="18" fill="#EFF6FF"/>
+                        <rect x="14" y="14" width="34" height="44" rx="4" fill="#fff" stroke="#3B82F6" stroke-width="2"/>
+                        <line x1="21" y1="25" x2="41" y2="25" stroke="#BFDBFE" stroke-width="2" stroke-linecap="round"/>
+                        <line x1="21" y1="32" x2="41" y2="32" stroke="#BFDBFE" stroke-width="2" stroke-linecap="round"/>
+                        <line x1="21" y1="39" x2="34" y2="39" stroke="#BFDBFE" stroke-width="2" stroke-linecap="round"/>
+                        <path d="M38 46 L53 31 a3 3 0 0 1 4.2 4.2 L42 50 L37 51 Z" fill="#3B82F6" stroke="#3B82F6" stroke-width="1" stroke-linejoin="round"/>
+                        <path d="M50 33 L54 37" stroke="#93C5FD" stroke-width="1.5"/>
                     </svg>
                 </div>
                 <h2>내 연구노트에 오신 것을 환영해요!</h2>
@@ -4379,28 +4368,28 @@ function showOnboarding() {
             </div>
             <div class="onboarding-body">
                 <div class="onboarding-section">
-                    <h3>📁 백업 폴더를 먼저 지정해 주세요</h3>
+                    <h3>${_ico('<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>')} 백업 폴더를 먼저 지정해 주세요</h3>
                     <p>백업 폴더를 지정하면 논문을 추가할 때마다 PDF 포함 전체 자료가 자동으로 저장돼요. 가장 중요한 첫 설정이에요.</p>
                     <div class="onboarding-tip">
-                        <strong>💡 구글 드라이브 폴더를 추천해요</strong>
+                        <strong>${_ico('<path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/>',15)} 어느 폴더든 지정할 수 있어요</strong>
                         <ul>
-                            <li>다른 PC에서도 자료를 복원할 수 있어요</li>
-                            <li>PDF까지 포함해서 통째로 백업돼요</li>
-                            <li>구글 드라이브 앱이 설치돼 있으면 바로 사용 가능해요</li>
+                            <li><b>내 PC 폴더</b> — 같은 컴퓨터에서만 쓸 때 가장 간단해요</li>
+                            <li><b>구글 드라이브 폴더</b> — 다른 PC에서도 복원 가능, 여러 기기 사용 시 추천</li>
+                            <li>원드라이브·드롭박스 폴더도 구글 드라이브와 동일하게 사용 가능해요</li>
                         </ul>
                     </div>
                 </div>
                 <div class="onboarding-section">
-                    <h3>🔐 로그인은 선택이에요</h3>
+                    <h3>${_ico('<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>')} 로그인은 선택이에요</h3>
                     <p>로그인 없이도 모든 기능을 쓸 수 있어요. 여러 기기에서 서지정보·메모를 동기화하고 싶을 때만 로그인하면 돼요.</p>
                 </div>
                 <div class="onboarding-section">
-                    <h3>❓ 궁금하면 챗봇에 물어보세요</h3>
-                    <p>오른쪽 아래 💬 버튼을 누르면 챗봇이 열려요. 앱 사용법을 편하게 물어보세요.</p>
+                    <h3>${_ico('<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>')} 궁금하면 챗봇에 물어보세요</h3>
+                    <p>오른쪽 아래 채팅 버튼을 누르면 챗봇이 열려요. 앱 사용법을 편하게 물어보세요.</p>
                 </div>
             </div>
             <div class="onboarding-footer">
-                <button id="btn-onboarding-folder" class="btn-primary">📁 백업 폴더 지정하기</button>
+                <button id="btn-onboarding-folder" class="btn-primary">${_ico('<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',16)} 백업 폴더 지정하기</button>
                 <button id="btn-onboarding-later" class="btn-secondary">나중에 할게요</button>
             </div>
         </div>`;

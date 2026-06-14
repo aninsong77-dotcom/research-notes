@@ -2390,7 +2390,8 @@ body {
 .onboarding-header h2 { font-size: 20px; font-weight: 700; color: var(--text); margin: 0 0 6px; }
 .onboarding-sub { color: var(--text-secondary); font-size: 14px; margin: 0; }
 .onboarding-body { padding: 20px 28px; display: flex; flex-direction: column; gap: 18px; }
-.onboarding-section h3 { font-size: 14px; font-weight: 600; color: var(--text); margin: 0 0 6px; }
+.onboarding-section h3 { font-size: 14px; font-weight: 600; color: var(--text); margin: 0 0 6px; display: flex; align-items: center; gap: 7px; }
+.onboarding-section h3 svg { color: var(--accent); flex-shrink: 0; }
 .onboarding-section p { font-size: 13.5px; color: var(--text-secondary); margin: 0; line-height: 1.6; }
 .onboarding-tip {
     margin-top: 10px; padding: 12px 14px;
