@@ -4351,7 +4351,29 @@ function showOnboarding() {
     overlay.innerHTML = `
         <div class="onboarding-modal">
             <div class="onboarding-header">
-                <div class="onboarding-logo">📓</div>
+                <div class="onboarding-logo">
+                    <svg viewBox="0 0 80 80" width="80" height="80" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect width="80" height="80" rx="20" fill="#EEF2FF"/>
+                        <!-- 노트북 본체 -->
+                        <rect x="16" y="18" width="38" height="48" rx="4" fill="#fff" stroke="#6366F1" stroke-width="2.5"/>
+                        <!-- 스프링 고리 -->
+                        <circle cx="16" cy="28" r="3" fill="#fff" stroke="#6366F1" stroke-width="2"/>
+                        <circle cx="16" cy="38" r="3" fill="#fff" stroke="#6366F1" stroke-width="2"/>
+                        <circle cx="16" cy="48" r="3" fill="#fff" stroke="#6366F1" stroke-width="2"/>
+                        <circle cx="16" cy="58" r="3" fill="#fff" stroke="#6366F1" stroke-width="2"/>
+                        <!-- 줄 -->
+                        <line x1="24" y1="32" x2="46" y2="32" stroke="#C7D2FE" stroke-width="2" stroke-linecap="round"/>
+                        <line x1="24" y1="39" x2="46" y2="39" stroke="#C7D2FE" stroke-width="2" stroke-linecap="round"/>
+                        <line x1="24" y1="46" x2="38" y2="46" stroke="#C7D2FE" stroke-width="2" stroke-linecap="round"/>
+                        <!-- 연필 -->
+                        <g transform="rotate(-35 62 42)">
+                            <rect x="56" y="26" width="8" height="26" rx="2" fill="#6366F1"/>
+                            <polygon points="56,52 64,52 60,60" fill="#FCD34D"/>
+                            <line x1="56" y1="49" x2="64" y2="49" stroke="#fff" stroke-width="1.5"/>
+                            <rect x="56" y="26" width="8" height="5" rx="2" fill="#A5B4FC"/>
+                        </g>
+                    </svg>
+                </div>
                 <h2>내 연구노트에 오신 것을 환영해요!</h2>
                 <p class="onboarding-sub">논문 관리·AI 요약·마인드맵을 한 곳에서</p>
             </div>

@@ -2386,7 +2386,7 @@ body {
     text-align: center; padding: 32px 32px 20px;
     border-bottom: 1px solid var(--border);
 }
-.onboarding-logo { font-size: 48px; margin-bottom: 10px; }
+.onboarding-logo { display: flex; justify-content: center; margin-bottom: 14px; }
 .onboarding-header h2 { font-size: 20px; font-weight: 700; color: var(--text); margin: 0 0 6px; }
 .onboarding-sub { color: var(--text-secondary); font-size: 14px; margin: 0; }
 .onboarding-body { padding: 20px 28px; display: flex; flex-direction: column; gap: 18px; }
