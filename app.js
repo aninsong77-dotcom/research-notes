@@ -3149,7 +3149,8 @@ async function folderBackup() {
         return;
     }
     try {
-        if (!backupDirHandle) {
+        const isNew = !backupDirHandle;
+        if (isNew) {
             backupDirHandle = await window.showDirectoryPicker({ id: 'researchNotesBackup', mode: 'readwrite' });
             await dbPut(STORE_SETTINGS, { id: BACKUP_HANDLE_KEY, handle: backupDirHandle });
         }
@@ -3157,8 +3158,12 @@ async function folderBackup() {
             showToast('백업 폴더 쓰기 권한이 필요합니다', 'error');
             return;
         }
+        // 폴더를 처음 지정했고 백업 파일이 있으면 자료 자동 복원
+        if (isNew) {
+            await _restoreAllFromBackupFile();
+        }
         await writeBackupFile();
-        showToast(`백업 완료 — ${BACKUP_FILENAME}`, 'success');
+        showToast(`백업 폴더 연결 완료!`, 'success');
     } catch (err) {
         if (err.name === 'AbortError') return;
         pushDebug('error', `폴더 백업 실패: ${err.message}`);
@@ -3220,6 +3225,66 @@ function _showPdfRestoreButton() {
     };
     const footer = document.querySelector('.sidebar-footer');
     if (footer) footer.insertBefore(btn, footer.firstChild);
+}
+
+// 폴더 처음 지정 시 — 백업 파일 있으면 텍스트+PDF 전부 자동 복원
+async function _restoreAllFromBackupFile() {
+    try {
+        let fh;
+        try { fh = await backupDirHandle.getFileHandle(BACKUP_FILENAME); }
+        catch { return; } // 백업 파일 없으면 조용히 종료
+        const data = JSON.parse(await (await fh.getFile()).text());
+
+        // 프로젝트 먼저 복원 (논문·자료가 projectId를 참조하므로)
+        const existingProjects = await dbGetAll(STORE_PROJECTS);
+        for (const proj of (data.projects || [])) {
+            if (!existingProjects.find(e => e.id === proj.id))
+                await dbPut(STORE_PROJECTS, proj);
+        }
+
+        // 논문 복원 (PDF 포함)
+        const existingPapers = await dbGetAll(STORE_PAPERS);
+        for (const p of (data.papers || [])) {
+            if (existingPapers.find(e => e.id === p.id)) continue;
+            const paper = { ...p };
+            if (p._pdfEncoded && p.pdfData) paper.pdfData = b64ToBuf(p.pdfData);
+            delete paper._pdfEncoded;
+            await dbPut(STORE_PAPERS, paper);
+        }
+
+        // 자료 복원
+        const existingMat = await dbGetAll(STORE_MATERIALS);
+        for (const m of (data.materials || [])) {
+            if (existingMat.find(e => e.id === m.id)) continue;
+            const mat = { ...m };
+            if (m._fileEncoded && m.fileData) mat.fileData = b64ToBuf(m.fileData);
+            delete mat._fileEncoded;
+            await dbPut(STORE_MATERIALS, mat);
+        }
+
+        // 메모·프로포절·마인드맵 복원
+        const existingNotes = await dbGetAll(STORE_NOTES);
+        for (const n of (data.notes || [])) {
+            if (!existingNotes.find(e => e.id === n.id)) await dbPut(STORE_NOTES, n);
+        }
+        const existingProp = await dbGetAll(STORE_PROPOSALS);
+        for (const pr of (data.proposals || [])) {
+            if (!existingProp.find(e => e.id === pr.id)) await dbPut(STORE_PROPOSALS, pr);
+        }
+        const existingMm = await dbGetAll(STORE_MINDMAPS);
+        for (const mm of (data.mindmaps || [])) {
+            if (!existingMm.find(e => e.id === mm.id)) await dbPut(STORE_MINDMAPS, mm);
+        }
+
+        await initProjects();
+        await loadData();
+        renderContent();
+        const paperCount = (data.papers || []).length;
+        if (paperCount > 0) showToast(`백업에서 논문 ${paperCount}편 등 자료를 불러왔어요!`, 'success');
+        pushDebug('info', `백업 자동 복원 완료 — 논문 ${paperCount}편`);
+    } catch(e) {
+        pushDebug('warn', '백업 자동 복원 실패: ' + e.message);
+    }
 }
 
 async function _loadPdfsFromBackupFile(showResult) {
@@ -4397,12 +4462,10 @@ function showOnboarding() {
 
     document.getElementById('btn-onboarding-folder').onclick = async () => {
         overlay.remove();
-        localStorage.setItem('onboardingShown', '1');
         await folderBackup();
     };
     document.getElementById('btn-onboarding-later').onclick = () => {
         overlay.remove();
-        localStorage.setItem('onboardingShown', '1');
     };
 }
 
@@ -4415,8 +4478,8 @@ async function init() {
     bindEvents();
     renderProjectSelector();
     renderContent();
-    // 백업 폴더 미설정 + 첫 실행이면 온보딩 표시
-    if (!backupDirHandle && !localStorage.getItem('onboardingShown')) {
+    // 백업 폴더 미설정이면 온보딩 표시
+    if (!backupDirHandle) {
         setTimeout(showOnboarding, 600);
     }
 }
