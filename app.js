@@ -17,6 +17,15 @@ function pushDebug(level, msg) {
     for (let i = DEBUG_LOG.length - 1; i >= 0; i--) {
         if (DEBUG_LOG[i].level === 'info' && DEBUG_LOG[i].t < cutoff) DEBUG_LOG.splice(i, 1);
     }
+    // error·warn은 localStorage에도 보관 (새로고침 후에도 유지, 최대 50건)
+    if (level === 'error' || level === 'warn') {
+        try {
+            const stored = JSON.parse(localStorage.getItem('debugPersist') || '[]');
+            stored.push({ t: Date.now(), level, msg: String(msg).slice(0, 500) });
+            if (stored.length > 50) stored.splice(0, stored.length - 50);
+            localStorage.setItem('debugPersist', JSON.stringify(stored));
+        } catch(e) {}
+    }
     if (level === 'error' || level === 'warn') {
         const badge = document.getElementById('debug-badge');
         if (badge) {
@@ -196,6 +205,8 @@ const ICON_PATHS = {
     'eye':        '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
     'chat':       '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
     'bot':        '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
+    'key':        '<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>',
+    'microscope': '<path d="M6 18h8"/><path d="M3 22h18"/><path d="M14 22a7 7 0 1 0 0-14h-1"/><path d="M9 14h2"/><path d="M9 12a2 2 0 0 1-2-2V6h6v4a2 2 0 0 1-2 2Z"/><path d="M12 6V3a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v3"/>',
     'cloud':      '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>',
     'cloud-off':  '<path d="m2 2 20 20"/><path d="M5.78 5.78A7 7 0 0 0 9 19h8.5a4.5 4.5 0 0 0 1.3-.19"/><path d="M21.53 16.5A4.5 4.5 0 0 0 17.5 10h-1.79A7 7 0 0 0 10 5.07"/>',
 };
@@ -234,6 +245,8 @@ const state = {
     formMode: 'edit',          // 논문 모달: 'view' | 'edit'
     editingMaterialId: null,
     materialMode: 'edit',      // 자료 모달: 'view' | 'edit'
+    materialSelectMode: false,
+    materialSelectedIds: new Set(),
     currentPdfFile: null,
     currentMaterialFile: null,
 };
@@ -421,7 +434,7 @@ function renderProjectSelector() {
 
     container.innerHTML = `
         <div class="project-wrap">
-            <button class="project-btn" id="project-btn">
+            <button class="project-btn" id="project-btn" title="${escHtml(current?.name || '프로젝트')}">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
                 <span class="project-name">${escHtml(current?.name || '프로젝트')}</span>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="margin-left:auto;flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg>
@@ -1351,38 +1364,85 @@ function refreshPaperJump() {
 }
 
 // ── 분류 모아보기 — 카테고리 하나를 골라 여러 논문의 그 항목 발췌를 한눈에 ──
+// 카테고리에 해당하는 논문 필드 값을 꺼냄 (AI 자동 추출 포함)
+function catFieldValue(paper, catKey) {
+    const cfg = CAT_FIELD[catKey];
+    if (!cfg) return null;
+    if (cfg.kind === 'top') {
+        const v = paper[cfg.key];
+        return (v && String(v).trim()) ? String(v).trim() : null;
+    }
+    if (cfg.kind === 'analysis') {
+        const v = paper.analysis?.[cfg.key];
+        return (v && String(v).trim()) ? String(v).trim() : null;
+    }
+    if (cfg.kind === 'array') {
+        if (cfg.key === 'variables') {
+            // paper.variables + analysis.variables 5역할 합산
+            const seen = new Set();
+            const out = [];
+            (paper.variables || []).forEach(v => { const k = String(v).toLowerCase(); if (!seen.has(k)) { seen.add(k); out.push(v); } });
+            VAR_ROLES.forEach(([role]) => {
+                (paper.analysis?.variables?.[role] || []).forEach(item => {
+                    const name = item?.name || item;
+                    if (name) { const k = String(name).toLowerCase(); if (!seen.has(k)) { seen.add(k); out.push(name); } }
+                });
+            });
+            return out.length ? out : null;
+        }
+        const arr = paper[cfg.key] || [];
+        return arr.length ? [...arr] : null;
+    }
+    return null;
+}
+
 function renderCatView(container) {
     const known = new Set(EXCERPT_CATS.map(([k]) => k));
     const catOf = e => (known.has(e.cat) ? e.cat : 'free');
     const cur = (state.catViewCat && known.has(state.catViewCat)) ? state.catViewCat : EXCERPT_CATS[0][0];
     state.catViewCat = cur;
 
-    const rows = sortPapers(state.papers)
-        .map(p => ({ p, items: (p.excerpts || []).filter(e => catOf(e) === cur) }))
-        .filter(r => r.items.length);
-    const total = rows.reduce((n, r) => n + r.items.length, 0);
+    // 논문별로: 필드값 + 발췌 중 하나라도 있으면 표시
+    const rows = sortPapers(state.papers).map(p => ({
+        p,
+        fieldVal: catFieldValue(p, cur),
+        excerpts: (p.excerpts || []).filter(e => catOf(e) === cur),
+    })).filter(r => r.fieldVal || r.excerpts.length);
+
+    const totalEx = rows.reduce((n, r) => n + r.excerpts.length, 0);
     const catOptions = EXCERPT_CATS.map(([k, l]) =>
         `<option value="${k}" ${k === cur ? 'selected' : ''}>${l}</option>`).join('');
 
+    const isArray = Array.isArray(rows[0]?.fieldVal);
     const body = rows.length
-        ? rows.map(({ p, items }) => `
+        ? rows.map(({ p, fieldVal, excerpts }) => {
+            const fieldHTML = fieldVal
+                ? (Array.isArray(fieldVal)
+                    ? `<div class="cv-field-tags">${fieldVal.map(v => `<span class="tag tag-variable">${escHtml(v)}</span>`).join('')}</div>`
+                    : `<div class="cv-field-text">${escHtml(fieldVal)}</div>`)
+                : '';
+            const exHTML = excerpts.length
+                ? `<ul class="cv-ex-list">${excerpts.map(e =>
+                    `<li>${escHtml(e.text)}${e.memo ? `<span class="cv-ex-memo"> — ${escHtml(e.memo)}</span>` : ''}</li>`
+                ).join('')}</ul>`
+                : '';
+            return `
             <div class="cv-paper">
                 <div class="cv-paper-head">
                     <span class="cv-paper-title">${escHtml(p.title || '제목 없음')}</span>
                     <span class="cv-paper-meta">${escHtml([firstAuthor(p), p.year].filter(Boolean).join(', '))}</span>
                     <button type="button" class="cv-open btn-secondary" data-id="${p.id}">${icon('eye', 14)} 보기</button>
                 </div>
-                <ul class="cv-ex-list">
-                    ${items.map(e => `<li>${escHtml(e.text)}${e.memo ? `<span class="cv-ex-memo"> — ${escHtml(e.memo)}</span>` : ''}</li>`).join('')}
-                </ul>
-            </div>`).join('')
-        : `<div class="empty-state"><div class="empty-icon">${icon('clipboard', 44)}</div><h3>이 분류로 담은 발췌가 없어요</h3><p class="muted">연구 책상에서 논문을 읽으며 「${escHtml(CAT_LABEL[cur] || '')}」(으)로 담아보세요.</p></div>`;
+                ${fieldHTML}${exHTML}
+            </div>`;
+        }).join('')
+        : `<div class="empty-state"><div class="empty-icon">${icon('clipboard', 44)}</div><h3>이 분류에 내용이 없어요</h3><p class="muted">논문에 「${escHtml(CAT_LABEL[cur] || '')}」 항목을 채우거나, 연구 책상에서 발췌를 담아보세요.</p></div>`;
 
     container.innerHTML = `
         <div class="cv-head">
             <span class="cv-title">분류 모아보기</span>
             <select class="cv-cat-select" id="cv-cat">${catOptions}</select>
-            <span class="cv-count">${rows.length}편 · ${total}개</span>
+            <span class="cv-count">${rows.length}편 · 발췌 ${totalEx}개</span>
         </div>
         <div class="cv-list">${body}</div>`;
 
@@ -1496,30 +1556,85 @@ async function deleteNote(id) {
 }
 
 // ── 자료(논문이 아닌 자료) 뷰 ──────────────────────────────
+// 변인 역할 색깔 정의
+const MAT_VAR_ROLES = {
+    '독립': { color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe' },
+    '종속': { color: '#059669', bg: '#ecfdf5', border: '#a7f3d0' },
+    '매개': { color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe' },
+    '조절': { color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
+};
+
 function renderMaterials(container) {
+    const selectMode  = !!state.materialSelectMode;
+    const selectedIds = state.materialSelectedIds || new Set();
+
     if (state.materials.length === 0) {
         container.innerHTML = `
-            <div class="section-header">
+            <div class="paper-header pc-row-inline">
                 <span class="section-title">자료 0개</span>
                 <button class="btn-secondary" id="btn-add-material-inline">+ 자료 추가</button>
             </div>
             <div class="empty-state">
                 <div class="empty-icon">${icon('library', 44)}</div>
                 <h3>저장된 자료가 없습니다</h3>
-                <p>척도, 도서, 웹자료 등 논문이 아닌 자료를<br><strong>+ 자료 추가</strong>로 보관해보세요</p>
+                <p>척도, 도서, 웹자료 등을<br><strong>+ 자료 추가</strong>로 보관해보세요</p>
             </div>`;
         document.getElementById('btn-add-material-inline').onclick = () => openMaterialForm();
         return;
     }
     const sorted = [...state.materials].sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+    const selectBar = selectMode ? `
+        <div class="paper-select-bar">
+            <button class="btn-sel-all"    id="btn-mat-sel-all">전체 선택</button>
+            <button class="btn-sel-none"   id="btn-mat-sel-none">전체 해제</button>
+            <button class="btn-sel-del"    id="btn-mat-sel-del">선택 삭제 (${selectedIds.size}개)</button>
+            <button class="btn-sel-cancel" id="btn-mat-sel-cancel">취소</button>
+        </div>` : '';
+
     container.innerHTML = `
-        <div class="section-header">
+        <div class="paper-header pc-row-inline">
             <span class="section-title">자료 ${state.materials.length}개</span>
-            <button class="btn-secondary" id="btn-add-material-inline">+ 자료 추가</button>
+            <button class="btn-paper-select ${selectMode ? 'active' : ''}" id="btn-mat-select-mode">
+                ${selectMode ? '선택 중…' : '선택 삭제'}
+            </button>
+            <button class="btn-secondary" id="btn-add-material-inline" style="margin-left:auto">+ 자료 추가</button>
         </div>
-        <div class="papers-grid">${sorted.map(materialCardHTML).join('')}</div>`;
+        ${selectBar}
+        <div class="mat-list">${sorted.map(m => materialRowHTML(m, selectMode, selectedIds)).join('')}</div>`;
+
     document.getElementById('btn-add-material-inline').onclick = () => openMaterialForm();
-    bindMaterialCards(container);
+    document.getElementById('btn-mat-select-mode').onclick = () => {
+        state.materialSelectMode = !state.materialSelectMode;
+        state.materialSelectedIds = new Set();
+        renderContent();
+    };
+    if (selectMode) {
+        document.getElementById('btn-mat-sel-all').onclick = () => {
+            state.materialSelectedIds = new Set(state.materials.map(m => m.id));
+            renderContent();
+        };
+        document.getElementById('btn-mat-sel-none').onclick = () => {
+            state.materialSelectedIds = new Set();
+            renderContent();
+        };
+        document.getElementById('btn-mat-sel-cancel').onclick = () => {
+            state.materialSelectMode = false;
+            state.materialSelectedIds = new Set();
+            renderContent();
+        };
+        document.getElementById('btn-mat-sel-del').onclick = async () => {
+            const ids = [...state.materialSelectedIds];
+            if (!ids.length) { showToast('선택된 자료가 없습니다.', 'warn'); return; }
+            if (!confirm(`자료 ${ids.length}개를 삭제할까요?`)) return;
+            for (const id of ids) await dbDelete(STORE_MATERIALS, id);
+            state.materialSelectMode = false;
+            state.materialSelectedIds = new Set();
+            await loadData();
+            renderContent();
+            showToast(`자료 ${ids.length}개가 삭제되었습니다.`, 'success');
+        };
+    }
+    bindMaterialRows(container);
 }
 
 function renderMaterialSearch(q, container) {
@@ -1532,34 +1647,55 @@ function renderMaterialSearch(q, container) {
     }
     container.innerHTML = `
         <div class="search-results-info">"<strong>${escHtml(q)}</strong>" 자료 검색 결과 ${matches.length}개</div>
-        <div class="papers-grid">${matches.map(materialCardHTML).join('')}</div>`;
-    bindMaterialCards(container);
+        <div class="mat-list">${matches.map(m => materialRowHTML(m, false, new Set())).join('')}</div>`;
+    bindMaterialRows(container);
 }
 
 function materialMatchesQuery(m, q) {
-    return [m.title, m.authors, m.source, m.note, m.type, m.fileName]
+    return [m.title, m.authors, m.source, m.note, m.type, m.fileName, m.varRole]
         .some(f => f && String(f).toLowerCase().includes(q));
 }
 
-function materialCardHTML(m) {
+function materialRowHTML(m, selectMode = false, selectedIds = new Set()) {
+    const checked = selectedIds.has(m.id);
+    const role = m.varRole && MAT_VAR_ROLES[m.varRole];
+    const roleTag = role
+        ? `<span class="mat-var-role" style="color:${role.color};background:${role.bg};border-color:${role.border}">${m.varRole}</span>`
+        : '';
     return `
-        <div class="paper-card material-card" data-id="${m.id}">
-            <div class="paper-card-header">
-                <div class="paper-title">${escHtml(m.title || '제목 없음')}</div>
-                <span class="material-type-badge mt-${escHtml(m.type || '기타')}">${escHtml(m.type || '기타')}</span>
-            </div>
-            ${m.authors ? `<div class="paper-authors">${escHtml(m.authors)}</div>` : ''}
-            ${m.source ? `<div class="material-source">${escHtml(m.source)}</div>` : ''}
-            ${m.note ? `<div class="material-note">${escHtml(m.note)}</div>` : ''}
-            <div class="paper-card-footer">
-                ${m.fileData ? `<span class="paper-has-pdf">${icon('paperclip', 14)} ${escHtml(m.fileName || '첨부파일')}</span>` : '<span></span>'}
-            </div>
+        <div class="mat-row ${selectMode && checked ? 'mat-selected' : ''}" data-id="${m.id}">
+            ${selectMode
+                ? `<input type="checkbox" class="mat-checkbox" data-id="${m.id}" ${checked ? 'checked' : ''}>`
+                : ''}
+            <span class="mat-type-badge mt-${escHtml(m.type || '기타')}">${escHtml(m.type || '기타')}</span>
+            <span class="mat-title">${escHtml(m.title || '제목 없음')}</span>
+            ${m.authors ? `<span class="mat-authors">${escHtml(m.authors)}</span>` : '<span class="mat-authors"></span>'}
+            ${roleTag || '<span></span>'}
+            ${m.source ? `<span class="mat-source">${escHtml(m.source)}</span>` : '<span class="mat-source"></span>'}
+            ${m.fileData ? `<span class="mat-icon" title="첨부파일 있음">${icon('paperclip', 13)}</span>` : '<span></span>'}
         </div>`;
 }
 
-function bindMaterialCards(container) {
-    container.querySelectorAll('.material-card').forEach(card => {
-        card.addEventListener('click', () => openMaterialForm(card.dataset.id, 'view'));
+function bindMaterialRows(container) {
+    const selectMode = !!state.materialSelectMode;
+    container.querySelectorAll('.mat-row').forEach(row => {
+        if (selectMode) {
+            const cb = row.querySelector('.mat-checkbox');
+            if (cb) cb.addEventListener('change', () => {
+                if (cb.checked) state.materialSelectedIds.add(cb.dataset.id);
+                else state.materialSelectedIds.delete(cb.dataset.id);
+                // 삭제 버튼 카운트 갱신
+                const delBtn = document.getElementById('btn-mat-sel-del');
+                if (delBtn) delBtn.textContent = `선택 삭제 (${state.materialSelectedIds.size}개)`;
+                row.classList.toggle('mat-selected', cb.checked);
+            });
+            row.addEventListener('click', e => {
+                if (e.target.type === 'checkbox') return;
+                if (cb) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); }
+            });
+        } else {
+            row.addEventListener('click', () => openMaterialForm(row.dataset.id, 'view'));
+        }
     });
 }
 
@@ -1572,6 +1708,7 @@ function openMaterialForm(editId = null, mode = null) {
 
     const m = editId ? state.materials.find(x => x.id === editId) : null;
     document.getElementById('m-type').value = m?.type || '척도';
+    document.getElementById('m-varrole').value = m?.varRole || '';
     document.getElementById('m-title').value = m?.title || '';
     document.getElementById('m-authors').value = m?.authors || '';
     document.getElementById('m-source').value = m?.source || '';
@@ -1591,6 +1728,7 @@ function applyMaterialMode(mode, m) {
         if (el.type !== 'file') el.readOnly = (mode === 'view');
     });
     document.getElementById('m-type').disabled = (mode === 'view');
+    document.getElementById('m-varrole').disabled = (mode === 'view');
 
     let extra = document.getElementById('m-view-file');
     if (extra) extra.remove();
@@ -1638,6 +1776,7 @@ async function saveMaterial(e) {
         type: document.getElementById('m-type').value,
         title,
         authors: v('m-authors'),
+        varRole: document.getElementById('m-varrole').value || '',
         source: v('m-source'),
         note: v('m-note'),
         fileData,
@@ -1912,16 +2051,38 @@ function deskActivate(paperId) {
     const paper = state.papers.find(p => p.id === paperId);
     if (!paper) return;
     deskActiveId = paperId;
+    deskCtx.textOverride = false;   // 논문 전환 시 항상 기본 뷰(PDF우선)로 초기화
     // 이전 PDF blob URL 정리 후 새로 생성
     if (deskCtx.pdfUrl) { URL.revokeObjectURL(deskCtx.pdfUrl); deskCtx.pdfUrl = null; }
     deskCtx.pdfUrl = paper.pdfData
         ? URL.createObjectURL(new Blob([paper.pdfData], { type: 'application/pdf' }))
         : null;
     const { overlay } = deskCtx;
-    overlay.querySelector('#desk-left').innerHTML = deskLeftHTML(paper, deskCtx.pdfUrl);
+    overlay.querySelector('#desk-left').innerHTML = deskLeftHTML(paper, deskCtx.pdfUrl, false);
+    bindDeskLeftToggles(overlay, paper);
     overlay.querySelector('#desk-right').innerHTML = deskRightHTML(paper);
     bindDeskRight(overlay, paper);
     deskRenderTabs();
+}
+
+// 텍스트 ↔ PDF/링크 전환 버튼 바인딩
+function bindDeskLeftToggles(overlay, paper) {
+    const left = overlay.querySelector('#desk-left');
+    left.querySelector('#desk-toggle-text')?.addEventListener('click', () => {
+        deskCtx.textOverride = true;
+        left.innerHTML = deskLeftHTML(paper, deskCtx.pdfUrl, true);
+        bindDeskLeftToggles(overlay, paper);
+    });
+    left.querySelector('#desk-toggle-pdf')?.addEventListener('click', () => {
+        deskCtx.textOverride = false;
+        left.innerHTML = deskLeftHTML(paper, deskCtx.pdfUrl, false);
+        bindDeskLeftToggles(overlay, paper);
+    });
+    left.querySelector('#desk-toggle-link')?.addEventListener('click', () => {
+        deskCtx.textOverride = false;
+        left.innerHTML = deskLeftHTML(paper, deskCtx.pdfUrl, false);
+        bindDeskLeftToggles(overlay, paper);
+    });
 }
 
 // 상단 탭 줄 렌더 + 바인딩
@@ -2001,20 +2162,66 @@ function drivePreviewUrl(link) {
     return null;
 }
 
-function deskLeftHTML(paper, pdfUrl) {
-    if (pdfUrl) return `<iframe class="desk-pdf" src="${pdfUrl}" title="PDF"></iframe>`;
-    // 로컬 PDF가 없으면 구글 드라이브 링크를 미리보기로 띄움
-    const preview = drivePreviewUrl(paper.pdfLink);
-    if (preview) return `<iframe class="desk-pdf" src="${preview}" title="PDF" allow="autoplay"></iframe>`;
-    // PDF 없음 → 가진 본문 정보로 대체
+function deskLeftHTML(paper, pdfUrl, forceText = false) {
+    const hasText = !!(paper.fullText?.trim() || paper.abstract?.trim() || paper.methods?.trim() || paper.findings?.trim());
+
+    // 우선순위 1: 로컬 PDF (강제 텍스트 아닐 때)
+    if (pdfUrl && !forceText) {
+        const textBtn = hasText
+            ? `<button type="button" class="desk-view-toggle" id="desk-toggle-text">${icon('note', 13)} 텍스트로 보기</button>`
+            : '';
+        return `<div class="desk-pdf-wrap">
+            ${textBtn ? `<div class="desk-left-toolbar">${textBtn}</div>` : ''}
+            <iframe class="desk-pdf" src="${pdfUrl}" title="PDF"></iframe>
+        </div>`;
+    }
+
+    // 우선순위 2: 링크 (강제 텍스트 아닐 때)
+    if (paper.pdfLink && !forceText) {
+        const textBtn = hasText
+            ? `<button type="button" class="desk-view-toggle" id="desk-toggle-text">${icon('note', 13)} 텍스트로 보기</button>`
+            : '';
+        const toolbar = textBtn ? `<div class="desk-left-toolbar">${textBtn}</div>` : '';
+        const preview = drivePreviewUrl(paper.pdfLink);
+        if (preview) return `<div class="desk-pdf-wrap">
+            ${toolbar}
+            <iframe class="desk-pdf" src="${preview}" title="PDF" allow="autoplay"></iframe>
+        </div>`;
+        return `${toolbar}<div class="desk-link-view">
+            <div class="desk-link-icon">🔗</div>
+            <div class="desk-link-desc">${escHtml(paper.title || '논문 링크')}</div>
+            <a href="${escHtml(paper.pdfLink)}" target="_blank" rel="noopener" class="btn-primary desk-link-open">새 탭에서 열기</a>
+            <p class="desk-link-note">이 링크는 보안상 앱 안에서 직접 열 수 없습니다.<br>새 탭에서 열어서 텍스트를 복사할 수 있어요.</p>
+        </div>`;
+    }
+
+    // 우선순위 3: 텍스트 뷰 (PDF·링크 없거나 forceText=true)
+    const backBtns = [];
+    if (pdfUrl)          backBtns.push(`<button type="button" class="desk-view-toggle" id="desk-toggle-pdf">${icon('file-text', 13)} PDF로 보기</button>`);
+    else if (paper.pdfLink) backBtns.push(`<button type="button" class="desk-view-toggle" id="desk-toggle-link">${icon('link', 13)} 링크로 보기</button>`);
+    const toolbar = backBtns.length ? `<div class="desk-left-toolbar">${backBtns.join('')}</div>` : '';
+
     const meta = [paper.year, paper.authors, paper.source].filter(Boolean).map(escHtml).join(' · ');
     const blocks = [];
     const sec = (label, val) => { if (val && String(val).trim()) blocks.push(`<h4>${label}</h4><p>${escHtml(val)}</p>`); };
-    sec('초록', paper.abstract);
-    sec('연구방법', paper.methods);
-    sec('주요발견', paper.findings);
+    if (paper.fullText && paper.fullText.trim()) {
+        blocks.push(`<h4>원문 텍스트</h4><div class="desk-reading">${buildPatternHtml(paper.fullText)}</div>`);
+    }
+    if (!paper.fullText || !paper.fullText.trim()) {
+        sec('초록', paper.abstract);
+        sec('연구방법', paper.methods);
+        sec('주요발견', paper.findings);
+    }
+    if (paper.attachedImages && paper.attachedImages.length) {
+        const imgs = paper.attachedImages.map(img => `
+            <figure class="desk-img-figure">
+                <img src="${img.data}" alt="${escHtml(img.desc || '')}" class="desk-img">
+                ${img.desc ? `<figcaption>${escHtml(img.desc)}</figcaption>` : ''}
+            </figure>`).join('');
+        blocks.push(`<h4>첨부 이미지</h4><div class="desk-img-list">${imgs}</div>`);
+    }
     sec('내 메모', paper.myNote);
-    return `
+    return `${toolbar}
         <div class="desk-text">
             <h2>${escHtml(paper.title || '제목 없음')}</h2>
             ${meta ? `<div class="desk-text-meta">${meta}</div>` : ''}
@@ -2109,8 +2316,43 @@ function deskRightHTML(paper) {
         `<option value="${k}" ${k === deskAddCat ? 'selected' : ''}>${l}</option>`
     ).join('');
     const t = deskRTab;
+    const infoBlocks = [];
+    if (paper?.aiSummary) {
+        infoBlocks.push(`<div class="desk-info-section">
+            <div class="desk-info-label">${icon('bot', 12)} AI 요약</div>
+            <div class="desk-info-text">${escHtml(paper.aiSummary)}</div>
+        </div>`);
+    }
+    if (paper?.abstract) {
+        infoBlocks.push(`<div class="desk-info-section">
+            <div class="desk-info-label">${icon('file-text', 12)} 초록</div>
+            <div class="desk-info-text">${escHtml(paper.abstract)}</div>
+        </div>`);
+    }
+    const vars = [...(paper?.variables || [])];
+    if (paper?.analysis?.variables) {
+        VAR_ROLES.forEach(([role]) => {
+            (paper.analysis.variables[role] || []).forEach(v => {
+                const name = v?.name || v;
+                if (name && !vars.includes(name)) vars.push(name);
+            });
+        });
+    }
+    if (vars.length) {
+        infoBlocks.push(`<div class="desk-info-section">
+            <div class="desk-info-label">${icon('microscope', 12)} 변인</div>
+            <div class="desk-info-tags">${vars.map(v => `<span class="tag tag-variable">${escHtml(v)}</span>`).join('')}</div>
+        </div>`);
+    }
+    const infoHTML = infoBlocks.length ? `
+        <details class="desk-info-block" ${infoBlocks.length ? 'open' : ''}>
+            <summary class="desk-info-summary">${icon('clipboard', 13)} 논문 개요 <span class="desk-info-count">${infoBlocks.length}개 항목</span></summary>
+            <div class="desk-info-body">${infoBlocks.join('')}</div>
+        </details>` : '';
+
     const excerptInner = paper ? `
             <div class="desk-right-inner">
+                ${infoHTML}
                 <div class="desk-catch">
                     <div class="desk-catch-head">
                         <span>${icon('clipboard', 14)} 붙여넣기 받는 칸</span>
@@ -2228,7 +2470,7 @@ function deskExcerptsHTML(paper) {
                 <div class="desk-ex-tools">
                     <div class="desk-ex-swatches">${sw}</div>
                     <div class="desk-ex-tbtns">
-                        <button type="button" class="desk-ex-del" data-eid="${e.id}" title="삭제">✕ 삭제</button>
+                        <button type="button" class="desk-ex-del" data-eid="${e.id}" title="삭제">${icon('trash', 12)} 삭제</button>
                     </div>
                 </div>
             </div>`;
@@ -2361,6 +2603,7 @@ function openForm(editId = null, mode = null) {
     formVariables = [];
     formTags = [];
     formAttachedImages = [];
+    formFullTextHtml = '';
 
     const ids = ['f-title','f-authors','f-year','f-source','f-volume','f-issue',
                  'f-pages','f-doi','f-pdflink','f-abstract','f-methods','f-findings','f-note',
@@ -2378,7 +2621,22 @@ function openForm(editId = null, mode = null) {
         set('f-fulltext', paper.fullText);
         formVariables = [...(paper.variables || [])];
         formTags = [...(paper.tags || [])];
+        pushDebug('info', `openForm — 제목:${paper.title} pdfData:${paper.pdfData ? paper.pdfData.byteLength+'bytes' : '없음'} fullText길이:${(paper.fullText||'').length}`);
         if (paper.pdfData) document.getElementById('pdf-filename').textContent = paper.pdfFilename || 'PDF 있음';
+        // AI 요약 복원
+        const aiBox = document.getElementById('ai-summary-result');
+        if (aiBox) {
+            if (paper.aiSummary) {
+                const badge = paper.aiSummaryBasis ? `<div class="ai-basis-badge">📄 ${escHtml(paper.aiSummaryBasis)}</div>` : '';
+                aiBox.innerHTML = `${badge}<div class="ai-summary-text">${escHtml(paper.aiSummary)}</div>`;
+                aiBox.style.display = 'block';
+                const aiBlock = document.getElementById('ai-block');
+                if (aiBlock) aiBlock.open = true;
+            } else {
+                aiBox.textContent = '';
+                aiBox.style.display = 'none';
+            }
+        }
     }
 
     renderChips('variables-list', formVariables, 'variable');
@@ -2412,6 +2670,29 @@ function applyFormMode(mode, paper) {
         const block = document.getElementById('analysis-block');
         if (block) block.open = paper ? hasAnalysis(paper) : false;
     }
+
+    // 원문 텍스트 표시 처리
+    const ftTextarea = document.getElementById('f-fulltext');
+    const ftView     = document.getElementById('f-fulltext-view');
+    const ftBlock    = document.getElementById('fulltext-block');
+    if (mode === 'view') {
+        if (paper?.fullTextHtml && paper.fullTextHtml.trim()) {
+            // 서식 HTML이 있으면 div로 표시, textarea 숨김
+            if (ftTextarea) ftTextarea.style.display = 'none';
+            if (ftView) { ftView.style.display = ''; ftView.innerHTML = paper.fullTextHtml; }
+        } else {
+            // 서식 없으면 textarea 그대로 (readOnly)
+            if (ftTextarea) ftTextarea.style.display = '';
+            if (ftView) ftView.style.display = 'none';
+        }
+        // 내용 있으면 자동으로 열기
+        if (ftBlock && (paper?.fullText || paper?.fullTextHtml)) ftBlock.open = true;
+    } else {
+        // 편집 모드: 항상 textarea
+        if (ftTextarea) ftTextarea.style.display = '';
+        if (ftView) { ftView.style.display = 'none'; ftView.innerHTML = ''; }
+    }
+
     document.querySelector('#modal-form .modal-body').scrollTop = 0;
 }
 
@@ -2449,6 +2730,9 @@ function renderReadStatusButtons(current) {
 
 // ── 원문 이미지 첨부 ────────────────────────────────────────
 let formAttachedImages = []; // [{id, data(base64), desc}]
+let formFullTextHtml = '';  // 서식 포함 원문 HTML (텍스트 붙여넣기로 추가 시)
+let textAddOriginal = '';     // 서식 정리 전 원본 HTML (↩ 되돌리기용)
+let textAddOriginalText = ''; // 붙여넣기 직후 원본 평문 (저장 시 반드시 사용)
 
 function renderFtImages(images) {
     formAttachedImages = images ? [...images] : [];
@@ -2687,9 +2971,12 @@ async function savePaper(e) {
         analysis: collectAnalysis(),
         readStatus: document.querySelector('.rs-btn.active')?.dataset.rs || existing?.readStatus || 'unread',
         fullText: (document.getElementById('f-fulltext')?.value || '').trim() || existing?.fullText || '',
+        fullTextHtml: formFullTextHtml || existing?.fullTextHtml || '',
         attachedImages: formAttachedImages.length ? formAttachedImages : (existing?.attachedImages || []),
         pdfData,
         pdfFilename,
+        aiSummary: (document.getElementById('ai-summary-result')?.querySelector('.ai-summary-text')?.textContent || document.getElementById('ai-summary-result')?.textContent || '').trim() || existing?.aiSummary || '',
+        aiSummaryBasis: existing?.aiSummaryBasis || '',
         projectId: state.currentProjectId,
         addedAt: state.editingId
             ? (state.papers.find(p => p.id === state.editingId)?.addedAt || Date.now())
@@ -2719,9 +3006,8 @@ async function savePaper(e) {
     await loadData();
     renderContent();
     showToast(wasEditing ? '논문이 수정되었습니다' : '논문이 추가되었습니다', 'success');
-    // 수정 저장 → 같은 논문 보기 모드로 전환, 새 논문 → 모달 닫기
-    if (wasEditing) openForm(paper.id, 'view');
-    else closeForm();
+    // 저장 후 항상 보기 모드로 전환
+    openForm(paper.id, 'view');
 }
 
 function readFile(file) {
@@ -2853,10 +3139,13 @@ async function writeBackupFile() {
     await w.close();
 }
 
-// "폴더백업" 버튼: 폴더 미지정이면 1회 선택받고, 이후엔 덮어쓰기
+// "폴더백업" 버튼: 폴더 미지정이면 선택 후 저장. 브라우저 미지원이면 파일 다운로드로 대체
 async function folderBackup() {
     if (!window.showDirectoryPicker) {
-        showToast('이 브라우저는 폴더 백업을 지원하지 않습니다. 내보내기를 사용하세요', 'error');
+        // 브라우저가 폴더 선택을 지원하지 않으면 파일로 바로 내보내기
+        const json = await buildBackupJson();
+        download(json, `연구노트_백업_${new Date().toISOString().slice(0, 10)}.json`, 'application/json');
+        showToast('백업 파일을 다운로드했어요', 'success');
         return;
     }
     try {
@@ -2871,7 +3160,7 @@ async function folderBackup() {
         await writeBackupFile();
         showToast(`백업 완료 — ${BACKUP_FILENAME}`, 'success');
     } catch (err) {
-        if (err.name === 'AbortError') return;  // 사용자가 폴더 선택 취소
+        if (err.name === 'AbortError') return;
         pushDebug('error', `폴더 백업 실패: ${err.message}`);
         showToast(`백업 실패: ${err.message}`, 'error');
     }
@@ -2891,6 +3180,72 @@ function autoBackup() {
             pushDebug('warn', `자동 백업 실패: ${err.message}`);
         }
     }, 1500);
+}
+
+// ── 로그인 후 백업 폴더에서 PDF 자동 복원 ───────────────────
+// 권한이 이미 있으면 조용히, 없으면 사이드바에 복원 버튼 표시
+async function autoLoadPdfsFromBackup() {
+    if (!backupDirHandle) return;
+    try {
+        const perm = await backupDirHandle.queryPermission({ mode: 'read' });
+        if (perm === 'granted') {
+            await _loadPdfsFromBackupFile(false);
+        } else {
+            // 권한이 필요 — 사이드바에 버튼 노출
+            _showPdfRestoreButton();
+        }
+    } catch(e) {
+        pushDebug('warn', 'PDF 자동 로드 확인 실패: ' + e.message);
+    }
+}
+
+function _showPdfRestoreButton() {
+    const existing = document.getElementById('btn-pdf-restore');
+    if (existing) return;
+    const btn = document.createElement('button');
+    btn.id = 'btn-pdf-restore';
+    btn.className = 'btn-pdf-restore';
+    btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>PDF 복원하기`;
+    btn.title = '백업 폴더 접근을 허용해서 PDF를 복원해요';
+    btn.onclick = async () => {
+        try {
+            const perm = await backupDirHandle.requestPermission({ mode: 'read' });
+            if (perm === 'granted') {
+                btn.remove();
+                await _loadPdfsFromBackupFile(true);
+            }
+        } catch(e) {
+            pushDebug('warn', 'PDF 복원 권한 요청 실패: ' + e.message);
+        }
+    };
+    const footer = document.querySelector('.sidebar-footer');
+    if (footer) footer.insertBefore(btn, footer.firstChild);
+}
+
+async function _loadPdfsFromBackupFile(showResult) {
+    try {
+        const fh = await backupDirHandle.getFileHandle(BACKUP_FILENAME);
+        const file = await fh.getFile();
+        const data = JSON.parse(await file.text());
+        const papers = data.papers || [];
+        let count = 0;
+        for (const bp of papers) {
+            if (!bp._pdfEncoded || !bp.pdfData) continue;
+            const local = state.papers.find(p => p.id === bp.id);
+            if (!local || local.pdfData) continue;
+            const merged = { ...local, pdfData: b64ToBuf(bp.pdfData), pdfFilename: bp.pdfFilename || local.pdfFilename };
+            await dbPut(STORE_PAPERS, merged);
+            count++;
+        }
+        if (count > 0) {
+            await loadData();
+            renderContent();
+            if (showResult) showToast(`PDF ${count}개 복원 완료!`, 'success');
+            else pushDebug('info', `PDF 자동 복원: ${count}개`);
+        }
+    } catch(e) {
+        pushDebug('warn', 'PDF 복원 실패: ' + e.message);
+    }
 }
 
 // ── 가져오기 ───────────────────────────────────────────────
@@ -3003,10 +3358,19 @@ function buildDebugReport() {
     };
     const lines = DEBUG_LOG.map(d =>
         `[${new Date(d.t).toLocaleTimeString('ko-KR', { hour12: false })}] ${d.level.toUpperCase()}: ${d.msg}`);
+    let persistedSection = '';
+    try {
+        const stored = JSON.parse(localStorage.getItem('debugPersist') || '[]');
+        if (stored.length) {
+            const pLines = stored.map(d => `[${new Date(d.t).toLocaleTimeString('ko-KR', { hour12: false })}] ${d.level.toUpperCase()}: ${d.msg}`);
+            persistedSection = `\n\n--- 이전 세션 오류·경고 (localStorage, ${stored.length}건) ---\n` + pLines.join('\n');
+        }
+    } catch(e) {}
     return `=== 연구노트 디버그 로그 ===\n`
         + Object.entries(env).map(([k, v]) => `${k}: ${v}`).join('\n')
-        + `\n\n--- 기록 (${DEBUG_LOG.length}건) ---\n`
-        + (lines.join('\n') || '(기록된 오류·경고 없음)');
+        + `\n\n--- 현재 세션 기록 (${DEBUG_LOG.length}건) ---\n`
+        + (lines.join('\n') || '(기록된 오류·경고 없음)')
+        + persistedSection;
 }
 
 function openDebug() {
@@ -3155,10 +3519,20 @@ const GUIDE_TOPICS = [
       a: '「자료」는 논문이 아닌 자료를 보관해요 — 척도·도서·웹자료·보고서·강의자료 등.\n파일도 첨부할 수 있어요.' },
     { q: '참고문헌은요?',
       a: '「참고문헌」은 등록한 논문들의 APA 참고문헌을 한 목록으로 보여줘요.\n복사해서 논문 끝에 붙일 수 있어요.' },
+    { q: '자료는 어디에 저장되나요?',
+      a: '자료는 세 곳에 나뉘어 저장돼요.\n\n① 브라우저 내부(IndexedDB) — 현재 작업 공간. 빠르게 접근할 수 있어요. 브라우저의 「사이트 데이터 삭제」를 하면 사라질 수 있어요.\n\n② 내 PC 백업 폴더 — PDF 포함 전체 백업. 「백업」 버튼으로 폴더를 한 번 지정하면 이후엔 자동으로 저장돼요. 가장 중요한 저장소예요.\n\n③ 클라우드(로그인 시) — 서지정보·메모 등 텍스트만. PDF는 용량 때문에 올라가지 않아요.\n\n백업 폴더만 지정해두면 브라우저 데이터가 날아가도 복구할 수 있어요.' },
+    { q: '백업 폴더는 어떻게 설정해요?',
+      a: '왼쪽 아래 「백업」 버튼을 누르면 폴더를 선택하는 창이 열려요. 딱 한 번만 지정하면 그 다음부터는 논문을 추가하거나 수정할 때마다 자동으로 저장돼요.\n\n어느 폴더를 쓰면 좋을까요?\n• 구글 드라이브 폴더 → 가장 추천! 다른 PC에서도 복원 가능\n• 원드라이브·드롭박스 폴더 → 구글 드라이브와 동일하게 사용 가능\n• 내 PC 일반 폴더 → 같은 PC에서만 사용할 때\n\nPDF를 포함한 모든 자료가 JSON 파일 하나에 담겨요. 이 파일을 잘 보관하면 언제든 복구할 수 있어요.' },
+    { q: 'PDF는 어떻게 저장되나요?',
+      a: 'PDF를 논문에 첨부하면 앱이 파일 내용을 통째로 읽어서 저장해요. 원본 PDF 파일은 첨부 후 삭제해도 됩니다.\n\nPDF는 클라우드(로그인)엔 올라가지 않고, 브라우저 내부와 백업 폴더에만 저장돼요. 그래서 백업 폴더 지정이 중요해요.\n\n백업 폴더를 구글 드라이브로 지정하면 다른 PC에서도 PDF를 볼 수 있어요. 로그인 후 「PDF 복원하기」 버튼을 누르면 자동으로 불러와요.\n\n복붙도 자유롭게 돼요 — 구글 드라이브 뷰어가 아닌 앱 내부 뷰어로 열리기 때문이에요.' },
+    { q: '로그인이 꼭 필요한가요?',
+      a: '아니요, 로그인 없이도 모든 기능을 쓸 수 있어요.\n\n로그인 없이 사용할 때:\n• 백업 폴더만 지정하면 PDF 포함 전체 자료가 안전하게 보관돼요\n• 항상 같은 PC에서 사용한다면 로그인이 필요 없어요\n\n로그인이 도움이 될 때:\n• 여러 기기(집·학교·노트북)에서 서지정보·메모를 바로 보고 싶을 때\n• 브라우저 데이터가 날아가도 텍스트를 자동 복구하고 싶을 때\n\n백업 폴더를 구글 드라이브로 지정하면 로그인 없이도 여러 기기에서 PDF까지 복원할 수 있어요.' },
+    { q: '다른 컴퓨터에서도 쓸 수 있나요?',
+      a: '네, 가능해요. 방법은 두 가지예요.\n\n방법 1 — 구글 드라이브 백업 폴더 (추천)\n① 구글 드라이브가 설치된 PC에서 백업 폴더를 구글 드라이브 폴더로 지정\n② 다른 PC에서 앱 접속 → 백업 폴더 연결 → PDF 포함 전체 복원\n\n방법 2 — 로그인\n① 로그인하면 서지정보·메모 등 텍스트는 어느 기기서든 자동 복원\n② PDF는 백업 폴더(구글 드라이브)가 있어야 복원됨\n\n두 방법을 함께 쓰면 가장 완전해요.' },
     { q: '백업은 어떻게 해요?',
-      a: '자료는 이 브라우저에 저장돼요(IndexedDB). 왼쪽 아래에서:\n• 「백업」 = 파일로 자동 저장\n• 「보냄」 = 내보내기\n• 「받음」 = 가져오기\n다른 컴퓨터로 옮길 땐 보냄 → 받음 하세요.\n로그인해 두면 클라우드로 자동 동기화돼서 옮기는 수고도 줄어요(아래 "로그인하면 뭐가 좋아요?" 참고).' },
+      a: '「백업」 버튼을 누르면:\n• 폴더가 지정돼 있으면 → 그 폴더에 자동 저장\n• 폴더가 없으면 → 지금 바로 파일로 다운로드\n\n논문을 추가하거나 수정하면 백업 폴더에 자동으로 저장돼요. 매번 누를 필요 없어요.\n\n「받음」 버튼은 모든 게 날아갔을 때 백업 파일에서 복구하는 용도예요.' },
     { q: '로그인하면 뭐가 좋아요? (클라우드 동기화)',
-      a: '왼쪽 맨 아래 「로그인하고 동기화」로 가입·로그인하면:\n• 논문·자료·메모·모형의 글자 정보가 클라우드(서버)에 자동 저장돼요.\n• 다른 컴퓨터에서 같은 계정으로 로그인하면 똑같이 보여요(자동 동기화).\n• 한쪽에서 지우면 다른 기기에서도 지워져요.\n로그아웃하면 이 컴퓨터 화면에선 잠기고 내용이 안 보이지만, 클라우드엔 안전하게 남아 다시 로그인하면 복원돼요.\n※ PDF 원본 파일은 용량 때문에 클라우드에 안 올라가요 — PDF는 「PDF 링크」 칸에 구글드라이브 공유 링크를 넣으면 어디서나 열 수 있어요.' },
+      a: '왼쪽 맨 아래 「로그인하고 동기화」로 가입·로그인하면:\n• 서지정보·메모·AI요약·발췌 등 텍스트가 클라우드에 자동 저장돼요\n• 다른 컴퓨터에서 같은 계정으로 로그인하면 텍스트가 바로 복원돼요\n• 로그아웃해도 데이터는 안 지워져요 — 잠금화면만 표시돼요\n\n※ PDF·원문텍스트는 용량 때문에 클라우드에 안 올라가요. PDF는 백업 폴더(구글 드라이브 추천)로 관리해요.' },
     { q: '빠른 인용이 뭐예요?',
       a: '위쪽 「빠른 인용」 버튼을 누르면 작은 창이 떠요.\n논문 목록에서 「빠른 인용」으로 표시해 둔 논문들의 인용을 빠르게 복사할 수 있어요.' },
 ];
@@ -3246,14 +3620,15 @@ function bindEvents() {
     const addByView = () => {
         if (state.view === 'materials') openMaterialForm();
         else if (state.view === 'notes') addNote();
-        else openForm(null, 'edit');
+        else openAddChoice();
     };
     document.getElementById('btn-add').addEventListener('click', addByView);
     document.getElementById('btn-add-top').addEventListener('click', addByView);
 
-    // 검색 모드 토글(키워드만 / 전체단어)
+    // 검색 모드 토글(키워드만 / 전체단어 / RISS)
     document.querySelectorAll('#search-mode-toggle .sm-btn').forEach(btn => {
         btn.addEventListener('click', () => {
+            if (btn.dataset.mode === 'riss') return;
             document.querySelectorAll('#search-mode-toggle .sm-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             state.searchMode = btn.dataset.mode;
@@ -3262,16 +3637,23 @@ function bindEvents() {
     });
 
     // 미니 창 열기
+    let _miniWin = null;
     document.getElementById('btn-open-mini').addEventListener('click', () => {
-        window.open('mini.html', '빠른인용',
-            'width=400,height=680,resizable=yes,scrollbars=no');
+        if (_miniWin && !_miniWin.closed) { _miniWin.focus(); return; }
+        _miniWin = window.open('mini.html', '_blank',
+            'width=300,height=600,resizable=yes,scrollbars=no');
     });
 
     // 논문 모달 닫기 / 보기↔수정 전환 / 삭제
     document.getElementById('close-form').addEventListener('click', closeForm);
     document.getElementById('btn-cancel-form').addEventListener('click', closeForm);
     document.getElementById('btn-close-view').addEventListener('click', closeForm);
-    document.getElementById('btn-switch-edit').addEventListener('click', () => openForm(state.editingId, 'edit'));
+    document.getElementById('btn-switch-edit').addEventListener('click', () => {
+        // 현재 폼 내용(AI 추출 변인 포함) 유지하면서 모드만 전환
+        const paper = state.editingId ? state.papers.find(p => p.id === state.editingId) : null;
+        state.formMode = 'edit';
+        applyFormMode('edit', paper);
+    });
     document.getElementById('btn-delete-paper').addEventListener('click', () => {
         if (state.editingId) deletePaper(state.editingId);
     });
@@ -3397,9 +3779,8 @@ function bindEvents() {
         }
     });
 
-    // 폴더백업 / 내보내기 / 가져오기
+    // 폴더백업 / 가져오기
     document.getElementById('btn-folder-backup').addEventListener('click', folderBackup);
-    document.getElementById('btn-export').addEventListener('click', exportData);
     document.getElementById('btn-import').addEventListener('click', () => {
         document.getElementById('import-input').click();
     });
@@ -3408,11 +3789,545 @@ function bindEvents() {
         e.target.value = '';
     });
 
+    // 논문 추가 — 통합 모달
+    document.getElementById('close-add-choice').addEventListener('click', closeAddChoice);
+    document.getElementById('modal-add-choice').addEventListener('click', e => {
+        if (e.target.id === 'modal-add-choice') closeAddChoice();
+    });
+    document.getElementById('btn-add-cancel').addEventListener('click', closeAddChoice);
+    document.getElementById('btn-add-save').addEventListener('click', addChoiceSave);
+    document.getElementById('btn-add-pdf-pick').addEventListener('click', () => document.getElementById('add-pdf-file').click());
+    document.getElementById('add-pdf-file').addEventListener('change', e => {
+        const file = e.target.files[0]; if (!file) return;
+        addChoicePdfFile = file;
+        const nameEl = document.getElementById('add-pdf-filename');
+        nameEl.textContent = '📎 ' + file.name; nameEl.style.display = '';
+        const titleEl = document.getElementById('add-title');
+        if (titleEl && !titleEl.value) titleEl.value = file.name.replace(/\.pdf$/i, '');
+    });
+    document.getElementById('add-pdf-dropzone').addEventListener('dragover', e => {
+        e.preventDefault(); e.currentTarget.classList.add('drag-over');
+    });
+    document.getElementById('add-pdf-dropzone').addEventListener('dragleave', e => {
+        e.currentTarget.classList.remove('drag-over');
+    });
+    document.getElementById('add-pdf-dropzone').addEventListener('drop', e => {
+        e.preventDefault(); e.currentTarget.classList.remove('drag-over');
+        const file = e.dataTransfer.files[0];
+        if (!file || file.type !== 'application/pdf') { showToast('PDF 파일만 가능합니다.', 'warn'); return; }
+        addChoicePdfFile = file;
+        const nameEl = document.getElementById('add-pdf-filename');
+        nameEl.textContent = '📎 ' + file.name; nameEl.style.display = '';
+        const titleEl = document.getElementById('add-title');
+        if (titleEl && !titleEl.value) titleEl.value = file.name.replace(/\.pdf$/i, '');
+    });
+    document.getElementById('btn-add-text-analyze').addEventListener('click', aiAnalyzeForAddForm);
+
+    // AI 설정
+    document.getElementById('btn-ai-settings').addEventListener('click', openAiSettings);
+    document.getElementById('close-ai-settings').addEventListener('click', closeAiSettings);
+    document.getElementById('btn-ai-key-cancel').addEventListener('click', closeAiSettings);
+    document.getElementById('btn-ai-key-save').addEventListener('click', saveAiKey);
+    document.getElementById('modal-ai-settings').addEventListener('click', e => {
+        if (e.target.id === 'modal-ai-settings') closeAiSettings();
+    });
+
+    // AI 도우미 버튼 (논문 모달)
+    document.getElementById('btn-ai-summarize').addEventListener('click', aiSummarizePaper);
+    document.getElementById('btn-ai-summarize-quick').addEventListener('click', aiSummarizePaper);
+    document.getElementById('btn-ai-extract').addEventListener('click', aiExtractPaper);
+
     // ESC 키
     document.addEventListener('keydown', e => {
-        if (e.key === 'Escape') { closeForm(); closeMaterialForm(); closeDebug(); }
+        if (e.key === 'Escape') { closeForm(); closeMaterialForm(); closeDebug(); closeAiSettings(); }
     });
 }
+
+// ── Groq AI ─────────────────────────────────────────────────
+const GEMINI_LS_KEY = 'gemini_api_key';
+
+function openAiSettings() {
+    const key = localStorage.getItem(GEMINI_LS_KEY) || '';
+    const inp = document.getElementById('ai-key-input');
+    if (inp) inp.value = key;
+    document.getElementById('modal-ai-settings').style.display = 'flex';
+}
+function closeAiSettings() {
+    document.getElementById('modal-ai-settings').style.display = 'none';
+}
+function saveAiKey() {
+    const key = (document.getElementById('ai-key-input')?.value || '').trim();
+    if (key) {
+        localStorage.setItem(GEMINI_LS_KEY, key);
+        showToast('API 키가 저장되었습니다. AI 기능을 사용할 수 있습니다.', 'success');
+    } else {
+        localStorage.removeItem(GEMINI_LS_KEY);
+        showToast('API 키가 삭제되었습니다.', 'info');
+    }
+    closeAiSettings();
+}
+
+async function callGemini(parts) {
+    const key = localStorage.getItem(GEMINI_LS_KEY);
+    if (!key) { openAiSettings(); throw new Error('API 키를 먼저 입력해주세요.'); }
+    // parts 배열에서 텍스트만 합쳐서 Groq에 전달
+    const prompt = parts.map(p => p.text || '').join('\n').trim();
+    const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${key}`
+        },
+        body: JSON.stringify({
+            model: 'llama-3.3-70b-versatile',
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.3
+        })
+    });
+    if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err?.error?.message || `HTTP ${resp.status}`);
+    }
+    const data = await resp.json();
+    return data.choices?.[0]?.message?.content || '';
+}
+
+// 현재 논문 정보로 프롬프트 parts 배열 구성 (Groq는 텍스트만 지원)
+function buildPaperParts(promptText) {
+    return [{ text: promptText }];
+}
+
+// 전문에서 섹션 감지 후 예산 내 최대한 채워서 반환
+function extractPaperSections(text) {
+    const TOTAL_BUDGET = 10000; // 전체 전송 한도 — 한국어 1~1.5자/토큰, 12000 TPM 내 안전값
+    if (text.length <= TOTAL_BUDGET) return { mode: '전문', parts: [{ label: '전문', text }] };
+
+    // 짧은 줄(≤55자)에 키워드가 포함되면 섹션 제목으로 판단 — 번호 형식 무관
+    const INTRO_KW = ['서론', '들어가며', '들어가는 말', '서언', '연구의 필요성', '연구 필요성', 'introduction'];
+    const CONC_KW  = ['결론', '논의', '시사점', '종합', '나가며', '나가는 말', 'conclusion', 'discussion'];
+
+    function findSectionPos(kws) {
+        const lines = text.split('\n');
+        let pos = 0;
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.length > 0 && trimmed.length <= 55) {
+                const lower = trimmed.toLowerCase();
+                if (kws.some(k => lower.includes(k))) return pos;
+            }
+            pos += line.length + 1;
+        }
+        return -1;
+    }
+
+    const introPos = findSectionPos(INTRO_KW);
+    const concPos  = findSectionPos(CONC_KW);
+    const introMatch = introPos >= 0 ? { index: introPos } : null;
+    const concMatch  = concPos  >= 0 ? { index: concPos  } : null;
+
+    // 서론: 최대 2,500자
+    const introStart = introMatch ? introMatch.index : 0;
+    const introEnd   = introMatch ? introMatch.index + Math.min(2500, concMatch ? concMatch.index - introMatch.index : 2500) : 2000;
+    const introText  = text.slice(introStart, introEnd);
+
+    // 결론: 최대 3,500자
+    const concStart     = concMatch ? concMatch.index : text.length - 3000;
+    const conclusionText = text.slice(concStart, concStart + 3500);
+
+    // 남은 예산으로 중간 본문(방법·결과) 채우기
+    const usedSoFar   = introText.length + conclusionText.length;
+    const middleBudget = Math.max(0, TOTAL_BUDGET - usedSoFar);
+    const middleRaw    = text.slice(introEnd, concStart);
+    const middleText   = middleRaw.slice(0, middleBudget).trim();
+
+    const parts = [];
+    parts.push({ label: '서론', text: introText });
+    if (middleText) parts.push({ label: '본문(연구방법·결과)', text: middleText });
+    parts.push({ label: concMatch ? '결론·논의' : '말미', text: conclusionText });
+
+    const midPages = Math.round(middleText.length / 1000);
+    const modeLabel = (introMatch && concMatch) ? `서론·결론 섹션 자동감지 + 본문 약 ${midPages}페이지 추가`
+                    : concMatch                 ? `결론 섹션 자동감지 + 본문 약 ${midPages}페이지 추가 (서론 미감지)`
+                    : introMatch                ? `서론 섹션 자동감지 + 본문 약 ${midPages}페이지 추가 (결론 미감지)`
+                    :                             `섹션 미감지 — 앞뒤 내용 추출`;
+    return { mode: modeLabel, parts };
+}
+
+async function aiSummarizePaper() {
+    const paper    = state.editingId ? state.papers.find(p => p.id === state.editingId) : null;
+    const title    = document.getElementById('f-title')?.value?.trim() || paper?.title || '';
+    const abstract = document.getElementById('f-abstract')?.value?.trim() || paper?.abstract || '';
+    const fullText = document.getElementById('f-fulltext')?.value?.trim() || paper?.fullText || '';
+    if (!title && !abstract && !fullText) {
+        showToast('요약할 내용이 없습니다. 초록 또는 원문 텍스트를 입력해주세요.', 'warn'); return;
+    }
+    const btn = document.getElementById('btn-ai-summarize');
+    const origText = btn?.textContent || '';
+    if (btn) { btn.disabled = true; btn.textContent = '요약 중…'; }
+
+    // 섹션 감지 및 예산 내 텍스트 구성
+    // 초록도 예산에 포함 — 한국어 ~1자/토큰, 프롬프트 오버헤드 감안해 초록 800자 상한
+    const abstractTrimmed = abstract ? abstract.slice(0, 800) : '';
+
+    const sec = fullText ? extractPaperSections(fullText) : null;
+    const textBasis = abstractTrimmed && !fullText ? '초록 기반'
+                    : abstractTrimmed && sec       ? `초록 + ${sec.mode}`
+                    : sec                          ? sec.mode
+                    :                                '초록 기반';
+
+    let textParts = '';
+    if (abstractTrimmed) textParts += `【초록】\n${abstractTrimmed}\n\n`;
+    if (sec) {
+        for (const p of sec.parts) textParts += `【${p.label}】\n${p.text}\n\n`;
+    }
+
+    const prompt = `다음 논문을 한국어로 요약해주세요.\n\n제목: ${title}\n\n${textParts}\n아래 형식으로 작성해주세요 (마크다운 없이 텍스트만):\n[연구 목적] (1-2문장)\n[연구 방법] (1-2문장)\n[주요 결과] (2-3문장)\n[시사점] (1문장)`;
+    try {
+        const result = await callGemini(buildPaperParts(prompt));
+        const box = document.getElementById('ai-summary-result');
+        if (box) {
+            box.innerHTML = `<div class="ai-basis-badge">📄 ${escHtml(textBasis)}</div><div class="ai-summary-text">${escHtml(result)}</div>`;
+            box.style.display = 'block';
+        }
+        const aiBlock = document.getElementById('ai-block');
+        if (aiBlock) aiBlock.open = true;
+
+        // 요약 결과와 원문 텍스트를 즉시 자동 저장 (저장 버튼 안 눌러도 유지)
+        if (state.editingId) {
+            const existing = state.papers.find(p => p.id === state.editingId);
+            if (existing) {
+                const curFullText = (document.getElementById('f-fulltext')?.value || '').trim() || existing.fullText || '';
+                const updated = { ...existing, fullText: curFullText, aiSummary: result, aiSummaryBasis: textBasis, updatedAt: Date.now() };
+                await dbPut(STORE_PAPERS, updated);
+                const idx = state.papers.findIndex(p => p.id === state.editingId);
+                if (idx >= 0) state.papers[idx] = updated;
+                pushDebug('info', 'aiSummarize 자동저장 완료');
+            }
+        }
+        showToast('AI 요약 완료 (자동 저장됨)', 'success');
+        pushDebug('info', 'aiSummarize 완료');
+    } catch(e) {
+        const msg = e.message || '';
+        const isTooLarge = msg.includes('too large') || msg.includes('Request too large') || msg.toLowerCase().includes('reduce');
+        const isRate = msg.includes('429') || msg.toLowerCase().includes('rate') || msg.includes('quota');
+        showToast(isTooLarge
+            ? '논문이 너무 길어요 — 서론·결론 섹션 제목(예: "서론", "결론", "논의")이 있는지 확인해 주세요. 섹션이 감지되면 핵심 부분만 추출해 요약할 수 있어요.'
+            : isRate
+            ? '요청이 너무 많아요 — 1분 후 다시 시도해 주세요.'
+            : 'AI 요약 실패: ' + msg, 'error');
+        pushDebug('error', 'aiSummarizePaper: ' + msg);
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = origText; }
+    }
+}
+
+async function aiExtractPaper() {
+    const paper    = state.editingId ? state.papers.find(p => p.id === state.editingId) : null;
+    const title    = document.getElementById('f-title')?.value?.trim() || paper?.title || '';
+    const abstract = document.getElementById('f-abstract')?.value?.trim() || paper?.abstract || '';
+    const fullText = document.getElementById('f-fulltext')?.value?.trim() || paper?.fullText || '';
+    pushDebug('info', `aiExtract 시작 — 제목:${title.slice(0,20)} 초록길이:${abstract.length} 원문길이:${fullText.length}`);
+    if (!abstract && !fullText) {
+        showToast('초록 또는 원문 텍스트가 있어야 자동추출이 가능합니다.', 'warn'); return;
+    }
+    const btn = document.getElementById('btn-ai-extract');
+    const origText = btn?.textContent || '';
+    if (btn) { btn.disabled = true; btn.textContent = '추출 중…'; }
+
+    const prompt = `다음 논문에서 변인과 연구 방법을 추출해주세요.\n제목: ${title}\n${abstract ? '초록: ' + abstract + '\n' : ''}${fullText ? '본문(일부): ' + fullText.slice(0, 1200) : ''}\n`
+        + `\n반드시 아래 JSON 형식으로만 답하세요 (다른 설명 없이):
+{
+  "독립변인": ["변인명1"],
+  "종속변인": ["변인명1"],
+  "매개변인": [],
+  "조절변인": [],
+  "연구대상": "예: 대학생 300명",
+  "분석방법": "예: 구조방정식모형(SEM)",
+  "연구모형": "예: 매개모형"
+}`;
+    try {
+        const raw = await callGemini(buildPaperParts(prompt));
+        pushDebug('info', 'aiExtract 원본응답: ' + raw.slice(0, 500));
+        const jsonMatch = raw.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error('AI가 잘못된 형식으로 응답했습니다.');
+        const data = JSON.parse(jsonMatch[0]);
+        pushDebug('info', 'aiExtract 파싱결과: ' + JSON.stringify(data).slice(0, 300));
+        const setEl = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
+        setEl('a-subjects', data['연구대상']);
+        setEl('a-method',   data['분석방법']);
+        setEl('a-model',    data['연구모형']);
+        const varRoleMap = { '독립변인':'independent', '종속변인':'dependent', '매개변인':'mediator', '조절변인':'moderator' };
+        let added = 0;
+        for (const [roleName, roleKey] of Object.entries(varRoleMap)) {
+            for (const raw of (data[roleName] || [])) {
+                const name = typeof raw === 'string' ? raw.trim() : (raw?.name || raw?.변인명 || String(raw));
+                if (!name) continue;
+                if (!formVariables.includes(name)) {
+                    formVariables.push(name);
+                    added++;
+                }
+            }
+        }
+        renderChips('variables-list', formVariables, 'variable');
+        const analysisBlock = document.getElementById('analysis-block');
+        if (analysisBlock) analysisBlock.open = true;
+        showToast(`자동추출 완료! 변인 ${added}개 추가됨.`, 'success');
+    } catch(e) {
+        showToast('자동추출 실패: ' + e.message, 'error');
+        pushDebug('error', 'aiExtractPaper: ' + e.message);
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = origText; }
+    }
+}
+
+// ── 논문 추가 통합 모달 ─────────────────────────────────────
+let addChoicePdfFile = null;
+let addChoiceAiData  = null;   // AI 분석으로 추출된 부가정보(초록·변인 등) 저장
+
+function openAddChoice() {
+    addChoicePdfFile = null;
+    addChoiceAiData  = null;
+    document.getElementById('modal-add-choice').style.display = 'flex';
+    setTimeout(() => document.getElementById('add-title')?.focus(), 80);
+}
+
+function closeAddChoice() {
+    document.getElementById('modal-add-choice').style.display = 'none';
+    addChoicePdfFile = null;
+    addChoiceAiData  = null;
+    ['add-title','add-authors','add-year','add-link-url'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.value = '';
+    });
+    const nameEl = document.getElementById('add-pdf-filename');
+    if (nameEl) { nameEl.textContent = ''; nameEl.style.display = 'none'; }
+    const fileEl = document.getElementById('add-pdf-file');
+    if (fileEl) fileEl.value = '';
+    const textEl = document.getElementById('add-text-input');
+    if (textEl) textEl.innerHTML = '';
+}
+
+// 중복 논문 검사 — 같은 제목+저자 또는 같은 DOI가 있으면 해당 논문 반환
+function findDuplicatePaper(title, authors, doi) {
+    const t = (title || '').trim().toLowerCase();
+    const a = (authors || '').trim().toLowerCase();
+    const d = (doi || '').trim().toLowerCase();
+    return state.papers.find(p => {
+        if (d && p.doi && d === p.doi.trim().toLowerCase()) return true;
+        if (!t) return false;
+        return t === p.title.trim().toLowerCase() && a === (p.authors || '').trim().toLowerCase();
+    });
+}
+
+// 통합 저장 — PDF·링크·텍스트 중 하나 이상 + 제목 필수
+async function addChoiceSave() {
+    const title   = (document.getElementById('add-title').value || '').trim()
+                    || (addChoicePdfFile ? addChoicePdfFile.name.replace(/\.pdf$/i, '') : '');
+    const authors = (document.getElementById('add-authors').value || '').trim();
+    const year    = (document.getElementById('add-year').value || '').trim();
+    const url     = (document.getElementById('add-link-url').value || '').trim();
+    const textEl  = document.getElementById('add-text-input');
+    const text    = (textEl?.innerText || '').trim();
+
+    if (!title) { showToast('제목을 입력해주세요.', 'warn'); document.getElementById('add-title')?.focus(); return; }
+    if (!addChoicePdfFile && !url && !text) {
+        showToast('PDF, 링크, 텍스트 중 하나 이상을 입력해주세요.', 'warn'); return;
+    }
+    const dup = findDuplicatePaper(title, authors, '');
+    if (dup && !window.confirm(`⚠️ 같은 제목의 논문이 이미 있습니다.\n\n"${dup.title}"\n\n그래도 추가할까요?`)) return;
+
+    const btn = document.getElementById('btn-add-save');
+    if (btn) { btn.disabled = true; btn.textContent = '저장 중…'; }
+    try {
+        let pdfData = null, pdfFilename = '';
+        if (addChoicePdfFile) {
+            pdfData = await readFile(addChoicePdfFile);
+            pdfFilename = addChoicePdfFile.name;
+            pushDebug('info', `addChoiceSave PDF 읽기 완료 — 파일명:${pdfFilename} 크기:${pdfData?.byteLength ?? 0}bytes`);
+        }
+        pushDebug('info', `addChoiceSave 저장 시작 — 제목:${title} PDF있음:${!!pdfData} 텍스트길이:${text.length}`);
+        const ai = addChoiceAiData || {};
+        const paper = {
+            id: genId(), projectId: state.currentProjectId,
+            title, authors, year,
+            source:   ai.source   || '',
+            abstract: ai.abstract || '',
+            findings: ai.summary  || '',
+            methods:  ai.연구방법 || '',
+            myNote: '', doi: '', pdfLink: url || null,
+            volume: '', issue: '', pages: '',
+            variables: ai.variables || [], tags: [], analysis: {},
+            readStatus: 'unread',
+            fullText: text, fullTextHtml: '', attachedImages: [],
+            pdfData, pdfFilename,
+            addedAt: Date.now(), updatedAt: Date.now(),
+        };
+        await dbPut(STORE_PAPERS, paper);
+        await loadData();
+        renderContent();
+        closeAddChoice();
+        showToast('논문이 추가되었습니다!', 'success');
+        openForm(paper.id, 'view');
+    } catch(e) {
+        showToast('저장 실패: ' + e.message, 'error');
+        pushDebug('error', 'addChoiceSave: ' + e.message);
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '저장'; }
+    }
+}
+
+// AI 분석 — 폼 필드 자동 채우기 (저장은 하지 않음)
+async function aiAnalyzeForAddForm() {
+    const textEl = document.getElementById('add-text-input');
+    const text   = (textEl?.innerText || '').trim();
+    if (!text) { showToast('텍스트를 먼저 붙여넣으세요.', 'warn'); return; }
+    const btn = document.getElementById('btn-add-text-analyze');
+    const origLabel = btn?.textContent || '';
+    if (btn) { btn.disabled = true; btn.textContent = 'AI 분석 중…'; }
+    const prompt = `다음 논문 텍스트에서 정보를 추출하세요. 없는 항목은 빈 값으로 두세요.
+
+[텍스트]
+${text.slice(0, 1500)}
+
+반드시 아래 JSON 형식으로만 답하세요 (설명 없이):
+{
+  "title": "논문 제목",
+  "authors": "저자명1, 저자명2",
+  "year": "2024",
+  "source": "학술지명 또는 대학명",
+  "abstract": "초록 원문",
+  "summary": "연구 목적·방법·주요결과 요약 3-5문장",
+  "연구방법": "연구방법 한 줄",
+  "독립변인": ["변인명"],
+  "종속변인": ["변인명"],
+  "매개변인": [],
+  "조절변인": []
+}`;
+    try {
+        const raw = await callGemini([{ text: prompt }]);
+        const jsonMatch = raw.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error('AI가 잘못된 형식으로 응답했습니다.');
+        const data = JSON.parse(jsonMatch[0]);
+        // 변인 추출
+        const variables = [];
+        for (const key of ['독립변인','종속변인','매개변인','조절변인']) {
+            for (const v of (data[key] || [])) {
+                const name = typeof v === 'string' ? v.trim() : String(v);
+                if (name && !variables.includes(name)) variables.push(name);
+            }
+        }
+        addChoiceAiData = { ...data, variables };
+        // 폼 필드 채우기 (이미 입력된 값은 덮어쓰지 않음)
+        const setIfEmpty = (id, val) => { const el = document.getElementById(id); if (el && !el.value.trim() && val) el.value = val; };
+        setIfEmpty('add-title',   data.title);
+        setIfEmpty('add-authors', data.authors);
+        setIfEmpty('add-year',    data.year);
+        showToast('AI 분석 완료! 제목·저자를 확인한 뒤 저장하세요.', 'success');
+        pushDebug('info', 'aiAnalyzeForAddForm 완료');
+    } catch(e) {
+        showToast('AI 분석 실패: ' + e.message, 'error');
+        pushDebug('error', 'aiAnalyzeForAddForm: ' + e.message);
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = origLabel; }
+    }
+}
+
+// 패턴 기반 서식 — 내용 손상 없이 HTML 문자열 반환
+function buildPatternHtml(text) {
+    const lines = text.split(/\r?\n/);
+    const out = [];
+    let i = 0;
+
+    while (i < lines.length) {
+        const raw = lines[i];
+        const line = raw.trim();
+        if (!line) { i++; continue; }
+
+        // 표: 탭 구분 행이 2줄 이상 연속
+        if (/\t/.test(raw)) {
+            const tableLines = [];
+            while (i < lines.length && (/\t/.test(lines[i]) || !lines[i].trim())) {
+                if (lines[i].trim()) tableLines.push(lines[i]);
+                i++;
+            }
+            if (tableLines.length >= 2) {
+                out.push('<table>');
+                tableLines.forEach((tl, ti) => {
+                    const cells = tl.split('\t').map(c => c.trim()).filter(c => c !== '');
+                    const tag = ti === 0 ? 'th' : 'td';
+                    out.push('<tr>' + cells.map(c => `<${tag}>${escHtml(c)}</${tag}>`).join('') + '</tr>');
+                });
+                out.push('</table>');
+            } else {
+                tableLines.forEach(tl => out.push(`<p>${escHtml(tl.trim())}</p>`));
+            }
+            continue;
+        }
+
+        // 글머리 목록
+        if (/^[-•·○◦]\s+/.test(line)) {
+            const items = [];
+            while (i < lines.length && /^[-•·○◦]\s+/.test(lines[i].trim())) {
+                items.push(lines[i].trim().replace(/^[-•·○◦]\s+/, ''));
+                i++;
+            }
+            out.push('<ul>' + items.map(s => `<li>${escHtml(s)}</li>`).join('') + '</ul>');
+            continue;
+        }
+
+        // 번호 항목: 짧으면 소제목, 길면 번호 목록
+        if (/^\d+[.)]\s+\S/.test(line)) {
+            if (line.length <= 55) {
+                out.push(`<h3>${escHtml(line)}</h3>`);
+                i++;
+            } else {
+                const items = [];
+                while (i < lines.length && /^\d+[.)]\s+\S/.test(lines[i].trim())) {
+                    items.push(lines[i].trim().replace(/^\d+[.)]\s+/, ''));
+                    i++;
+                }
+                out.push('<ol>' + items.map(s => `<li>${escHtml(s)}</li>`).join('') + '</ol>');
+            }
+            continue;
+        }
+
+        // 한글 번호 항목 (가. 나. 다. / (1) (2) 등) → 소제목
+        if (/^([가나다라마바사아자차카타파하][.)] |\([가나다]\) |\(\d+\) )/.test(line) && line.length <= 60) {
+            out.push(`<h3>${escHtml(line)}</h3>`);
+            i++;
+            continue;
+        }
+
+        // 제목 패턴
+        const isKorChapter = /^(제?\s*\d+\s*[장절편]\s*[\.\s]|[Ⅰ-Ⅹ]+[\.\s])/.test(line);
+        const isShortHeading = line.length <= 50 && !/[.,:;?)】』\]"]$/.test(line) && line.split(/\s+/).length <= 7;
+        const isCircledNum = /^[①-⑳]/.test(line);
+
+        if (isKorChapter) {
+            out.push(`<h2>${escHtml(line)}</h2>`);
+        } else if (isCircledNum || (isShortHeading && line.length >= 3)) {
+            out.push(`<h3>${escHtml(line)}</h3>`);
+        } else {
+            out.push(`<p>${escHtml(line)}</p>`);
+        }
+        i++;
+    }
+    return out.join('');
+}
+
+// 패턴 서식을 contenteditable에 적용 (미리보기용)
+function patternFormatTextAdd(el, text) {
+    el.innerHTML = buildPatternHtml(text);
+    showToast('서식 정리 완료. 원본은 ↩ 원본 클릭.', 'success');
+}
+
+// 원본 되돌리기
+function restoreTextAddOriginal() {
+    if (!textAddOriginal) { showToast('저장된 원본이 없습니다.', 'warn'); return; }
+    const el = document.getElementById('text-add-input');
+    if (el) el.innerHTML = textAddOriginal;
+    showToast('원본으로 복원했습니다.', 'info');
+}
+
 
 // ── 앱 시작 ────────────────────────────────────────────────
 // 사이드바 접기 상태는 localStorage('sidebarCollapsed')에 보관(앱 전체, 프로젝트 무관)
@@ -3429,6 +4344,57 @@ function initSidebarToggle() {
     };
 }
 
+function showOnboarding() {
+    if (document.getElementById('onboarding-overlay')) return;
+    const overlay = document.createElement('div');
+    overlay.id = 'onboarding-overlay';
+    overlay.innerHTML = `
+        <div class="onboarding-modal">
+            <div class="onboarding-header">
+                <div class="onboarding-logo">📓</div>
+                <h2>내 연구노트에 오신 것을 환영해요!</h2>
+                <p class="onboarding-sub">논문 관리·AI 요약·마인드맵을 한 곳에서</p>
+            </div>
+            <div class="onboarding-body">
+                <div class="onboarding-section">
+                    <h3>📁 백업 폴더를 먼저 지정해 주세요</h3>
+                    <p>백업 폴더를 지정하면 논문을 추가할 때마다 PDF 포함 전체 자료가 자동으로 저장돼요. 가장 중요한 첫 설정이에요.</p>
+                    <div class="onboarding-tip">
+                        <strong>💡 구글 드라이브 폴더를 추천해요</strong>
+                        <ul>
+                            <li>다른 PC에서도 자료를 복원할 수 있어요</li>
+                            <li>PDF까지 포함해서 통째로 백업돼요</li>
+                            <li>구글 드라이브 앱이 설치돼 있으면 바로 사용 가능해요</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="onboarding-section">
+                    <h3>🔐 로그인은 선택이에요</h3>
+                    <p>로그인 없이도 모든 기능을 쓸 수 있어요. 여러 기기에서 서지정보·메모를 동기화하고 싶을 때만 로그인하면 돼요.</p>
+                </div>
+                <div class="onboarding-section">
+                    <h3>❓ 궁금하면 챗봇에 물어보세요</h3>
+                    <p>오른쪽 아래 💬 버튼을 누르면 챗봇이 열려요. 앱 사용법을 편하게 물어보세요.</p>
+                </div>
+            </div>
+            <div class="onboarding-footer">
+                <button id="btn-onboarding-folder" class="btn-primary">📁 백업 폴더 지정하기</button>
+                <button id="btn-onboarding-later" class="btn-secondary">나중에 할게요</button>
+            </div>
+        </div>`;
+    document.body.appendChild(overlay);
+
+    document.getElementById('btn-onboarding-folder').onclick = async () => {
+        overlay.remove();
+        localStorage.setItem('onboardingShown', '1');
+        await folderBackup();
+    };
+    document.getElementById('btn-onboarding-later').onclick = () => {
+        overlay.remove();
+        localStorage.setItem('onboardingShown', '1');
+    };
+}
+
 async function init() {
     await initDB();
     await requestPersistentStorage();
@@ -3438,6 +4404,10 @@ async function init() {
     bindEvents();
     renderProjectSelector();
     renderContent();
+    // 백업 폴더 미설정 + 첫 실행이면 온보딩 표시
+    if (!backupDirHandle && !localStorage.getItem('onboardingShown')) {
+        setTimeout(showOnboarding, 600);
+    }
 }
 
 init().catch(err => {

@@ -50,13 +50,9 @@ function initAuth() {
             if (user && !wasLoggedIn) {
                 fullSync();   // 새로 로그인할 때만 전체 동기화
             } else if (!user) {
-                // 로그아웃(또는 미로그인) → 로컬 데이터 삭제 후 잠금 화면
-                // 데이터는 Firestore에 있으므로 다음 로그인 시 복원됨
-                if (wasLoggedIn) {
-                    clearLocalData().then(renderLockedScreen);
-                } else {
-                    renderLockedScreen();
-                }
+                // 로그아웃 → 데이터는 삭제하지 않고 잠금화면만 표시
+                // (삭제하면 클라우드 미동기화 데이터까지 날아갈 위험 있음)
+                renderLockedScreen();
             }
         });
 
@@ -187,6 +183,22 @@ function openAuthModal() {
         });
     };
 
+    const resetPassword = () => {
+        const email = overlay.querySelector('#auth-email-in').value.trim();
+        if (!email) { showToast('먼저 이메일을 입력하세요', 'error'); return; }
+        const btn = overlay.querySelector('#auth-reset');
+        btn.disabled = true;
+        fbAuth.sendPasswordResetEmail(email)
+            .then(() => {
+                showToast('재설정 메일을 보냈어요 — 이메일을 확인하세요', 'success');
+                btn.disabled = false;
+            })
+            .catch(err => {
+                showToast(authErrMsg(err) || '메일 발송에 실패했어요', 'error');
+                btn.disabled = false;
+            });
+    };
+
     const render = () => {
         overlay.innerHTML = `
             <div class="auth-modal">
@@ -202,7 +214,8 @@ function openAuthModal() {
                     <button type="button" class="auth-submit btn-primary" id="auth-submit">${mode === 'login' ? '로그인' : '가입하고 로그인'}</button>
                     <div class="auth-switch">
                         ${mode === 'login'
-                            ? '계정이 없나요? <button type="button" id="auth-toswitch">회원가입</button>'
+                            ? `계정이 없나요? <button type="button" id="auth-toswitch">회원가입</button>
+                               <button type="button" class="auth-reset-btn" id="auth-reset">비밀번호를 잊으셨나요?</button>`
                             : '이미 계정이 있나요? <button type="button" id="auth-toswitch">로그인</button>'}
                     </div>
                 </div>
@@ -216,6 +229,7 @@ function openAuthModal() {
             render();
             overlay.querySelector('#auth-email-in').focus();
         });
+        overlay.querySelector('#auth-reset')?.addEventListener('click', resetPassword);
     };
     overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
     render();
@@ -228,10 +242,16 @@ function openAuthModal() {
 
 const SYNC_STORES = ['papers', 'materials', 'notes', 'projects', 'mindmaps', 'proposals'];
 
-// PDF·파일 바이너리 제거 후 Firestore에 올릴 수 있는 객체 반환
+// PDF·파일 바이너리 + 대용량 텍스트 제거 후 Firestore에 올릴 수 있는 객체 반환
+// fullText·attachedImages는 로컬 전용 (Firestore 1MB 한도 초과 방지)
 function stripBinary(store, item) {
     const obj = { ...item };
-    if (store === 'papers')    delete obj.pdfData;
+    if (store === 'papers') {
+        delete obj.pdfData;
+        delete obj.fullText;
+        delete obj.fullTextHtml;
+        delete obj.attachedImages;
+    }
     if (store === 'materials') delete obj.fileData;
     return obj;
 }
@@ -245,7 +265,7 @@ function colRef(store) {
 // 단일 항목 Firestore에 저장 (fire-and-forget)
 function cloudPut(store, item) {
     if (!fbDb || !currentUser || !SYNC_STORES.includes(store)) return;
-    const obj = { ...stripBinary(store, item), updatedAt: Date.now() };
+    const obj = { ...stripBinary(store, item), updatedAt: item.updatedAt || Date.now() };
     colRef(store).doc(String(obj.id)).set(obj)
         .catch(e => authLog('warn', `Firestore 저장 실패 (${store}): ${e.message}`));
     // PDF·파일은 Firebase Storage에 별도 저장
@@ -392,8 +412,18 @@ async function fullSync() {
                 if (deleted.has(id)) continue;
                 const local = localMap[id];
                 if (!local || (remote.updatedAt || 0) > (local.updatedAt || 0)) {
-                    // pdfData/fileData 없음(클라우드엔 저장 안 함) — PDF는 열 때 lazy 다운로드
-                    const tx = db.transaction(store, 'readwrite').objectStore(store).put(remote);
+                    // 클라우드엔 바이너리 없음 — 기존 로컬 바이너리 보존해서 덮어쓰기
+                    const merged = { ...remote };
+                    if (local) {
+                        if (store === 'papers') {
+                            if (local.pdfData)        merged.pdfData        = local.pdfData;
+                            if (local.fullText)       merged.fullText       = local.fullText;
+                            if (local.fullTextHtml)   merged.fullTextHtml   = local.fullTextHtml;
+                            if (local.attachedImages) merged.attachedImages = local.attachedImages;
+                        }
+                        if (store === 'materials' && local.fileData) merged.fileData = local.fileData;
+                    }
+                    const tx = db.transaction(store, 'readwrite').objectStore(store).put(merged);
                     await new Promise((res, rej) => { tx.onsuccess = res; tx.onerror = () => rej(tx.error); });
                     downloadCount++;
                 }
@@ -424,6 +454,9 @@ async function fullSync() {
     if (typeof renderContent === 'function') renderContent();
 
     showToast(downloadCount > 0 ? `동기화 완료! (받아온 항목 ${downloadCount}개)` : '클라우드에 저장 완료!', 'success');
+
+    // 백업 폴더가 지정돼 있으면 PDF 자동 복원 시도
+    if (typeof autoLoadPdfsFromBackup === 'function') await autoLoadPdfsFromBackup();
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -435,6 +468,15 @@ function patchDbFunctions() {
     const _origDelete = window.dbDelete;
 
     window.dbPut = async function(store, item) {
+        // PDF가 있던 논문인데 없이 저장하려는 경우 경고
+        if (store === 'papers' && item && item.id && typeof pushDebug === 'function') {
+            const prev = typeof state !== 'undefined' && state.papers
+                ? state.papers.find(p => p.id === item.id) : null;
+            if (prev?.pdfData && !item.pdfData) {
+                const stack = new Error().stack?.split('\n').slice(1, 4).join(' | ') || '';
+                pushDebug('warn', `⚠️ PDF 사라짐 감지 — 논문:${item.title?.slice(0,20)} 호출:${stack}`);
+            }
+        }
         // 로그인 중이면 updatedAt 타임스탬프 추가
         const stored = (currentUser && !_syncBusy) ? { ...item, updatedAt: Date.now() } : item;
         const result = await _origPut(store, stored);

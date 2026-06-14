@@ -381,6 +381,9 @@
     </div>
 
     <script>
+    // 창 크기 강제 지정 (window.open 크기 지정이 무시될 때 대비)
+    window.resizeTo(300, 600);
+
     // ── DB (메인 앱과 동일) ──────────────────────────────────
     const DB_NAME = 'ResearchNotesDB';
     let db, papers = [], searchQuery = '';

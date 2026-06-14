@@ -114,10 +114,11 @@ async function initMindmap(container, projectId) {
                             <svg class="mm-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
                             모형 저장
                         </button>
-                        <div class="mm-menu-label">저장된 모형 불러오기</div>
-                        <select class="mm-select mm-menu-select" id="mm-snap-list">
-                            <option value="">── 선택 ──</option>
-                        </select>
+                        <div class="mm-menu-label" style="display:flex;align-items:center;justify-content:space-between">
+                            <span>저장된 모형</span>
+                            <button class="mm-snap-del-btn" id="mm-snap-del-sel" style="display:none">선택 삭제</button>
+                        </div>
+                        <div id="mm-snap-list" class="mm-snap-list-wrap"></div>
                     </div>
                 </details>
 
@@ -173,8 +174,11 @@ async function initMindmap(container, projectId) {
                         </g>
                     </svg>
                     <div class="mm-title-bar" id="mm-title-bar">
-                        <div class="mm-title" id="mm-title" contenteditable="true" spellcheck="false"
-                             data-placeholder="연구모형 제목 — 클릭해서 입력"></div>
+                        <div class="mm-title-row">
+                            <div class="mm-title" id="mm-title" contenteditable="true" spellcheck="false"
+                                 data-placeholder="연구모형 제목 — 클릭해서 입력"></div>
+                            <button class="mm-title-clear" id="mm-title-clear" title="제목·부제 지우기">✕</button>
+                        </div>
                         <div class="mm-subtitle" id="mm-subtitle" contenteditable="true" spellcheck="false"
                              data-placeholder="부제 (선택)"></div>
                     </div>
@@ -190,7 +194,7 @@ async function initMindmap(container, projectId) {
     S = {
         nodes: [], edges: [], groups: [], snapshots: [],
         history: [], historyIdx: -1,
-        sel: null,
+        sel: null, selAll: false,
         mode: 'idle',
         placingType: null,
         placingGroupShape: null,
@@ -237,7 +241,7 @@ function mmRender() {
 // ── 묶기 도형(그룹) 렌더 ──────────────────────────────────────────────
 // 채움은 클릭이 통과(안의 노드를 그대로 조작) / 라벨 탭·테두리로 선택·이동 / 핸들로 크기조절
 function renderGroup(group) {
-    const isSel = S.sel?.type === 'group' && S.sel.id === group.id;
+    const isSel = S.selAll || (S.sel?.type === 'group' && S.sel.id === group.id);
     const { x, y, w, h } = group;
     const color = group.color || '#4285f4';
     const g = el('g', { 'data-gid': group.id, class: 'mm-gg' });
@@ -293,7 +297,7 @@ function renderNode(node) {
         ? { ...baseCfg, fill: ACADEMIC_NODE.fill, stroke: ACADEMIC_NODE.stroke, textColor: ACADEMIC_NODE.textColor }
         : baseCfg;
     const { w, h } = nodeSize(node);
-    const isSel  = S.sel?.type === 'node' && S.sel.id === node.id;
+    const isSel  = S.selAll || (S.sel?.type === 'node' && S.sel.id === node.id);
     const isConn = S.connectFrom === node.id;
 
     const g = el('g', {
@@ -545,9 +549,7 @@ function mmBind() {
     document.getElementById('mm-undo').onclick       = mmUndo;
     document.getElementById('mm-redo').onclick       = mmRedo;
     document.getElementById('mm-save-snap').onclick  = mmSaveSnap;
-    document.getElementById('mm-snap-list').onchange = e => {
-        if (e.target.value) mmLoadSnap(e.target.value);
-    };
+    document.getElementById('mm-snap-del-sel').onclick = mmDeleteSelectedSnaps;
     document.getElementById('mm-export-png').onclick = mmExport;
     document.getElementById('mm-export-ppt').onclick = mmOpenPPT;
     document.getElementById('mm-open-desk').onclick = reopenDesk;
@@ -594,6 +596,7 @@ function mmBind() {
 
 function onDown(e) {
     if (e.button !== 0) return;
+    if (S.selAll) { S.selAll = false; mmRender(); mmHint(''); }
     const ng = e.target.closest('.mm-ng');
     const { x: wx, y: wy } = toWorld(e.clientX, e.clientY);
 
@@ -779,16 +782,39 @@ function onKey(e) {
     if (document.activeElement?.isContentEditable) return;
     const tag = document.activeElement?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-    if (e.key === 'Delete' || e.key === 'Backspace') mmDelete();
+
+    // Ctrl+A — 전체 선택
+    if ((e.ctrlKey||e.metaKey) && e.key === 'a') {
+        e.preventDefault();
+        S.selAll = true; S.sel = null; mmRender();
+        mmHint('전체 선택됨 — Delete 또는 Backspace로 삭제, Esc로 해제');
+        return;
+    }
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (S.selAll) mmDeleteAll();
+        else mmDelete();
+    }
     if ((e.ctrlKey||e.metaKey) && e.key==='z' && !e.shiftKey) { e.preventDefault(); mmUndo(); }
     if ((e.ctrlKey||e.metaKey) && (e.key==='y'||(e.key==='z'&&e.shiftKey))) { e.preventDefault(); mmRedo(); }
     if (e.key === 'Escape') {
+        if (S.selAll) { S.selAll = false; mmRender(); mmHint(''); return; }
         if (S.mode==='placing' || S.mode==='placing-group') {
             S.mode='idle'; S.placingType=null; S.placingGroupShape=null; S.svg.style.cursor=''; mmHint('');
         }
         if (S.mode==='connecting') cancelConnect();
         hidePopup(); cancelEdit();
     }
+}
+
+function mmDeleteAll() {
+    const total = S.nodes.length + S.edges.length + S.groups.length;
+    if (!total) { S.selAll = false; return; }
+    if (!confirm(`캔버스의 모든 도형·화살표(${total}개)를 삭제할까요?\nCtrl+Z로 되돌릴 수 있습니다.`)) return;
+    saveHistory();
+    S.nodes = []; S.edges = []; S.groups = [];
+    S.sel = null; S.selAll = false;
+    mmSaveToDB(); mmRender(); mmHint('');
+    showToast('전체 삭제됐습니다. Ctrl+Z로 되돌릴 수 있어요.', 'info');
 }
 
 // ── 텍스트 편집 ───────────────────────────────────────────────────────
@@ -1199,25 +1225,51 @@ async function mmSaveSnap() {
 function mmLoadSnap(snapId) {
     const snap = S.snapshots.find(s => s.id === snapId);
     if (!snap) return;
-    if (!confirm(`"${snap.name}"을 불러올까요?\n현재 캔버스는 Ctrl+Z로 되돌릴 수 있습니다.`)) {
-        document.getElementById('mm-snap-list').value = ''; return;
-    }
+    if (!confirm(`"${snap.name}"을 불러올까요?\n현재 캔버스는 Ctrl+Z로 되돌릴 수 있습니다.`)) return;
     saveHistory();
     S.nodes = JSON.parse(JSON.stringify(snap.nodes));
     S.edges = JSON.parse(JSON.stringify(snap.edges));
     S.groups = JSON.parse(JSON.stringify(snap.groups || []));
     S.sel = null;
     mmRender(); mmSaveToDB();
-    document.getElementById('mm-snap-list').value = '';
     showToast(`"${snap.name}" 불러왔습니다`, 'success');
 }
 
+async function mmDeleteSelectedSnaps() {
+    const cbs = document.querySelectorAll('.mm-snap-cb:checked');
+    if (!cbs.length) { showToast('삭제할 모형을 선택해주세요.', 'warn'); return; }
+    const ids = [...cbs].map(cb => cb.value);
+    const names = ids.map(id => S.snapshots.find(s => s.id === id)?.name).filter(Boolean);
+    if (!confirm(`모형 ${ids.length}개를 삭제할까요?\n\n${names.join(', ')}`)) return;
+    S.snapshots = S.snapshots.filter(s => !ids.includes(s.id));
+    await mmSaveToDB();
+    mmUpdateSnapList();
+    showToast(`모형 ${ids.length}개가 삭제되었습니다.`, 'success');
+}
+
 function mmUpdateSnapList() {
-    const sel = document.getElementById('mm-snap-list');
-    if (!sel) return;
-    sel.innerHTML = '<option value="">── 저장된 모형 불러오기 ──</option>'
-        + [...S.snapshots].reverse().map(s =>
-            `<option value="${s.id}">${escHtml(s.name)}</option>`).join('');
+    const wrap = document.getElementById('mm-snap-list');
+    const delBtn = document.getElementById('mm-snap-del-sel');
+    if (!wrap) return;
+    const snaps = [...S.snapshots].reverse();
+    if (!snaps.length) {
+        wrap.innerHTML = '<div class="mm-snap-empty">저장된 모형이 없습니다</div>';
+        if (delBtn) delBtn.style.display = 'none';
+        return;
+    }
+    if (delBtn) delBtn.style.display = '';
+    wrap.innerHTML = snaps.map(s => {
+        const date = s.savedAt ? new Date(s.savedAt).toLocaleDateString('ko-KR', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
+        return `
+        <div class="mm-snap-item">
+            <input type="checkbox" class="mm-snap-cb" value="${s.id}">
+            <button class="mm-snap-load" data-id="${s.id}" title="이 모형 불러오기">${escHtml(s.name)}</button>
+            ${date ? `<span class="mm-snap-date">${date}</span>` : ''}
+        </div>`;
+    }).join('');
+    wrap.querySelectorAll('.mm-snap-load').forEach(btn => {
+        btn.addEventListener('click', () => mmLoadSnap(btn.dataset.id));
+    });
 }
 
 // ── PNG 내보내기 ──────────────────────────────────────────────────────
@@ -1595,6 +1647,16 @@ function mmInitTitle() {
         if (e.key === 'Enter') { e.preventDefault(); elm.blur(); }
         e.stopPropagation();
     }));
+
+    // 제목 지우기 버튼
+    const clearBtn = document.getElementById('mm-title-clear');
+    if (clearBtn) {
+        clearBtn.onclick = () => {
+            tEl.textContent = ''; sEl.textContent = '';
+            if (state.proposal) { state.proposal.title = ''; state.proposal.subtitle = ''; queueSaveProposal(); }
+            tEl.focus();
+        };
+    }
 }
 
 function clampPropWidth(w) { return Math.min(640, Math.max(280, Math.round(w) || 360)); }
@@ -1648,6 +1710,7 @@ function mmRenderProp() {
     panel.innerHTML = `
         <div class="mm-prop-head">
             <span>${icon('note', 14)} 미니 프로포절</span>
+            <button class="mm-prop-reset" id="mm-prop-reset" title="프로포절 전체 초기화">초기화</button>
             <button class="mm-prop-close" id="mm-prop-close" title="패널 닫기">✕</button>
         </div>
         <div class="mm-prop-body">${textSections}${hypoSection}</div>`;
@@ -1668,6 +1731,20 @@ function hypoRowHTML(h, i) {
 function mmBindProp() {
     const panel = document.getElementById('mm-prop-panel');
     panel.querySelector('#mm-prop-close').onclick = mmToggleProp;
+
+    // 프로포절 초기화
+    panel.querySelector('#mm-prop-reset').onclick = async () => {
+        if (!confirm('미니 프로포절의 모든 내용을 초기화할까요?\n(가설 포함 전부 삭제됩니다)')) return;
+        const blank = { id: state.currentProjectId };
+        PROP_FIELDS.forEach(([key]) => { blank[key] = ''; });
+        blank.hypotheses = [];
+        blank.title = ''; blank.subtitle = '';
+        state.proposal = blank;
+        await saveProposalNow();
+        mmRenderProp();
+        mmInitTitle();
+        showToast('프로포절을 초기화했습니다.', 'success');
+    };
 
     // 텍스트 4칸 — 입력 시 state.proposal에 반영 + 자동저장 + 높이 자동
     panel.querySelectorAll('.mm-prop-ta').forEach(ta => {
