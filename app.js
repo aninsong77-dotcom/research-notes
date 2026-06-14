@@ -4559,10 +4559,9 @@ function advanceWizardOnFolder() {
 }
 
 function showOnboarding() {
-    if (localStorage.getItem('onboardingComplete')) return;
     // 로그인 상태면 2단계부터, 아니면 1단계부터
     const isLoggedIn = typeof currentUser !== 'undefined' && !!currentUser;
-    const startStep = isLoggedIn ? (backupDirHandle ? 3 : 2) : 1;
+    const startStep = isLoggedIn ? 2 : 1;
     showWizard(startStep);
 }
 
