@@ -4537,11 +4537,9 @@ function _renderWizardStep(overlay, step) {
         overlay.querySelector('#wz-save-ai').onclick = () => {
             const key = (overlay.querySelector('#wz-api-key')?.value || '').trim();
             if (key) { localStorage.setItem(GEMINI_LS_KEY, key); showToast('API 키 저장 완료!', 'success'); }
-            localStorage.setItem('onboardingComplete', '1');
             overlay.remove();
         };
         overlay.querySelector('#wz-skip3').onclick = () => {
-            localStorage.setItem('onboardingComplete', '1');
             overlay.remove();
         };
     }
@@ -4555,6 +4553,7 @@ function advanceWizardOnLogin() {
 
 // 폴더 지정 완료 시 folderBackup()에서 호출
 function advanceWizardOnFolder() {
+    localStorage.setItem('onboardingComplete', '1'); // 폴더 지정 = 온보딩 핵심 완료
     const overlay = document.getElementById('onboarding-overlay');
     if (overlay && overlay.dataset.wizardStep === '2') _renderWizardStep(overlay, 3);
 }
@@ -4576,8 +4575,8 @@ async function init() {
     bindEvents();
     renderProjectSelector();
     renderContent();
-    // 온보딩 미완료 시 wizard 표시
-    if (!localStorage.getItem('onboardingComplete')) {
+    // 백업 폴더 미설정이면 항상 wizard 표시
+    if (!backupDirHandle) {
         setTimeout(showOnboarding, 600);
     }
 }
