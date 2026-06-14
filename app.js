@@ -4129,6 +4129,7 @@ ${bodyText}
 응답 형식 (JSON만):
 {
   "summary": "[연구 목적] ...\n[연구 방법] ...\n[주요 결과] ...\n[시사점] ...",
+  "keywords": "키워드1, 키워드2, 키워드3 (논문의 키워드 또는 주요어 그대로, 없으면 빈 문자열)",
   "needs": "연구의 필요성·배경 (2-3문장)",
   "mainstudies": "주요 선행연구 내용 (2-3문장)",
   "theory": "주요 이론·개념 (1-2문장, 없으면 빈 문자열)",
@@ -4159,6 +4160,7 @@ ${bodyText}
 
         // 정밀 분석 칸 채우기
         const fieldMap = {
+            keywords: 'a-keywords',
             needs: 'a-needs', mainstudies: 'a-mainstudies', theory: 'a-theory',
             method: 'a-method', results: 'a-results',
             limitations: 'a-limitations', implications: 'a-implications'
