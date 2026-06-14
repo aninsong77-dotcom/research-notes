@@ -3192,6 +3192,9 @@ function autoBackup() {
 // 권한이 이미 있으면 조용히, 없으면 사이드바에 복원 버튼 표시
 async function autoLoadPdfsFromBackup() {
     if (!backupDirHandle) return;
+    // PDF 없는 논문이 있을 때만 복원 시도
+    const hasMissingPdf = state.papers.some(p => p.pdfFilename && !p.pdfData);
+    if (!hasMissingPdf) return;
     try {
         const perm = await backupDirHandle.queryPermission({ mode: 'read' });
         if (perm === 'granted') {
@@ -4493,7 +4496,14 @@ function _renderWizardStep(overlay, step) {
             <div class="onboarding-body">
                 <div class="onboarding-section">
                     <h3>${_wi('<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>')} Groq API 키 입력</h3>
-                    <p>Groq는 무료로 사용할 수 있어요. <b>console.groq.com</b> 에서 가입 후 API 키를 발급받으세요.</p>
+                    <div class="onboarding-tip">
+                        <strong>🔑 API 키 발급 방법 (무료)</strong>
+                        <ul>
+                            <li><a href="https://console.groq.com" target="_blank" rel="noopener" style="color:var(--accent)">console.groq.com</a> 접속 → 구글 계정으로 가입</li>
+                            <li>왼쪽 메뉴 <b>API Keys</b> → <b>Create API Key</b> 클릭</li>
+                            <li>생성된 키(gsk_로 시작)를 복사해서 아래에 붙여넣기</li>
+                        </ul>
+                    </div>
                     <input id="wz-api-key" type="password" placeholder="gsk_..." value="${escHtml(localStorage.getItem(GEMINI_LS_KEY)||'')}"
                         style="width:100%;margin-top:10px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;background:var(--bg);color:var(--text);box-sizing:border-box;"/>
                     ${hasKey ? '<p style="font-size:12px;color:#16a34a;margin-top:6px">✓ API 키가 저장되어 있어요</p>' : ''}
