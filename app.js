@@ -3044,6 +3044,39 @@ function readFile(file) {
     });
 }
 
+// PDF에서 텍스트 추출 (PDF.js 사용)
+async function extractPdfText(file) {
+    if (!window.pdfjsLib) { pushDebug('warn', 'PDF.js 아직 로드 안 됨'); return ''; }
+    try {
+        const buf = await readFile(file);
+        const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
+        let text = '';
+        for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const content = await page.getTextContent();
+            text += content.items.map(item => item.str).join(' ') + '\n';
+        }
+        pushDebug('info', `PDF 텍스트 추출 완료 — ${pdf.numPages}페이지 ${text.length}자`);
+        return text.trim();
+    } catch(e) {
+        pushDebug('warn', 'PDF 텍스트 추출 실패: ' + e.message);
+        return '';
+    }
+}
+
+// 빠른추가 모달의 텍스트란에 PDF 자동 추출 채우기 (contenteditable div)
+async function _autoFillAddText(file) {
+    const txtEl = document.getElementById('add-text-input');
+    if (!txtEl || txtEl.textContent.trim()) return;
+    txtEl.dataset.placeholder = txtEl.dataset.placeholder || '';
+    const orig = txtEl.getAttribute('data-placeholder') || '';
+    txtEl.setAttribute('data-placeholder', 'PDF에서 텍스트 추출 중...');
+    const txt = await extractPdfText(file);
+    txtEl.setAttribute('data-placeholder', orig || '논문 전문을 붙여넣으세요 (AI 분석·요약에 사용됩니다)');
+    if (txt) { txtEl.textContent = txt; showToast('PDF 텍스트 자동 추출 완료', 'success'); }
+    else showToast('텍스트 추출 실패 — 직접 붙여넣기 해주세요', 'warn');
+}
+
 // ── 논문 삭제 ──────────────────────────────────────────────
 async function deletePaper(id) {
     if (!confirm('이 논문을 삭제할까요?')) return;
@@ -3935,11 +3968,19 @@ function bindEvents() {
     document.getElementById('btn-pick-pdf').addEventListener('click', () => {
         document.getElementById('f-pdf').click();
     });
-    document.getElementById('f-pdf').addEventListener('change', e => {
+    document.getElementById('f-pdf').addEventListener('change', async e => {
         const file = e.target.files[0];
         if (file) {
             state.currentPdfFile = file;
             document.getElementById('pdf-filename').textContent = file.name;
+            const ftEl = document.getElementById('f-fulltext');
+            if (ftEl && !ftEl.value.trim()) {
+                ftEl.placeholder = 'PDF에서 텍스트 추출 중...';
+                const txt = await extractPdfText(file);
+                ftEl.placeholder = '논문 전문을 붙여넣거나 PDF 첨부 시 자동 추출됩니다.';
+                if (txt) { ftEl.value = txt; showToast('PDF 텍스트 자동 추출 완료', 'success'); }
+                else showToast('텍스트 추출 실패 — 직접 붙여넣기 해주세요', 'warn');
+            }
         }
     });
 
@@ -3961,13 +4002,14 @@ function bindEvents() {
     document.getElementById('btn-add-cancel').addEventListener('click', closeAddChoice);
     document.getElementById('btn-add-save').addEventListener('click', addChoiceSave);
     document.getElementById('btn-add-pdf-pick').addEventListener('click', () => document.getElementById('add-pdf-file').click());
-    document.getElementById('add-pdf-file').addEventListener('change', e => {
+    document.getElementById('add-pdf-file').addEventListener('change', async e => {
         const file = e.target.files[0]; if (!file) return;
         addChoicePdfFile = file;
         const nameEl = document.getElementById('add-pdf-filename');
         nameEl.textContent = '📎 ' + file.name; nameEl.style.display = '';
         const titleEl = document.getElementById('add-title');
         if (titleEl && !titleEl.value) titleEl.value = file.name.replace(/\.pdf$/i, '');
+        await _autoFillAddText(file);
     });
     document.getElementById('add-pdf-dropzone').addEventListener('dragover', e => {
         e.preventDefault(); e.currentTarget.classList.add('drag-over');
@@ -3975,7 +4017,7 @@ function bindEvents() {
     document.getElementById('add-pdf-dropzone').addEventListener('dragleave', e => {
         e.currentTarget.classList.remove('drag-over');
     });
-    document.getElementById('add-pdf-dropzone').addEventListener('drop', e => {
+    document.getElementById('add-pdf-dropzone').addEventListener('drop', async e => {
         e.preventDefault(); e.currentTarget.classList.remove('drag-over');
         const file = e.dataTransfer.files[0];
         if (!file || file.type !== 'application/pdf') { showToast('PDF 파일만 가능합니다.', 'warn'); return; }
@@ -3984,6 +4026,7 @@ function bindEvents() {
         nameEl.textContent = '📎 ' + file.name; nameEl.style.display = '';
         const titleEl = document.getElementById('add-title');
         if (titleEl && !titleEl.value) titleEl.value = file.name.replace(/\.pdf$/i, '');
+        await _autoFillAddText(file);
     });
     document.getElementById('btn-add-text-analyze').addEventListener('click', aiAnalyzeForAddForm);
 
