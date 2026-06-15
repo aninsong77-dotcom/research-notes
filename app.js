@@ -3214,9 +3214,9 @@ function autoBackup() {
 async function autoLoadPdfsFromBackup() {
     pushDebug('info', `PDF자동복원 시작 — 폴더핸들:${!!backupDirHandle} 논문수:${state.papers.length}`);
     if (!backupDirHandle) { pushDebug('info', 'PDF자동복원 중단: 폴더핸들 없음'); return; }
-    const missingList = state.papers.filter(p => p.pdfFilename && !p.pdfData);
-    pushDebug('info', `PDF없는논문: ${missingList.length}편 (pdfFilename있음기준)`);
-    if (missingList.length === 0) { pushDebug('info', 'PDF자동복원 중단: 누락PDF 없음'); return; }
+    const missingList = state.papers.filter(p => !p.pdfData || !p.fullText);
+    pushDebug('info', `복원필요논문: ${missingList.length}편 (PDF또는fullText없음)`);
+    if (missingList.length === 0) { pushDebug('info', '자동복원 중단: 누락 없음'); return; }
     try {
         const perm = await backupDirHandle.queryPermission({ mode: 'read' });
         pushDebug('info', `폴더권한: ${perm}`);
@@ -3269,17 +3269,20 @@ async function _restoreAllFromBackupFile() {
                 await dbPut(STORE_PROJECTS, proj);
         }
 
-        // 논문 복원 (PDF 포함) — 이미 있는 논문은 PDF만 업데이트
+        // 논문 복원 — 이미 있는 논문은 fullText·PDF만 업데이트 (Firebase가 이 둘을 안 올림)
         const existingPapers = await dbGetAll(STORE_PAPERS);
         for (const p of (data.papers || [])) {
             const existing = existingPapers.find(e => e.id === p.id);
             if (existing) {
-                // Firebase로 텍스트는 있지만 PDF가 없는 경우 PDF만 추가
+                let changed = false;
+                if (!existing.fullText && p.fullText)       { existing.fullText = p.fullText; changed = true; }
+                if (!existing.fullTextHtml && p.fullTextHtml) { existing.fullTextHtml = p.fullTextHtml; changed = true; }
                 if (!existing.pdfData && p._pdfEncoded && p.pdfData) {
                     existing.pdfData = b64ToBuf(p.pdfData);
                     existing.pdfFilename = p.pdfFilename || existing.pdfFilename;
-                    await dbPut(STORE_PAPERS, existing);
+                    changed = true;
                 }
+                if (changed) await dbPut(STORE_PAPERS, existing);
                 continue;
             }
             const paper = { ...p };
