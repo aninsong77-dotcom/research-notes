@@ -3720,6 +3720,15 @@ function bindEvents() {
     // 사용법 모달
     document.getElementById('btn-help-guide').addEventListener('click', () => {
         document.getElementById('modal-help').style.display = 'flex';
+        const body = document.getElementById('help-modal-body');
+        const hint = document.getElementById('help-scroll-hint');
+        // 열릴 때 힌트 초기화
+        hint.classList.remove('hidden');
+        // 끝까지 스크롤하면 힌트 숨김
+        body.onscroll = () => {
+            const atBottom = body.scrollTop + body.clientHeight >= body.scrollHeight - 10;
+            hint.classList.toggle('hidden', atBottom);
+        };
     });
     document.getElementById('btn-help-close').addEventListener('click', () => {
         document.getElementById('modal-help').style.display = 'none';
