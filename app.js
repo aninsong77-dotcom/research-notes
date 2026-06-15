@@ -315,6 +315,8 @@ async function loadData() {
     const allNotes = await dbGetAll(STORE_NOTES);
     state.notes = allNotes.filter(n => n.projectId === state.currentProjectId);
     state.proposal = await loadProposal(state.currentProjectId);
+    // 백업 폴더가 있고 PDF 없는 논문이 있으면 자동 복원 시도
+    setTimeout(autoLoadPdfsFromBackup, 500);
     // 개수 갱신 + 잠금화면에서 숨겼던 뱃지 다시 표시
     [['papers-count', state.papers.length],
      ['materials-count', state.materials.length],
