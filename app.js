@@ -4148,12 +4148,16 @@ async function aiAnalyzePaper() {
     const btn = document.getElementById('btn-ai-summarize-quick');
     if (btn) { btn.disabled = true; btn.textContent = '분석 중…'; }
 
-    const textBudget = 8000;
-    const bodyText = fullText ? fullText.slice(0, textBudget) : abstract.slice(0, textBudget);
+    // 섹션 자동 감지로 서론·결론·방법·결과 부분 추출 (150페이지도 대응)
+    const extracted = fullText ? extractPaperSections(fullText) : null;
+    const bodyText = extracted
+        ? extracted.parts.map(p => `[${p.label}]\n${p.text}`).join('\n\n')
+        : (abstract || '').slice(0, 8000);
+    const sectionNote = extracted ? `(${extracted.mode})` : '';
     const prompt = `다음 논문을 읽고 아래 항목들을 JSON 형식으로만 응답해주세요. 해당 내용이 없으면 빈 문자열("")로 두세요. JSON 외 다른 텍스트는 쓰지 마세요.
 
 제목: ${title}
-${abstract ? `초록: ${abstract.slice(0,500)}\n` : ''}본문:
+${abstract ? `초록: ${abstract.slice(0,500)}\n` : ''}본문 ${sectionNote}:
 ${bodyText}
 
 응답 형식 (JSON만):
