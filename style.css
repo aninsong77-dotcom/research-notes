@@ -2143,7 +2143,7 @@ body {
     z-index: 100;
 }
 
-/* ── 논문 정밀 분석 (폼 내 접이식) ─────────────────────────── */
+/* ── 논문 정밀 분석 ─────────────────────────── */
 .analysis-block {
     margin-top: 16px;
     border: 1.5px solid var(--border);
@@ -2151,7 +2151,26 @@ body {
     background: #fafbfc;
     overflow: hidden;
 }
-.analysis-block > summary {
+.analysis-block-header {
+    padding: 13px 16px;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: var(--accent-light);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+}
+.analysis-block-header small { font-weight: 400; color: var(--text-muted); margin-left: 6px; }
+/* ── PDF & 원문 텍스트 (접이식) ────────────────────────────── */
+.fulltext-block {
+    margin-top: 16px;
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    background: #fafbfc;
+    overflow: hidden;
+}
+.fulltext-block > summary {
     cursor: pointer;
     list-style: none;
     padding: 13px 16px;
@@ -2163,10 +2182,10 @@ body {
     display: flex;
     align-items: center;
 }
-.analysis-block > summary::-webkit-details-marker { display: none; }
-.analysis-block > summary small { font-weight: 400; color: var(--text-muted); margin-left: 6px; }
-.analysis-block > summary:hover { color: var(--accent); }
-.analysis-block[open] > summary { border-bottom: 1px solid var(--border); }
+.fulltext-block > summary::-webkit-details-marker { display: none; }
+.fulltext-block > summary small { font-weight: 400; color: var(--text-muted); margin-left: 6px; }
+.fulltext-block > summary:hover { color: var(--accent); }
+.fulltext-block[open] > summary { border-bottom: 1px solid var(--border); }
 /* ── 원문 텍스트 + 이미지 첨부 ────────────────────────────── */
 .fulltext-content { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
 /* 원문 텍스트 뷰어 (HTML 렌더링) */

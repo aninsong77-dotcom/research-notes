@@ -225,7 +225,7 @@
                 <form id="paper-form">
 
                     <!-- 새 논문 추가 시 상단에 표시: PDF + 원문 텍스트 -->
-                    <details class="analysis-block" id="fulltext-block">
+                    <details class="fulltext-block" id="fulltext-block">
                         <summary>
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
                             PDF &amp; 원문 텍스트 <small>(AI 분석용 — PDF 첨부 또는 전문 붙여넣기)</small>
@@ -334,11 +334,11 @@
                     </div>
 
                     <!-- 논문 정밀 분석 (정리표) -->
-                    <details class="analysis-block" id="analysis-block">
-                        <summary>
+                    <div class="analysis-block" id="analysis-block">
+                        <div class="analysis-block-header">
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px"><path d="M3 3v18h18"/><rect x="7" y="9" width="3" height="9"/><rect x="14" y="5" width="3" height="13"/></svg>
                             논문 정밀 분석 <small>(정독하며 채우는 정리표 — 비워둬도 됩니다)</small>
-                        </summary>
+                        </div>
                         <div class="analysis-content">
                             <div class="analysis-group-label">기본 정보</div>
                             <div class="form-grid">
@@ -427,7 +427,7 @@
                                 </div>
                             </div>
                         </div>
-                    </details>
+                    </div>
 
                     <div class="form-actions">
                         <button type="button" class="btn-delete view-only" id="btn-delete-paper">삭제</button>
