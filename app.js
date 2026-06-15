@@ -4162,6 +4162,11 @@ ${bodyText}
 
 응답 형식 (JSON만):
 {
+  "title": "논문 제목 (원문 그대로)",
+  "authors": "저자명 (쉼표로 구분)",
+  "year": "출판연도 (4자리 숫자, 없으면 빈 문자열)",
+  "source": "학술지명 또는 출처 (없으면 빈 문자열)",
+  "abstract": "논문 초록 (없으면 빈 문자열)",
   "summary": "[연구 목적] ...\n[연구 방법] ...\n[주요 결과] ...\n[시사점] ...",
   "keywords": "키워드1, 키워드2, 키워드3 (논문의 키워드 또는 주요어 그대로, 없으면 빈 문자열)",
   "needs": "연구의 필요성·배경 (2-3문장)",
@@ -4187,6 +4192,18 @@ ${bodyText}
         let parsed;
         try { parsed = JSON.parse(jsonStr); }
         catch { throw new Error('AI 응답을 파싱하지 못했어요. 다시 시도해 주세요.\n' + raw.slice(0, 200)); }
+
+        // 기본 항목 채우기 (빈 칸만)
+        const setIfEmpty = (id, val) => {
+            if (!val) return;
+            const el = document.getElementById(id);
+            if (el && !el.value.trim()) el.value = val;
+        };
+        setIfEmpty('f-title',   parsed.title);
+        setIfEmpty('f-authors', parsed.authors);
+        setIfEmpty('f-year',    parsed.year);
+        setIfEmpty('f-source',  parsed.source);
+        setIfEmpty('f-abstract', parsed.abstract);
 
         // AI 요약 박스 채우기
         if (parsed.summary) {

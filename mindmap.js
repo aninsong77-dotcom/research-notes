@@ -407,11 +407,28 @@ function renderEdge(edge) {
     // 곡선은 연결 방향(axis)에 맞춰 끝점으로 들어와야 화살촉이 옳은 쪽을 가리킴.
     //  - 가로 연결: 제어점을 가로 중점(mx)에 → 좌/우로 들어옴
     //  - 세로 연결: 제어점을 세로 중점(my)에 → 위/아래로 들어옴
-    const d = edge.straight
-        ? `M ${sx} ${sy} L ${ex} ${ey}`
-        : (axis === 'v'
-            ? `M ${sx} ${sy} C ${sx} ${my}, ${ex} ${my}, ${ex} ${ey}`
-            : `M ${sx} ${sy} C ${mx} ${sy}, ${mx} ${ey}, ${ex} ${ey}`);
+    // ㄴ자형: 두 노드 아래쪽에서 출발→아래로 내려→수평→올라와서 도착 (U자 우회)
+    let d;
+    let orthoCoords = null; // 드래그 핸들용 좌표 보관
+    if (edge.orthogonal && !edge.toEdge) {
+        const { w: fw, h: fh } = nodeSize(from);
+        const toNode = S.nodes.find(n => n.id === edge.to);
+        const { w: tw, h: th } = nodeSize(toNode || from);
+        const bsy = from.y + fh;          // 출발 노드 하단
+        const bex = (toNode?.x ?? ex) + tw / 2;  // 도착 노드 하단 중앙 x
+        const bey = (toNode?.y ?? ey) + th;       // 도착 노드 하단
+        const bsx = from.x + fw / 2;     // 출발 노드 하단 중앙 x
+        const offset = edge.orthoOffset ?? 40;
+        const drop = Math.max(bsy, bey) + offset; // 두 노드 중 더 낮은 쪽 + 조절 여백
+        d = `M ${bsx} ${bsy} L ${bsx} ${drop} L ${bex} ${drop} L ${bex} ${bey}`;
+        orthoCoords = { bsx, bex, drop };
+    } else {
+        d = edge.straight
+            ? `M ${sx} ${sy} L ${ex} ${ey}`
+            : (axis === 'v'
+                ? `M ${sx} ${sy} C ${sx} ${my}, ${ex} ${my}, ${ex} ${ey}`
+                : `M ${sx} ${sy} C ${mx} ${sy}, ${mx} ${ey}, ${ex} ${ey}`);
+    }
 
     const g = el('g', { 'data-eid': edge.id, class: 'mm-eg' });
 
@@ -436,12 +453,28 @@ function renderEdge(edge) {
     // 라벨을 중앙에서 시작점 쪽(30%)으로 비켜 놓아 가려지지 않게 한다.
     const moderated = !edge.toEdge && S.edges.some(e => e.toEdge && e.to === edge.id);
     const labelT = moderated ? 0.3 : 0.5;
-    const lx = sx + (ex - sx) * labelT;
-    const ly = sy + (ey - sy) * labelT - 13;
+    let lx, ly;
+    if (edge.orthogonal && !edge.toEdge) {
+        // ㄴ자형: 수평 구간(바닥선) 중점에 레이블
+        const toNode2 = S.nodes.find(n => n.id === edge.to);
+        const { w: fw2, h: fh2 } = nodeSize(from);
+        const { w: tw2, h: th2 } = nodeSize(toNode2 || from);
+        const bsx2 = from.x + fw2 / 2;
+        const bex2 = (toNode2?.x ?? ex) + tw2 / 2;
+        const bsy2 = from.y + fh2;
+        const bey2 = (toNode2?.y ?? ey) + th2;
+        const drop2 = Math.max(bsy2, bey2) + (edge.orthoOffset ?? 40);
+        lx = (bsx2 + bex2) / 2;
+        ly = drop2 - 13;
+    } else {
+        lx = sx + (ex - sx) * labelT;
+        ly = sy + (ey - sy) * labelT - 13;
+    }
     g.appendChild(el('rect', {
         x: lx - bw / 2, y: ly - 10, width: bw, height: 19,
         rx: 9, fill: 'white',
-        stroke: labelColor, 'stroke-width': 1, opacity: '0.93',
+        stroke: labelColor, 'stroke-width': 1.5, opacity: '1',
+        filter: 'drop-shadow(0 0 3px rgba(255,255,255,0.9))',
     }));
     g.appendChild(el('text', {
         x: lx, y: ly + 0.5,
@@ -452,6 +485,19 @@ function renderEdge(edge) {
         'font-weight': '700',
         'pointer-events': 'none',
     }, labelText));
+
+    // ㄴ자형 수평 구간 드래그 — 투명 히트영역만 (커서가 ↕로 바뀌어 드래그 가능함을 알림)
+    if (orthoCoords) {
+        const { bsx, bex, drop } = orthoCoords;
+        const hx1 = Math.min(bsx, bex);
+        const hx2 = Math.max(bsx, bex);
+        const hit = el('line', {
+            x1: hx1, y1: drop, x2: hx2, y2: drop,
+            stroke: 'transparent', 'stroke-width': '16',
+            cursor: 'ns-resize', 'data-ortho-handle': edge.id,
+        });
+        g.appendChild(hit);
+    }
 
     S.edgesG.appendChild(g);
 }
@@ -669,6 +715,17 @@ function onDown(e) {
         mmRender(); e.stopPropagation(); return;
     }
 
+    // ㄴ자형 수평 핸들 드래그
+    if (e.target.dataset.orthoHandle) {
+        const eid = e.target.dataset.orthoHandle;
+        const edge = S.edges.find(ed => ed.id === eid);
+        if (edge) {
+            saveHistory();
+            S.dragging = { kind: 'orthoHandle', eid, startWy: wy, startOffset: edge.orthoOffset ?? 40 };
+            e.stopPropagation(); return;
+        }
+    }
+
     // 화살표(엣지) 클릭 → 선택 + 관계 변경/삭제 팝업
     const eg = e.target.closest('.mm-eg');
     if (eg) {
@@ -722,7 +779,15 @@ function onMove(e) {
     }
     if (S.dragging) {
         const { x: wx, y: wy } = toWorld(e.clientX, e.clientY);
-        if (S.dragging.kind === 'group') {
+        if (S.dragging.kind === 'orthoHandle') {
+            const edge = S.edges.find(ed => ed.id === S.dragging.eid);
+            if (edge) {
+                const dy = wy - S.dragging.startWy;
+                const newOffset = Math.max(10, S.dragging.startOffset + dy);
+                edge.orthoOffset = newOffset;
+                mmRender();
+            }
+        } else if (S.dragging.kind === 'group') {
             const group = S.groups.find(g => g.id === S.dragging.gid);
             if (group) {
                 if (!S.dragging.moved) { saveHistory(); S.dragging.moved = true; }
@@ -744,7 +809,11 @@ function onMove(e) {
 
 function onUp() {
     if (S.resizing) { mmSaveToDB(); S.resizing = null; }
-    if (S.dragging) { if (S.dragging.moved) mmSaveToDB(); S.dragging = null; }
+    if (S.dragging) {
+        if (S.dragging.kind === 'orthoHandle') { mmSaveToDB(); }
+        else if (S.dragging.moved) mmSaveToDB();
+        S.dragging = null;
+    }
     if (S.panning)  S.panning = null;
 }
 
@@ -948,9 +1017,13 @@ function showEdgePopup(edge, cx, cy) {
             <div class="mm-pop-item ${l === edge.label ? 'mm-pop-active' : ''}" data-rel="${l}" style="--rc:${EDGE_STYLES[l].color}">
                 <span class="mm-pop-dot"></span>${l}${l === edge.label ? ' ✓' : ''}
             </div>`).join('')}
+        <div class="mm-pop-divider"></div>
+        <div class="mm-pop-title">선 모양</div>
+        <div class="mm-pop-item ${edge.orthogonal ? '' : (edge.straight ? '' : 'mm-pop-active')}" data-act="set-curve">↝ 곡선${(!edge.straight && !edge.orthogonal) ? ' ✓' : ''}</div>
+        <div class="mm-pop-item ${edge.straight ? 'mm-pop-active' : ''}" data-act="toggle-straight">╱ 직선${edge.straight ? ' ✓' : ''}</div>
+        <div class="mm-pop-item ${edge.orthogonal ? 'mm-pop-active' : ''}" data-act="toggle-ortho">┘ ㄴ자형 꺾기${edge.orthogonal ? ' ✓' : ''}</div>
         ${hypoSection}
         <div class="mm-pop-divider"></div>
-        <div class="mm-pop-item" data-act="toggle-straight">${edge.straight ? '↝ 곡선으로' : '╱ 직선으로'}</div>
         <div class="mm-pop-item mm-pop-del" data-act="delete">${icon('trash', 14)} 이 화살표 삭제</div>
         <div class="mm-pop-item mm-pop-cancel" data-act="cancel">✕ 닫기</div>`;
 
@@ -989,9 +1062,17 @@ function showEdgePopup(edge, cx, cy) {
                     mmRenderProp();   // 프로포절 패널 열려 있으면 새 가설 줄도 바로 반영
                     showToast(`H${state.proposal.hypotheses.length} 가설을 만들어 연결했어요`, 'success');
                 }
+            } else if (act === 'set-curve') {
+                saveHistory();
+                edge.straight = false; edge.orthogonal = false;
+                mmSaveToDB();
             } else if (act === 'toggle-straight') {
                 saveHistory();
-                edge.straight = !edge.straight;
+                edge.straight = true; edge.orthogonal = false;
+                mmSaveToDB();
+            } else if (act === 'toggle-ortho') {
+                saveHistory();
+                edge.orthogonal = true; edge.straight = false;
                 mmSaveToDB();
             }
             mmRender();
