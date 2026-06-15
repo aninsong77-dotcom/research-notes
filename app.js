@@ -3212,17 +3212,19 @@ function autoBackup() {
 // ── 로그인 후 백업 폴더에서 PDF 자동 복원 ───────────────────
 // 권한이 이미 있으면 조용히, 없으면 사이드바에 복원 버튼 표시
 async function autoLoadPdfsFromBackup() {
-    if (!backupDirHandle) return;
-    // PDF 없는 논문이 있을 때만 복원 시도
-    const hasMissingPdf = state.papers.some(p => p.pdfFilename && !p.pdfData);
-    if (!hasMissingPdf) return;
+    pushDebug('info', `PDF자동복원 시작 — 폴더핸들:${!!backupDirHandle} 논문수:${state.papers.length}`);
+    if (!backupDirHandle) { pushDebug('info', 'PDF자동복원 중단: 폴더핸들 없음'); return; }
+    const missingList = state.papers.filter(p => p.pdfFilename && !p.pdfData);
+    pushDebug('info', `PDF없는논문: ${missingList.length}편 (pdfFilename있음기준)`);
+    if (missingList.length === 0) { pushDebug('info', 'PDF자동복원 중단: 누락PDF 없음'); return; }
     try {
         const perm = await backupDirHandle.queryPermission({ mode: 'read' });
+        pushDebug('info', `폴더권한: ${perm}`);
         if (perm === 'granted') {
             await _loadPdfsFromBackupFile(false);
         } else {
-            // 권한이 필요 — 사이드바에 버튼 노출
             _showPdfRestoreButton();
+            pushDebug('info', 'PDF복원 버튼 표시됨');
         }
     } catch(e) {
         pushDebug('warn', 'PDF 자동 로드 확인 실패: ' + e.message);
