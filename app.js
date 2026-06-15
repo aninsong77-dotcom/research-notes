@@ -3265,10 +3265,19 @@ async function _restoreAllFromBackupFile() {
                 await dbPut(STORE_PROJECTS, proj);
         }
 
-        // 논문 복원 (PDF 포함)
+        // 논문 복원 (PDF 포함) — 이미 있는 논문은 PDF만 업데이트
         const existingPapers = await dbGetAll(STORE_PAPERS);
         for (const p of (data.papers || [])) {
-            if (existingPapers.find(e => e.id === p.id)) continue;
+            const existing = existingPapers.find(e => e.id === p.id);
+            if (existing) {
+                // Firebase로 텍스트는 있지만 PDF가 없는 경우 PDF만 추가
+                if (!existing.pdfData && p._pdfEncoded && p.pdfData) {
+                    existing.pdfData = b64ToBuf(p.pdfData);
+                    existing.pdfFilename = p.pdfFilename || existing.pdfFilename;
+                    await dbPut(STORE_PAPERS, existing);
+                }
+                continue;
+            }
             const paper = { ...p };
             if (p._pdfEncoded && p.pdfData) paper.pdfData = b64ToBuf(p.pdfData);
             delete paper._pdfEncoded;
