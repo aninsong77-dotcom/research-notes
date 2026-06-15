@@ -3334,17 +3334,26 @@ async function _loadPdfsFromBackupFile(showResult) {
         const papers = data.papers || [];
         let count = 0;
         for (const bp of papers) {
-            if (!bp._pdfEncoded || !bp.pdfData) continue;
             const local = state.papers.find(p => p.id === bp.id);
-            if (!local || local.pdfData) continue;
-            const merged = { ...local, pdfData: b64ToBuf(bp.pdfData), pdfFilename: bp.pdfFilename || local.pdfFilename };
+            if (!local) continue;
+            let changed = false;
+            const merged = { ...local };
+            if (!local.fullText && bp.fullText)           { merged.fullText = bp.fullText; changed = true; }
+            if (!local.fullTextHtml && bp.fullTextHtml)   { merged.fullTextHtml = bp.fullTextHtml; changed = true; }
+            if (!local.pdfData && bp._pdfEncoded && bp.pdfData) {
+                merged.pdfData = b64ToBuf(bp.pdfData);
+                merged.pdfFilename = bp.pdfFilename || local.pdfFilename;
+                changed = true;
+            }
+            if (!changed) continue;
             await dbPut(STORE_PAPERS, merged);
             count++;
         }
+        pushDebug('info', `폴더복원 완료 — ${count}편 업데이트`);
         if (count > 0) {
             await loadData();
             renderContent();
-            if (showResult) showToast(`PDF ${count}개 복원 완료!`, 'success');
+            if (showResult) showToast(`백업에서 ${count}편 복원 완료!`, 'success');
             else pushDebug('info', `PDF 자동 복원: ${count}개`);
         }
     } catch(e) {
