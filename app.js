@@ -4154,9 +4154,10 @@ async function aiAnalyzePaper() {
         ? extracted.parts.map(p => `[${p.label}]\n${p.text}`).join('\n\n')
         : (abstract || '').slice(0, 8000);
     const sectionNote = extracted ? `(${extracted.mode})` : '';
+    const titleLine = title ? `제목: ${title}` : `제목: (아래 본문에서 직접 찾아서 채워주세요)`;
     const prompt = `다음 논문을 읽고 아래 항목들을 JSON 형식으로만 응답해주세요. 해당 내용이 없으면 빈 문자열("")로 두세요. JSON 외 다른 텍스트는 쓰지 마세요.
 
-제목: ${title}
+${titleLine}
 ${abstract ? `초록: ${abstract.slice(0,500)}\n` : ''}본문 ${sectionNote}:
 ${bodyText}
 
