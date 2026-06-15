@@ -4159,7 +4159,7 @@ async function aiSummarizePaper() {
 // ── AI 전체 분석 (요약 + 정밀 분석 칸 자동 채우기) ────────────
 async function aiAnalyzePaper() {
     const paper   = state.editingId ? state.papers.find(p => p.id === state.editingId) : null;
-    const title   = document.getElementById('f-title')?.value?.trim() || paper?.title || '';
+    const title   = document.getElementById('f-title')?.value?.trim() || '';
     const abstract = document.getElementById('f-abstract')?.value?.trim() || paper?.abstract || '';
     const fullText = document.getElementById('f-fulltext')?.value?.trim() || paper?.fullText || '';
     if (!fullText && !abstract) {
@@ -4174,11 +4174,11 @@ async function aiAnalyzePaper() {
         ? extracted.parts.map(p => `[${p.label}]\n${p.text}`).join('\n\n')
         : (abstract || '').slice(0, 8000);
     const sectionNote = extracted ? `(${extracted.mode})` : '';
-    const titleLine = title ? `제목: ${title}` : `제목: (아래 본문에서 직접 찾아서 채워주세요)`;
+    const titleLine = title ? `제목: ${title}` : '';
+    const titleInstruction = title ? '' : '※ 제목이 제공되지 않았습니다. 본문 첫 부분에서 논문 제목을 직접 찾아 title 필드에 넣어주세요.\n';
     const prompt = `다음 논문을 읽고 아래 항목들을 JSON 형식으로만 응답해주세요. 해당 내용이 없으면 빈 문자열("")로 두세요. JSON 외 다른 텍스트는 쓰지 마세요.
-
-${titleLine}
-${abstract ? `초록: ${abstract.slice(0,500)}\n` : ''}본문 ${sectionNote}:
+${titleInstruction}
+${titleLine}${abstract ? `초록: ${abstract.slice(0,500)}\n` : ''}본문 ${sectionNote}:
 ${bodyText}
 
 응답 형식 (JSON만):
