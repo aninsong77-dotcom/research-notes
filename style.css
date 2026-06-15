@@ -488,6 +488,32 @@ body {
 .btn-primary:hover { background: var(--accent-hover); }
 .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
 
+.btn-help-guide {
+    padding: 8px 14px;
+    background: transparent;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex; align-items: center; gap: 3px;
+    white-space: nowrap;
+    transition: border-color 0.15s, color 0.15s;
+}
+.btn-help-guide:hover { border-color: var(--accent); color: var(--accent); }
+
+.help-section { border-radius: 10px; margin-bottom: 10px; overflow: hidden; border: 1px solid rgba(0,0,0,0.06); }
+.help-section-header { display: flex; align-items: center; gap: 8px; padding: 9px 14px; font-size: 13px; font-weight: 600; }
+.help-section-body { padding: 10px 14px 12px; font-size: 13px; line-height: 1.85; color: var(--text-secondary); background: white; }
+.help-section-body b { font-weight: 600; color: var(--text-primary); }
+.help-blue .help-section-header   { background: #E6F1FB; color: #0C447C; }
+.help-teal .help-section-header   { background: #E1F5EE; color: #085041; }
+.help-purple .help-section-header { background: #EEEDFE; color: #3C3489; }
+.help-amber .help-section-header  { background: #FAEEDA; color: #633806; }
+.help-coral .help-section-header  { background: #FAECE7; color: #712B13; }
+.help-green .help-section-header  { background: #EAF3DE; color: #27500A; }
+.help-pink .help-section-header   { background: #FBEAF0; color: #72243E; }
+
 .btn-secondary {
     padding: 9px 16px;
     background: var(--surface);

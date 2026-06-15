@@ -3717,6 +3717,18 @@ function bindEvents() {
     document.getElementById('btn-add').addEventListener('click', addByView);
     document.getElementById('btn-add-top').addEventListener('click', addByView);
 
+    // 사용법 모달
+    document.getElementById('btn-help-guide').addEventListener('click', () => {
+        document.getElementById('modal-help').style.display = 'flex';
+    });
+    document.getElementById('btn-help-close').addEventListener('click', () => {
+        document.getElementById('modal-help').style.display = 'none';
+    });
+    document.getElementById('modal-help').addEventListener('click', e => {
+        if (e.target === document.getElementById('modal-help'))
+            document.getElementById('modal-help').style.display = 'none';
+    });
+
     // 검색 모드 토글(키워드만 / 전체단어 / RISS)
     document.querySelectorAll('#search-mode-toggle .sm-btn').forEach(btn => {
         btn.addEventListener('click', () => {
