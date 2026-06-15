@@ -3332,9 +3332,11 @@ async function _loadPdfsFromBackupFile(showResult) {
         const file = await fh.getFile();
         const data = JSON.parse(await file.text());
         const papers = data.papers || [];
+        pushDebug('info', `백업파일 논문수:${papers.length} 파일명:${BACKUP_FILENAME}`);
         let count = 0;
         for (const bp of papers) {
             const local = state.papers.find(p => p.id === bp.id);
+            pushDebug('info', `백업논문: ${bp.title?.slice(0,15)} pdfEncoded:${bp._pdfEncoded} pdfData:${!!bp.pdfData} fullText:${bp.fullText?.length||0}자 local:${!!local}`);
             if (!local) continue;
             let changed = false;
             const merged = { ...local };
