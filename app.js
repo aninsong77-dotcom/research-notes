@@ -845,7 +845,7 @@ function paperRowDetailHTML(paper) {
             <div class="prd-body">${bodyHTML}</div>
             <div class="prd-actions">
                 <button type="button" class="btn-primary prd-desk" data-id="${paper.id}">${icon('book-open')} 책상에서 펼치기</button>
-                <button type="button" class="btn-secondary prd-view" data-id="${paper.id}">${icon('eye')} 보기</button>
+                <button type="button" class="btn-secondary prd-view" data-id="${paper.id}">${icon('eye')} 요약보기</button>
                 ${paper.pdfData ? `<button type="button" class="btn-secondary prd-pdf" data-id="${paper.id}">${icon('paperclip')} PDF 열기</button>` : ''}
                 <button type="button" class="btn-secondary prd-qc" data-id="${paper.id}">${icon('zap')} ${paper.inQuickCite ? '빠른인용 해제' : '빠른인용'}</button>
                 <button type="button" class="btn-delete prd-del" data-id="${paper.id}">${icon('trash')} 삭제</button>
@@ -2000,6 +2000,7 @@ function renderDesk(container) {
         <div class="desk-view" id="desk-view">
             <div class="desk-topbar">
                 <div class="desk-tabs" id="desk-tabs"></div>
+                <button type="button" class="desk-summary" id="desk-summary-btn" title="현재 논문 요약보기">${icon('eye')} 요약보기</button>
                 <button type="button" class="desk-sketch" title="모형스케치북으로 — 거기서 「책상」으로 돌아옴">${icon('nodes')} 스케치북</button>
             </div>
             <div class="desk-body">
@@ -2012,6 +2013,9 @@ function renderDesk(container) {
     deskCtx = { overlay: root, pdfUrl: null };
     root.querySelector('.desk-sketch').addEventListener('click', () =>
         document.querySelector('.nav-item[data-view="sketch"]')?.click());
+    root.querySelector('#desk-summary-btn').addEventListener('click', () => {
+        if (deskActiveId) openForm(deskActiveId, 'view');
+    });
     bindDeskResizer(root);
 
     if (deskActiveId && deskTabs.includes(deskActiveId)) deskActivate(deskActiveId);
@@ -3101,6 +3105,7 @@ function parseCrossRef(item) {
 // ── 백업 JSON 생성(내보내기·폴더백업 공용) ─────────────────
 async function buildBackupJson() {
     const papers = await dbGetAll(STORE_PAPERS);
+    pushDebug('info', `백업생성 — 논문${papers.length}편 / PDF있음:${papers.filter(p=>p.pdfData).length}편 / fullText있음:${papers.filter(p=>p.fullText).length}편`);
     const exportable = papers.map(p => ({
         ...p,
         pdfData: p.pdfData ? bufToB64(p.pdfData) : null,
@@ -3162,6 +3167,7 @@ async function writeBackupFile() {
 
 // "폴더백업" 버튼: 폴더 미지정이면 선택 후 저장. 브라우저 미지원이면 파일 다운로드로 대체
 async function folderBackup() {
+    pushDebug('info', `백업버튼 클릭 — 핸들:${!!backupDirHandle}`);
     if (!window.showDirectoryPicker) {
         // 브라우저가 폴더 선택을 지원하지 않으면 파일로 바로 내보내기
         const json = await buildBackupJson();
@@ -3183,7 +3189,9 @@ async function folderBackup() {
         if (isNew) {
             await _restoreAllFromBackupFile();
         }
+        pushDebug('info', '백업 파일 쓰기 시작');
         await writeBackupFile();
+        pushDebug('info', '백업 파일 쓰기 완료');
         showToast(`백업 폴더 연결 완료!`, 'success');
         advanceWizardOnFolder();
     } catch (err) {
@@ -3438,8 +3446,12 @@ async function importData(file) {
 }
 
 function bufToB64(buf) {
+    const bytes = new Uint8Array(buf);
+    const CHUNK = 0x8000;
     let binary = '';
-    new Uint8Array(buf).forEach(b => { binary += String.fromCharCode(b); });
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+    }
     return btoa(binary);
 }
 

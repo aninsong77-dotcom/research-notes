@@ -2792,6 +2792,19 @@ body {
     cursor: pointer;
 }
 .desk-sketch:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+.desk-summary {
+    flex-shrink: 0;
+    margin-bottom: 6px;
+    padding: 7px 14px;
+    border: 1.5px solid var(--border);
+    border-radius: 18px;
+    background: var(--surface);
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.desk-summary:hover { border-color: var(--accent-mid); color: var(--accent); }
 
 /* PDF 탭 — 여러 논문 펼쳐 전환 */
 .desk-tabs { display: flex; align-items: flex-end; gap: 4px; flex: 1; min-width: 0; overflow-x: auto; }
