@@ -2647,6 +2647,25 @@ function openForm(editId = null, mode = null) {
     bindFtImageUpload();
     applyFormMode(mode, paper);
     document.getElementById('modal-form').style.display = 'flex';
+    // 새 논문 추가 시: PDF+원문 블록 자동 펼침
+    const ftBlock = document.getElementById('fulltext-block');
+    if (!editId && mode === 'edit') {
+        if (ftBlock) ftBlock.open = true;
+    }
+    // 모달이 렌더링된 후 스크롤 위치 조정
+    requestAnimationFrame(() => {
+        const modal = document.querySelector('#modal-form .modal');
+        if (!modal) return;
+        if (!editId && mode === 'edit') {
+            // 새 논문 추가: PDF+원문 블록 상단에 오도록 스크롤
+            const ft = document.getElementById('fulltext-block');
+            if (ft) modal.scrollTop = ft.offsetTop - 120;
+        } else {
+            modal.scrollTop = 0;
+        }
+    });
+    // 새 논문 추가 시 제목 칸에 자동 포커스
+    if (!editId && mode === 'edit') setTimeout(() => document.getElementById('f-title')?.focus(), 80);
 }
 
 // 보기/수정 모드 전환 — 같은 모달에서 입력 가능 여부와 부가 UI를 토글
@@ -2685,8 +2704,8 @@ function applyFormMode(mode, paper) {
             if (ftTextarea) ftTextarea.style.display = '';
             if (ftView) ftView.style.display = 'none';
         }
-        // 내용 있으면 자동으로 열기
-        if (ftBlock && (paper?.fullText || paper?.fullTextHtml)) ftBlock.open = true;
+        // 보기 모드에서는 항상 접기
+        if (ftBlock) ftBlock.open = false;
     } else {
         // 편집 모드: 항상 textarea
         if (ftTextarea) ftTextarea.style.display = '';
@@ -3693,7 +3712,7 @@ function bindEvents() {
     const addByView = () => {
         if (state.view === 'materials') openMaterialForm();
         else if (state.view === 'notes') addNote();
-        else openAddChoice();
+        else openForm(null, 'edit');   // 논문 추가 → 바로 편집 창 열기
     };
     document.getElementById('btn-add').addEventListener('click', addByView);
     document.getElementById('btn-add-top').addEventListener('click', addByView);
@@ -3727,6 +3746,7 @@ function bindEvents() {
         document.getElementById('btn-delete-paper').click());
     document.getElementById('sbar-edit').addEventListener('click', () => {
         const paper = state.papers.find(p => p.id === state.editingId);
+        state.formMode = 'edit';
         applyFormMode('edit', paper);
     });
     document.getElementById('sbar-save').addEventListener('click', () =>
@@ -3917,10 +3937,9 @@ function bindEvents() {
         if (e.target.id === 'modal-ai-settings') closeAiSettings();
     });
 
-    // AI 도우미 버튼 (논문 모달)
-    document.getElementById('btn-ai-summarize').addEventListener('click', aiAnalyzePaper);
+    // AI 분석 버튼 (상단 고정 버튼 하나로 통합)
     document.getElementById('btn-ai-summarize-quick').addEventListener('click', aiAnalyzePaper);
-    document.getElementById('btn-ai-extract').addEventListener('click', aiExtractPaper);
+    // btn-ai-extract 제거됨 — aiAnalyzePaper()에 통합
 
     // ESC 키
     document.addEventListener('keydown', e => {
@@ -3950,6 +3969,17 @@ function saveAiKey() {
         showToast('API 키가 삭제되었습니다.', 'info');
     }
     closeAiSettings();
+}
+
+// Rate limit 에러 메시지에서 실제 대기시간 추출
+function parseRateWait(msg) {
+    // "Please try again in 53m15.072s" 또는 "in 22.405s" 형태 파싱
+    const m = msg.match(/try again in\s+(?:(\d+)h)?(?:(\d+)m)?(?:([\d.]+)s)?/i);
+    if (!m) return null;
+    const h = parseInt(m[1] || 0), min = parseInt(m[2] || 0), sec = Math.ceil(parseFloat(m[3] || 0));
+    if (h > 0) return `${h}시간 ${min}분 후`;
+    if (min > 0) return `${min}분 ${sec}초 후`;
+    return `${sec}초 후`;
 }
 
 async function callGemini(parts) {
@@ -4046,8 +4076,8 @@ async function aiSummarizePaper() {
     if (!title && !abstract && !fullText) {
         showToast('요약할 내용이 없습니다. 초록 또는 원문 텍스트를 입력해주세요.', 'warn'); return;
     }
-    const btn = document.getElementById('btn-ai-summarize');
-    const origText = btn?.textContent || '';
+    const btn = document.getElementById('btn-ai-summarize-quick');
+    const origText = btn?.innerHTML || '';
     if (btn) { btn.disabled = true; btn.textContent = '요약 중…'; }
 
     // 섹션 감지 및 예산 내 텍스트 구성
@@ -4098,7 +4128,7 @@ async function aiSummarizePaper() {
         showToast(isTooLarge
             ? '논문이 너무 길어요 — 서론·결론 섹션 제목(예: "서론", "결론", "논의")이 있는지 확인해 주세요. 섹션이 감지되면 핵심 부분만 추출해 요약할 수 있어요.'
             : isRate
-            ? '요청이 너무 많아요 — 1분 후 다시 시도해 주세요.'
+            ? `요청이 너무 많아요 — ${parseRateWait(msg) || '잠시 후'} 다시 시도해 주세요.`
             : 'AI 요약 실패: ' + msg, 'error');
         pushDebug('error', 'aiSummarizePaper: ' + msg);
     } finally {
@@ -4115,8 +4145,8 @@ async function aiAnalyzePaper() {
     if (!fullText && !abstract) {
         showToast('원문 텍스트 또는 초록이 필요해요. 먼저 PDF를 첨부하거나 원문을 입력해 주세요.', 'warn'); return;
     }
-    const btn = document.getElementById('btn-ai-autofill');
-    if (btn) { btn.disabled = true; btn.textContent = '🤖 분석 중…'; }
+    const btn = document.getElementById('btn-ai-summarize-quick');
+    if (btn) { btn.disabled = true; btn.textContent = '분석 중…'; }
 
     const textBudget = 8000;
     const bodyText = fullText ? fullText.slice(0, textBudget) : abstract.slice(0, textBudget);
@@ -4131,12 +4161,19 @@ ${bodyText}
   "summary": "[연구 목적] ...\n[연구 방법] ...\n[주요 결과] ...\n[시사점] ...",
   "keywords": "키워드1, 키워드2, 키워드3 (논문의 키워드 또는 주요어 그대로, 없으면 빈 문자열)",
   "needs": "연구의 필요성·배경 (2-3문장)",
-  "mainstudies": "주요 선행연구 내용 (2-3문장)",
-  "theory": "주요 이론·개념 (1-2문장, 없으면 빈 문자열)",
-  "method": "연구방법·절차 (2-3문장)",
+  "priorlimits": "선행연구의 한계점 (1-2문장, 없으면 빈 문자열)",
+  "theory": "사용한 주요 이론·개념 (저자, 연도 포함, 없으면 빈 문자열)",
+  "mainstudies": "핵심 인용 선행연구 (1-2문장, 없으면 빈 문자열)",
+  "subjects": "연구대상자 (예: 대학생 300명)",
+  "model": "연구모형 (예: 매개모형, 없으면 빈 문자열)",
+  "method": "분석 방법 (예: 구조방정식, Bootstrapping)",
   "results": "주요 연구결과 (3-4문장)",
   "limitations": "연구의 한계점 (1-2문장, 없으면 빈 문자열)",
-  "implications": "시사점·제언 (2-3문장)"
+  "implications": "시사점·제언 (2-3문장)",
+  "독립변인": ["변인명1"],
+  "종속변인": ["변인명1"],
+  "매개변인": [],
+  "조절변인": []
 }`;
 
     try {
@@ -4154,27 +4191,43 @@ ${bodyText}
                 box.innerHTML = `<div class="ai-basis-badge">📄 AI 전체 분석</div><div class="ai-summary-text">${escHtml(parsed.summary)}</div>`;
                 box.style.display = 'block';
             }
-            const aiBlock = document.getElementById('ai-block');
-            if (aiBlock) aiBlock.open = true;
+            const caution = document.getElementById('ai-caution-msg');
+            if (caution) caution.style.display = '';
         }
 
-        // 정밀 분석 칸 채우기
+        // 정밀 분석 칸 채우기 (무조건 덮어쓰기)
         const fieldMap = {
             keywords: 'a-keywords',
-            needs: 'a-needs', mainstudies: 'a-mainstudies', theory: 'a-theory',
-            method: 'a-method', results: 'a-results',
-            limitations: 'a-limitations', implications: 'a-implications'
+            needs: 'a-needs',
+            priorlimits: 'a-priorlimits',
+            theory: 'a-theory',
+            mainstudies: 'a-mainstudies',
+            subjects: 'a-subjects',
+            model: 'a-model',
+            method: 'a-method',
+            results: 'a-results',
+            limitations: 'a-limitations',
+            implications: 'a-implications'
         };
         let filled = 0;
         for (const [key, elId] of Object.entries(fieldMap)) {
             if (!parsed[key]) continue;
             const el = document.getElementById(elId);
             if (!el) continue;
-            if (!el.value.trim()) { el.value = parsed[key]; filled++; }
-            else if (confirm(`「${el.labels?.[0]?.textContent || elId}」 칸에 이미 내용이 있어요. 덮어쓸까요?`)) {
-                el.value = parsed[key]; filled++;
+            el.value = parsed[key];
+            filled++;
+        }
+
+        // 변인 자동 추출
+        const varRoleMap = { '독립변인':'independent', '종속변인':'dependent', '매개변인':'mediator', '조절변인':'moderator' };
+        let addedVars = 0;
+        for (const [roleName] of Object.entries(varRoleMap)) {
+            for (const raw of (parsed[roleName] || [])) {
+                const name = typeof raw === 'string' ? raw.trim() : (raw?.name || String(raw));
+                if (name && !formVariables.includes(name)) { formVariables.push(name); addedVars++; }
             }
         }
+        if (addedVars > 0) renderChips('variables-list', formVariables, 'variable');
 
         // 정밀 분석 섹션 펼치기
         const block = document.getElementById('analysis-block');
@@ -4195,17 +4248,21 @@ ${bodyText}
             }
         }
 
-        showToast(`AI 분석 완료! 요약 + ${filled}개 항목을 채웠어요.`, 'success');
+        // AI 완료 후 PDF+원문 블록 자동 접기
+        const ftBlockAi = document.getElementById('fulltext-block');
+        if (ftBlockAi) ftBlockAi.open = false;
+
+        showToast(`AI 분석 완료! 요약 + ${filled}개 항목, 변인 ${addedVars}개를 채웠어요.`, 'success');
         // Groq 무료 플랜 사용량 안내 (분당 12,000 토큰 한도)
         setTimeout(() => showToast('💡 Groq 무료 플랜은 분당 12,000 토큰 한도예요. 연속 사용 시 1분 대기 후 다시 시도하세요.', 'info'), 2000);
         pushDebug('info', `AI 전체분석 완료 — ${filled}개 항목`);
     } catch(e) {
         const msg = e.message || '';
         const isRate = msg.includes('429') || msg.toLowerCase().includes('rate');
-        showToast(isRate ? '요청이 너무 많아요 — 1분 후 다시 시도해 주세요.' : 'AI 자동 채우기 실패: ' + msg, 'error');
+        showToast(isRate ? `요청이 너무 많아요 — ${parseRateWait(msg) || '잠시 후'} 다시 시도해 주세요.` : 'AI 자동 채우기 실패: ' + msg, 'error');
         pushDebug('error', 'aiAnalyzePaper: ' + msg);
     } finally {
-        if (btn) { btn.disabled = false; btn.textContent = '🤖 AI 전체 분석'; }
+        if (btn) { btn.disabled = false; btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-1px;margin-right:4px"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>AI 분석'; }
     }
 }
 

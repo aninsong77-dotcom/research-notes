@@ -220,6 +220,38 @@
                 <div class="form-divider">또는 직접 입력</div>
 
                 <form id="paper-form">
+
+                    <!-- 새 논문 추가 시 상단에 표시: PDF + 원문 텍스트 -->
+                    <details class="analysis-block" id="fulltext-block">
+                        <summary>
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                            PDF &amp; 원문 텍스트 <small>(AI 분석용 — PDF 첨부 또는 전문 붙여넣기)</small>
+                        </summary>
+                        <div class="fulltext-content">
+                            <div class="form-group full">
+                                <label>PDF 파일 <small style="color:var(--text-muted)">— 이 기기에만 저장됨 (동기화 안 됨)</small></label>
+                                <div class="file-upload">
+                                    <input type="file" id="f-pdf" accept=".pdf" style="display:none">
+                                    <button type="button" class="btn-file" id="btn-pick-pdf"><svg class="ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg> PDF 선택</button>
+                                    <span id="pdf-filename">선택된 파일 없음</span>
+                                </div>
+                                <small style="color:var(--text-muted)">여러 기기에서 보려면 구글 드라이브에 올리고 아래 PDF 링크란을 사용하세요.</small>
+                            </div>
+                            <div class="form-group full">
+                                <label>원문 텍스트 <small style="color:var(--text-muted)">— 전문을 그대로 붙여넣기 (AI가 섹션을 자동 감지해 요약)</small></label>
+                                <textarea id="f-fulltext" rows="10" placeholder="논문 전문을 여기에 붙여넣으세요. AI가 서론·결론·논의 섹션을 자동으로 찾아 요약합니다."></textarea>
+                                <!-- 보기 모드에서 서식 있는 HTML 표시용 -->
+                                <div id="f-fulltext-view" class="fulltext-view-html" style="display:none"></div>
+                            </div>
+                            <div class="form-group full">
+                                <label>이미지 첨부 <small style="color:var(--text-muted)">— 그림·표·수식 캡처본</small></label>
+                                <div id="ft-images-list"></div>
+                                <button type="button" class="btn-secondary edit-only" id="btn-add-ft-image">+ 이미지 추가</button>
+                                <input type="file" id="ft-image-input" accept="image/*" style="display:none">
+                            </div>
+                        </div>
+                    </details>
+
                     <div class="form-grid">
                         <div class="form-group full">
                             <label>제목 <span class="required">*</span></label>
@@ -266,11 +298,11 @@
                         </div>
                         <div class="form-group">
                             <label>연구방법</label>
-                            <input type="text" id="f-methods" placeholder="설문, 구조방정식, 질적연구...">
+                            <textarea id="f-methods" placeholder="설문, 구조방정식, 질적연구..."></textarea>
                         </div>
                         <div class="form-group">
                             <label>주요 발견 / 결론</label>
-                            <input type="text" id="f-findings" placeholder="핵심 연구결과 요약">
+                            <textarea id="f-findings" placeholder="핵심 연구결과 요약"></textarea>
                         </div>
                         <div class="form-group full">
                             <label>변인 <small>(입력 후 Enter로 추가)</small></label>
@@ -290,51 +322,13 @@
                             <label>내 메모</label>
                             <textarea id="f-note" rows="3" placeholder="이 논문을 어디에 활용할지, 중요한 포인트 등 자유롭게 메모"></textarea>
                         </div>
-                        <div class="form-group full">
-                            <label>PDF 파일 <small style="color:var(--text-muted)">— 이 기기에만 저장됨 (동기화 안 됨)</small></label>
-                            <div class="file-upload">
-                                <input type="file" id="f-pdf" accept=".pdf" style="display:none">
-                                <button type="button" class="btn-file" id="btn-pick-pdf"><svg class="ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg> PDF 선택</button>
-                                <span id="pdf-filename">선택된 파일 없음</span>
-                            </div>
-                            <small style="color:var(--text-muted)">여러 기기에서 보려면 구글 드라이브에 올리고 위의 PDF 링크를 사용하세요.</small>
-                        </div>
                     </div>
 
-                    <!-- 원문 텍스트 + 이미지 첨부 -->
-                    <details class="analysis-block" id="fulltext-block">
-                        <summary>
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-                            원문 텍스트 &amp; 이미지 <small>(논문 본문 붙여넣기 + 그림·표 첨부)</small>
-                        </summary>
-                        <div class="fulltext-content">
-                            <div class="form-group full">
-                                <label>원문 텍스트 <small style="color:var(--text-muted)">— 전문을 그대로 붙여넣기 (AI가 섹션을 자동 감지해 요약)</small></label>
-                                <textarea id="f-fulltext" rows="10" placeholder="논문 전문을 여기에 붙여넣으세요. AI가 서론·결론·논의 섹션을 자동으로 찾아 요약합니다."></textarea>
-                                <!-- 보기 모드에서 서식 있는 HTML 표시용 -->
-                                <div id="f-fulltext-view" class="fulltext-view-html" style="display:none"></div>
-                            </div>
-                            <div class="form-group full">
-                                <label>이미지 첨부 <small style="color:var(--text-muted)">— 그림·표·수식 캡처본</small></label>
-                                <div id="ft-images-list"></div>
-                                <button type="button" class="btn-secondary edit-only" id="btn-add-ft-image">+ 이미지 추가</button>
-                                <input type="file" id="ft-image-input" accept="image/*" style="display:none">
-                            </div>
-                        </div>
-                    </details>
-
-                    <!-- AI 도우미 -->
-                    <details class="analysis-block" id="ai-block">
-                        <summary>🤖 AI 도우미 <small>(초록·원문 기반 자동 분석 — Groq AI)</small></summary>
-                        <div class="ai-tools-content">
-                            <p class="ai-caution">⚠️ AI 분석 결과는 부정확할 수 있습니다. 반드시 원문과 대조해 확인하세요.</p>
-                            <div class="ai-tools-row">
-                                <button type="button" class="btn-ai" id="btn-ai-summarize">🤖 AI 전체 분석</button>
-                                <button type="button" class="btn-ai btn-ai-extract" id="btn-ai-extract">🔍 변인·연구방법 자동추출</button>
-                            </div>
-                            <div id="ai-summary-result" class="ai-summary-result" style="display:none"></div>
-                        </div>
-                    </details>
+                    <!-- AI 분석 결과 (상단 버튼으로 실행) -->
+                    <div id="ai-block">
+                        <p class="ai-caution" style="display:none" id="ai-caution-msg">⚠️ AI 분석 결과는 부정확할 수 있습니다. 반드시 원문과 대조해 확인하세요.</p>
+                        <div id="ai-summary-result" class="ai-summary-result" style="display:none"></div>
+                    </div>
 
                     <!-- 논문 정밀 분석 (정리표) -->
                     <details class="analysis-block" id="analysis-block">
@@ -371,11 +365,11 @@
                                 </div>
                                 <div class="form-group">
                                     <label>사용한 이론 <small>(저자, 연도)</small></label>
-                                    <input type="text" id="a-theory" placeholder="예: 자기결정성이론 (Deci & Ryan, 1985)">
+                                    <textarea id="a-theory" placeholder="예: 자기결정성이론 (Deci & Ryan, 1985)"></textarea>
                                 </div>
                                 <div class="form-group">
                                     <label>주요 연구</label>
-                                    <input type="text" id="a-mainstudies" placeholder="핵심적으로 인용된 선행연구">
+                                    <textarea id="a-mainstudies" placeholder="핵심적으로 인용된 선행연구"></textarea>
                                 </div>
                             </div>
 
@@ -383,11 +377,11 @@
                             <div class="form-grid">
                                 <div class="form-group">
                                     <label>연구대상자</label>
-                                    <input type="text" id="a-subjects" placeholder="예: 대학생 320명 (남 140, 여 180)">
+                                    <textarea id="a-subjects" placeholder="예: 대학생 320명 (남 140, 여 180)"></textarea>
                                 </div>
                                 <div class="form-group">
                                     <label>연구모형</label>
-                                    <input type="text" id="a-model" placeholder="예: 매개모형 / 조절된 매개 / SEM">
+                                    <textarea id="a-model" placeholder="예: 매개모형 / 조절된 매개 / SEM"></textarea>
                                 </div>
                             </div>
 
@@ -398,11 +392,11 @@
                             <div class="form-grid">
                                 <div class="form-group">
                                     <label>통계 프로그램</label>
-                                    <input type="text" id="a-program" placeholder="SPSS, AMOS, R, Mplus, Process macro...">
+                                    <textarea id="a-program" placeholder="SPSS, AMOS, R, Mplus, Process macro..."></textarea>
                                 </div>
                                 <div class="form-group">
                                     <label>분석 방법</label>
-                                    <input type="text" id="a-method" placeholder="위계적 회귀분석, 구조방정식, Bootstrapping...">
+                                    <textarea id="a-method" placeholder="위계적 회귀분석, 구조방정식, Bootstrapping..."></textarea>
                                 </div>
                                 <div class="form-group full">
                                     <label>분석 결과</label>
