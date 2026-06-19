@@ -502,7 +502,7 @@ body {
 <div class="voice-overlay" id="voice-overlay">
     <div class="voice-circle"><svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg></div>
     <div class="voice-text">말씀해 주세요</div>
-    <div class="voice-result" id="voice-result">예: "내일 오후 2시 회의"</div>
+    <div class="voice-result" id="voice-result">예: "오전 10시 회의 그리고 저녁 운동"</div>
     <button class="btn-voice-cancel" id="btn-voice-cancel">취소</button>
 </div>
 
@@ -546,6 +546,14 @@ function savePlan(key, plan) {
     rescheduleAllAlarms();
 }
 function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+
+// ── 음성 여러 할일 분리 ──────────────────────────────────────
+function parseVoiceMulti(text) {
+    // "그리고", "하고", "이랑/랑", "또", "그다음", 쉼표로 분리
+    const parts = text.split(/,\s*|그리고\s*|\s+하고\s+|\s+이랑\s+|\s+랑\s+|\s+또\s+|그다음에?\s*/);
+    const segments = parts.map(s => s.trim()).filter(s => s.length > 1);
+    return segments.length > 0 ? segments.map(parseVoice) : [parseVoice(text)];
+}
 
 // ── 음성 파싱 ────────────────────────────────────────────────
 function parseVoice(text) {
@@ -849,19 +857,28 @@ function initVoice() {
         document.getElementById('voice-result').textContent = transcript;
         if (e.results[e.results.length-1].isFinal) {
             stopListening();
-            const parsed = parseVoice(transcript);
-            document.getElementById('add-input').value = parsed.title;
-            if (parsed.time) document.getElementById('opt-time').value = parsed.time;
-            if (parsed.category) document.getElementById('opt-cat').value = parsed.category;
-            if (parsed.date !== dateKey(curDate)) {
-                // 다른 날짜면 바로 추가
-                addTask(parsed.title, parsed.date, parsed.time,
-                    document.getElementById('opt-prio').value,
-                    document.getElementById('opt-alarm').value,
-                    parsed.category || document.getElementById('opt-cat').value);
-                document.getElementById('add-input').value = '';
+            const parsedList = parseVoiceMulti(transcript);
+            const prio  = document.getElementById('opt-prio').value;
+            const alarm = document.getElementById('opt-alarm').value;
+            const cat   = document.getElementById('opt-cat').value;
+
+            if (parsedList.length > 1) {
+                // 여러 할일: 모두 바로 추가
+                parsedList.forEach(p => addTask(p.title, p.date, p.time, prio, alarm, p.category || cat));
+                showToast(`${parsedList.length}개 할일 추가됨`);
             } else {
-                document.getElementById('add-input').focus();
+                // 단일 할일: 입력창에 채워서 확인 후 추가
+                const parsed = parsedList[0];
+                document.getElementById('add-input').value = parsed.title;
+                if (parsed.time) document.getElementById('opt-time').value = parsed.time;
+                if (parsed.category) document.getElementById('opt-cat').value = parsed.category;
+                if (parsed.date !== dateKey(curDate)) {
+                    addTask(parsed.title, parsed.date, parsed.time, prio, alarm,
+                        parsed.category || cat);
+                    document.getElementById('add-input').value = '';
+                } else {
+                    document.getElementById('add-input').focus();
+                }
             }
         }
     };
@@ -873,7 +890,7 @@ function startListening() {
     if (!recognition) { showToast('음성 인식을 지원하지 않는 브라우저예요'); return; }
     isListening = true;
     document.getElementById('voice-overlay').classList.add('active');
-    document.getElementById('voice-result').textContent = '예: "내일 오후 두시 회의"';
+    document.getElementById('voice-result').textContent = '예: "오전 10시 회의 그리고 저녁 운동"';
     document.getElementById('btn-mic').classList.add('listening');
     try { recognition.start(); } catch(e) { stopListening(); }
 }
