@@ -1,0 +1,24 @@
+{
+  "name": "일일계획",
+  "short_name": "일일계획",
+  "description": "하루 일정 관리 앱",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f1f3f4",
+  "theme_color": "#4285f4",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='32' fill='%234285f4'/%3E%3Cpath d='M48 56h16v8H48zm80 0h16v8h-16zM40 80h112v96a8 8 0 0 1-8 8H48a8 8 0 0 1-8-8z' fill='white'/%3E%3Crect x='40' y='40' width='112' height='48' rx='8' fill='white'/%3E%3Cpath d='M56 48v24M136 48v24' stroke='%234285f4' stroke-width='8' stroke-linecap='round'/%3E%3Cpath d='M68 120l16 16 36-36' stroke='%234285f4' stroke-width='10' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='80' fill='%234285f4'/%3E%3Cpath d='M128 144h40v24h-40zm216 0h40v24h-40zM104 208h304v256a24 24 0 0 1-24 24H128a24 24 0 0 1-24-24z' fill='white'/%3E%3Crect x='104' y='104' width='304' height='120' rx='24' fill='white'/%3E%3Cpath d='M152 120v72M360 120v72' stroke='%234285f4' stroke-width='20' stroke-linecap='round'/%3E%3Cpath d='M176 320l48 48 112-112' stroke='%234285f4' stroke-width='28' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

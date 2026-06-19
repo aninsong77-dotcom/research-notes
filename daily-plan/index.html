@@ -2,13 +2,18 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#4285f4">
 <title>일일계획</title>
+<link rel="manifest" href="manifest.json">
 <style>
 :root {
     --accent: #4285f4;
+    --accent-dark: #1a73e8;
     --accent-light: #eaf1ff;
-    --accent-mid: #d2e3fc;
     --bg: #f1f3f4;
     --surface: #ffffff;
     --border: #dadce0;
@@ -17,511 +22,587 @@
     --text-muted: #80868b;
     --danger: #d93025;
     --success: #1e8e3e;
-    --radius: 12px;
-    --shadow: 0 1px 3px rgba(60,64,67,.1), 0 4px 8px rgba(60,64,67,.08);
-    --shadow-sm: 0 1px 2px rgba(60,64,67,.08);
+    --warn: #f29900;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bot: env(safe-area-inset-bottom, 0px);
 }
-* { box-sizing: border-box; margin: 0; padding: 0; }
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
 body {
-    font-family: 'Noto Sans KR', 'Apple SD Gothic Neo', -apple-system, sans-serif;
+    font-family: 'Apple SD Gothic Neo', 'Noto Sans KR', -apple-system, sans-serif;
     background: var(--bg);
     color: var(--text);
-    min-height: 100vh;
-    padding: 24px 16px 48px;
-}
-a { color: inherit; text-decoration: none; }
-
-/* ── 헤더 ── */
-.app-header {
-    max-width: 640px;
-    margin: 0 auto 20px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-.app-title {
-    font-size: 20px;
-    font-weight: 700;
-    color: var(--accent);
-    flex: 1;
-}
-.btn-research {
-    font-size: 12px;
-    color: var(--text-muted);
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: 4px 12px;
-    background: var(--surface);
-    cursor: pointer;
-    text-decoration: none;
-}
-.btn-research:hover { background: var(--bg); }
-
-/* ── 카드 ── */
-.card {
-    max-width: 640px;
-    margin: 0 auto 14px;
-    background: var(--surface);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow);
-    padding: 18px 20px;
+    min-height: 100dvh;
+    overscroll-behavior: none;
 }
 
-/* ── 날짜 네비 ── */
-.date-nav {
+/* ── 상단바 ── */
+.topbar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--accent);
+    color: white;
+    padding: calc(var(--safe-top) + 10px) 16px 12px;
     display: flex;
     align-items: center;
     gap: 8px;
+    box-shadow: 0 2px 8px rgba(66,133,244,.3);
+}
+.topbar-title { font-size: 18px; font-weight: 700; flex: 1; }
+.btn-notif {
+    background: rgba(255,255,255,.2);
+    border: none;
+    border-radius: 50%;
+    width: 38px; height: 38px;
+    color: white;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+}
+.btn-notif:active { background: rgba(255,255,255,.35); }
+
+/* ── 날짜 네비 ── */
+.date-nav {
+    background: var(--surface);
+    padding: 14px 16px 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid var(--border);
 }
 .nav-btn {
-    width: 36px; height: 36px;
-    border: 1px solid var(--border);
+    width: 40px; height: 40px;
+    border: none;
     border-radius: 50%;
-    background: var(--surface);
-    font-size: 20px;
+    background: var(--bg);
+    font-size: 22px;
     cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     color: var(--text-sub);
     flex-shrink: 0;
 }
-.nav-btn:hover { background: var(--bg); }
+.nav-btn:active { background: var(--border); }
 .date-center { flex: 1; text-align: center; }
-.date-label {
-    font-size: 17px;
-    font-weight: 600;
-    color: var(--text);
-    display: block;
-}
-.date-sub {
-    font-size: 12px;
-    color: var(--text-muted);
-    margin-top: 2px;
-}
-.today-badge {
-    display: inline-block;
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--accent);
-    background: var(--accent-light);
-    border-radius: 20px;
-    padding: 2px 8px;
-    margin-left: 6px;
-    vertical-align: middle;
+.date-weekday { font-size: 12px; color: var(--text-muted); }
+.date-main { font-size: 17px; font-weight: 700; margin-top: 1px; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.today-chip {
+    font-size: 10px; font-weight: 700;
+    background: var(--accent); color: white;
+    border-radius: 99px; padding: 2px 7px;
 }
 .btn-today {
-    font-size: 12px;
+    font-size: 12px; font-weight: 600;
     color: var(--accent);
-    border: 1px solid var(--accent);
+    border: 1.5px solid var(--accent);
     background: var(--accent-light);
     border-radius: 20px;
-    padding: 5px 12px;
+    padding: 6px 12px;
     cursor: pointer;
     flex-shrink: 0;
 }
-.btn-today:hover { background: var(--accent-mid); }
 
 /* ── 진행률 ── */
-.progress-wrap {
-    margin-top: 14px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
+.progress-bar-wrap {
+    background: var(--surface);
+    padding: 10px 16px 14px;
+    border-bottom: 1px solid var(--border);
+    display: none;
 }
-.progress-track {
-    flex: 1;
-    height: 7px;
-    background: var(--border);
-    border-radius: 99px;
-    overflow: hidden;
+.progress-bar-track {
+    height: 6px; background: var(--border); border-radius: 99px; overflow: hidden;
 }
-.progress-fill {
-    height: 100%;
-    background: var(--accent);
-    border-radius: 99px;
+.progress-bar-fill {
+    height: 100%; background: var(--accent); border-radius: 99px;
     transition: width .3s ease;
 }
-.progress-label {
-    font-size: 12px;
-    color: var(--text-muted);
-    white-space: nowrap;
-    min-width: 80px;
-    text-align: right;
+.progress-text {
+    font-size: 12px; color: var(--text-muted); margin-top: 5px; text-align: right;
 }
 
-/* ── 입력 폼 ── */
-.add-form {
+/* ── 스크롤 영역 ── */
+.scroll-area {
+    padding: 12px 14px 200px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* ── 태스크 카드 ── */
+.task-card {
+    background: var(--surface);
+    border-radius: 14px;
+    padding: 14px 14px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.07);
+    transition: opacity .2s;
+    position: relative;
+}
+.task-card.done { opacity: .5; }
+
+.check-btn {
+    width: 26px; height: 26px;
+    border: 2.5px solid var(--border);
+    border-radius: 50%;
+    background: none;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    margin-top: 1px;
+    color: transparent;
+    transition: all .15s;
+}
+.check-btn:active { transform: scale(.88); }
+.check-btn.checked { background: var(--accent); border-color: var(--accent); color: white; }
+
+.task-body { flex: 1; min-width: 0; }
+.task-title-inp {
+    width: 100%;
+    border: none; outline: none;
+    font-size: 15px;
+    font-family: inherit;
+    color: var(--text);
+    background: transparent;
+    line-height: 1.4;
+    padding: 0;
+}
+.task-title-inp:disabled { text-decoration: line-through; color: var(--text-muted); }
+
+.task-meta {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 6px;
+}
+.meta-chip {
+    font-size: 11px; border-radius: 6px; padding: 2px 8px;
+    display: flex; align-items: center; gap: 3px;
+}
+.chip-time { background: #e8f0fe; color: var(--accent); }
+.chip-alarm { background: #fce8e6; color: var(--danger); }
+.chip-prio-high { background: #fce8e6; color: var(--danger); }
+.chip-prio-normal { background: #e8f0fe; color: var(--accent); }
+.chip-prio-low { background: var(--bg); color: var(--text-muted); }
+
+.btn-del-task {
+    background: none; border: none;
+    color: var(--text-muted); font-size: 18px;
+    cursor: pointer; padding: 2px 4px;
+    border-radius: 6px; flex-shrink: 0;
+    opacity: 0;
+    transition: opacity .15s;
+    line-height: 1;
+}
+.task-card:active .btn-del-task,
+.task-card.show-del .btn-del-task { opacity: 1; }
+
+/* ── 완료 섹션 ── */
+.done-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 4px 4px;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 13px; font-weight: 600;
+    user-select: none;
+}
+.done-arrow { font-size: 10px; transition: transform .2s; }
+.done-arrow.open { transform: rotate(90deg); }
+.done-list { display: none; flex-direction: column; gap: 8px; }
+.done-list.open { display: flex; }
+
+/* ── 빈 상태 ── */
+.empty-state {
+    text-align: center;
+    padding: 48px 24px;
+    color: var(--text-muted);
+}
+.empty-icon { font-size: 48px; margin-bottom: 12px; }
+.empty-text { font-size: 15px; line-height: 1.8; }
+
+/* ── 하단 고정 입력창 ── */
+.bottom-bar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    z-index: 200;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 12px 14px calc(var(--safe-bot) + 12px);
+    box-shadow: 0 -4px 16px rgba(0,0,0,.08);
+}
+
+.add-row {
     display: flex;
     gap: 8px;
     align-items: center;
-    flex-wrap: wrap;
+    margin-bottom: 8px;
 }
 .add-input {
     flex: 1;
-    min-width: 180px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 9px 12px;
-    font-size: 14px;
+    border: 1.5px solid var(--border);
+    border-radius: 12px;
+    padding: 11px 14px;
+    font-size: 15px;
     font-family: inherit;
     color: var(--text);
     background: var(--bg);
     outline: none;
     transition: border-color .15s;
 }
-.add-input:focus { border-color: var(--accent); background: #fff; }
-.add-time {
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 8px 8px;
-    font-size: 13px;
-    background: var(--bg);
-    color: var(--text-sub);
-    cursor: pointer;
-    outline: none;
-}
-.add-prio {
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 8px 8px;
-    font-size: 13px;
-    background: var(--bg);
-    color: var(--text-sub);
-    cursor: pointer;
-    outline: none;
-}
-.btn-add {
-    background: var(--accent);
-    color: #fff;
-    border: none;
-    border-radius: 8px;
-    padding: 9px 18px;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    font-family: inherit;
-    flex-shrink: 0;
-}
-.btn-add:hover { background: #1a73e8; }
+.add-input:focus { border-color: var(--accent); background: white; }
 
-/* ── 태스크 섹션 헤더 ── */
-.section-label {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-muted);
-    letter-spacing: .4px;
-    text-transform: uppercase;
-    margin-bottom: 8px;
-}
-
-/* ── 태스크 ── */
-.task-list { display: flex; flex-direction: column; gap: 6px; }
-
-.task {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 10px 12px;
-    box-shadow: var(--shadow-sm);
-    transition: border-color .15s, opacity .2s;
-}
-.task:hover { border-color: var(--accent-mid); }
-.task.done { opacity: .5; background: var(--bg); }
-
-.check-btn {
-    width: 22px; height: 22px;
-    border: 2px solid var(--border);
+.btn-mic {
+    width: 48px; height: 48px;
     border-radius: 50%;
-    background: none;
+    border: none;
+    background: var(--accent);
+    color: white;
     cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0;
-    color: transparent;
-    transition: border-color .15s, background .15s;
-    padding: 0;
+    font-size: 22px;
+    box-shadow: 0 2px 8px rgba(66,133,244,.4);
+    transition: transform .15s, background .15s;
 }
-.check-btn:hover { border-color: var(--accent); }
-.check-btn.checked { background: var(--accent); border-color: var(--accent); color: #fff; }
-.check-btn svg { display: block; }
+.btn-mic:active { transform: scale(.9); }
+.btn-mic.listening {
+    background: var(--danger);
+    animation: pulse 1s infinite;
+}
+@keyframes pulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(217,48,37,.4); }
+    50% { box-shadow: 0 0 0 10px rgba(217,48,37,.0); }
+}
 
-.task-body { flex: 1; min-width: 0; }
-.task-title {
+.btn-add-text {
+    width: 48px; height: 48px;
+    border-radius: 50%;
     border: none;
-    outline: none;
-    font-size: 14px;
-    font-family: inherit;
-    color: var(--text);
-    background: transparent;
-    width: 100%;
-    padding: 0;
-}
-.task-title:disabled { text-decoration: line-through; color: var(--text-muted); }
-
-.task-meta {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-top: 3px;
-}
-.time-badge {
-    font-size: 11px;
-    color: var(--text-muted);
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 1px 6px;
-}
-.prio-btn {
-    font-size: 11px;
-    font-weight: 700;
-    background: none;
-    border: none;
+    background: var(--accent);
+    color: white;
     cursor: pointer;
-    padding: 0;
-    font-family: inherit;
-}
-.prio-btn:hover { text-decoration: underline; }
-
-.del-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: var(--text-muted);
-    font-size: 16px;
-    padding: 4px 6px;
-    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
     flex-shrink: 0;
-    opacity: 0;
-    transition: opacity .15s;
-    line-height: 1;
+    font-size: 24px;
+    font-weight: 300;
+    box-shadow: 0 2px 8px rgba(66,133,244,.4);
 }
-.task:hover .del-btn { opacity: 1; }
-.del-btn:hover { color: var(--danger); background: #fce8e6; }
+.btn-add-text:active { transform: scale(.9); }
 
-/* ── 완료 섹션 ── */
-.done-section {
-    max-width: 640px;
-    margin: 0 auto 14px;
-}
-.done-toggle {
-    width: 100%;
-    background: none;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 10px 16px;
-    font-size: 13px;
-    color: var(--text-muted);
-    font-family: inherit;
-    cursor: pointer;
-    text-align: left;
+.options-row {
     display: flex;
+    gap: 8px;
     align-items: center;
-    gap: 6px;
-    background: var(--surface);
 }
-.done-toggle:hover { background: var(--bg); }
-.done-toggle-arrow { font-size: 10px; transition: transform .2s; }
-.done-toggle.open .done-toggle-arrow { transform: rotate(90deg); }
-.done-list {
-    margin-top: 6px;
+.opt-input {
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    padding: 8px 10px;
+    font-size: 13px;
+    background: var(--bg);
+    color: var(--text-sub);
+    cursor: pointer;
+    outline: none;
+    font-family: inherit;
+}
+.opt-label { font-size: 12px; color: var(--text-muted); }
+
+/* ── 음성 인식 오버레이 ── */
+.voice-overlay {
     display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.55);
+    z-index: 500;
     flex-direction: column;
-    gap: 6px;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
 }
-.done-list.open { display: flex; }
+.voice-overlay.active { display: flex; }
+.voice-circle {
+    width: 120px; height: 120px;
+    border-radius: 50%;
+    background: var(--danger);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 48px;
+    animation: pulse 1s infinite;
+}
+.voice-text { color: white; font-size: 17px; font-weight: 600; text-align: center; }
+.voice-result { color: rgba(255,255,255,.8); font-size: 15px; min-height: 24px; padding: 0 32px; text-align: center; }
+.btn-voice-cancel {
+    background: rgba(255,255,255,.15);
+    border: 1.5px solid rgba(255,255,255,.4);
+    color: white;
+    border-radius: 24px;
+    padding: 10px 28px;
+    font-size: 15px;
+    cursor: pointer;
+    margin-top: 8px;
+}
 
-/* ── 빈 상태 ── */
-.empty {
-    text-align: center;
-    color: var(--text-muted);
-    padding: 28px 0;
+/* ── 토스트 ── */
+.toast {
+    position: fixed;
+    bottom: 90px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: #3c4043;
+    color: white;
+    border-radius: 24px;
+    padding: 10px 20px;
     font-size: 14px;
-    line-height: 1.8;
+    z-index: 600;
+    opacity: 0;
+    transition: opacity .25s, transform .25s;
+    white-space: nowrap;
+    pointer-events: none;
 }
-.empty-icon { font-size: 36px; margin-bottom: 8px; }
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-/* ── 푸터 ── */
-.footer {
-    text-align: center;
-    font-size: 11px;
-    color: var(--text-muted);
-    margin-top: 32px;
+/* ── 알림 설정 패널 ── */
+.alarm-panel {
+    display: none;
+    background: var(--surface);
+    border-radius: 16px;
+    padding: 16px;
+    margin: 8px 0 0;
+    box-shadow: 0 2px 12px rgba(0,0,0,.1);
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
 }
+.alarm-panel.open { display: flex; }
+.alarm-label { font-size: 13px; color: var(--text-sub); font-weight: 600; }
+.alarm-opt {
+    display: flex; align-items: center; gap: 6px;
+    cursor: pointer; font-size: 13px; color: var(--text-sub);
+}
+.alarm-opt input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
 </style>
 </head>
 <body>
 
-<header class="app-header">
-    <h1 class="app-title">📅 일일계획</h1>
-    <a class="btn-research" href="../">← 내 연구노트</a>
-</header>
-
-<!-- 날짜 카드 -->
-<div class="card" id="date-card">
-    <div class="date-nav">
-        <button class="nav-btn" id="btn-prev">&#8249;</button>
-        <div class="date-center">
-            <span class="date-label" id="date-label">로딩 중…</span>
-            <div class="date-sub" id="date-sub"></div>
-        </div>
-        <button class="nav-btn" id="btn-next">&#8250;</button>
-        <button class="btn-today" id="btn-today" style="display:none">오늘로</button>
-    </div>
-    <div class="progress-wrap" id="progress-wrap" style="display:none">
-        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
-        <span class="progress-label" id="progress-label"></span>
-    </div>
+<!-- 상단바 -->
+<div class="topbar">
+    <div class="topbar-title">📅 일일계획</div>
+    <button class="btn-notif" id="btn-notif-perm" title="알림 허용">🔔</button>
 </div>
 
-<!-- 추가 폼 카드 -->
-<div class="card">
-    <div class="add-form">
-        <input class="add-input" id="add-input" type="text" placeholder="할 일 입력 후 Enter…" autocomplete="off">
-        <input class="add-time" id="add-time" type="time" title="시간 (선택)">
-        <select class="add-prio" id="add-prio">
+<!-- 날짜 네비 -->
+<div class="date-nav">
+    <button class="nav-btn" id="btn-prev">&#8249;</button>
+    <div class="date-center">
+        <div class="date-weekday" id="date-weekday"></div>
+        <div class="date-main">
+            <span id="date-main-text"></span>
+            <span class="today-chip" id="today-chip" style="display:none">오늘</span>
+        </div>
+    </div>
+    <button class="nav-btn" id="btn-next">&#8250;</button>
+    <button class="btn-today" id="btn-today" style="display:none">오늘로</button>
+</div>
+
+<!-- 진행률 -->
+<div class="progress-bar-wrap" id="progress-wrap">
+    <div class="progress-bar-track"><div class="progress-bar-fill" id="progress-fill"></div></div>
+    <div class="progress-text" id="progress-text"></div>
+</div>
+
+<!-- 태스크 목록 -->
+<div class="scroll-area" id="task-area"></div>
+
+<!-- 하단 입력창 -->
+<div class="bottom-bar">
+    <div class="add-row">
+        <input class="add-input" id="add-input" type="text" placeholder="할 일 입력…" autocomplete="off">
+        <button class="btn-mic" id="btn-mic" title="음성 입력">🎤</button>
+        <button class="btn-add-text" id="btn-add" title="추가">+</button>
+    </div>
+    <div class="options-row">
+        <span class="opt-label">시간</span>
+        <input class="opt-input" id="opt-time" type="time">
+        <span class="opt-label">우선순위</span>
+        <select class="opt-input" id="opt-prio">
             <option value="normal">보통</option>
             <option value="high">높음</option>
             <option value="low">낮음</option>
         </select>
-        <button class="btn-add" id="btn-add">추가</button>
+        <span class="opt-label">알람</span>
+        <select class="opt-input" id="opt-alarm">
+            <option value="">없음</option>
+            <option value="4h">4시간 전</option>
+            <option value="1d">하루 전</option>
+            <option value="both">둘 다</option>
+        </select>
     </div>
 </div>
 
-<!-- 할 일 목록 -->
-<div class="card" id="active-card">
-    <div class="section-label">할 일</div>
-    <div class="task-list" id="active-list"></div>
+<!-- 음성 오버레이 -->
+<div class="voice-overlay" id="voice-overlay">
+    <div class="voice-circle">🎤</div>
+    <div class="voice-text">말씀해 주세요</div>
+    <div class="voice-result" id="voice-result">예: "내일 오후 2시 회의"</div>
+    <button class="btn-voice-cancel" id="btn-voice-cancel">취소</button>
 </div>
 
-<!-- 완료 섹션 -->
-<div class="done-section" id="done-section" style="display:none">
-    <button class="done-toggle" id="done-toggle">
-        <span class="done-toggle-arrow">▶</span>
-        <span id="done-toggle-label">완료 0개</span>
-    </button>
-    <div class="done-list" id="done-list"></div>
-</div>
-
-<div class="footer">데이터는 이 기기 브라우저에만 저장됩니다</div>
+<!-- 토스트 -->
+<div class="toast" id="toast"></div>
 
 <script>
-const PRIO_COLOR = { high: '#d93025', normal: '#4285f4', low: '#80868b' };
-const PRIO_LABEL = { high: '높음', normal: '보통', low: '낮음' };
-const PRIO_CYCLE = ['normal', 'high', 'low'];
+// ── 상수 ────────────────────────────────────────────────────
+const PRIO_LABEL = { high: '🔴 높음', normal: '🔵 보통', low: '⚫ 낮음' };
+const PRIO_CHIP  = { high: 'chip-prio-high', normal: 'chip-prio-normal', low: 'chip-prio-low' };
+const KR_NUMS = { 한:1,두:2,세:3,네:4,다섯:5,여섯:6,일곱:7,여덟:8,아홉:9,열:10,열한:11,열두:12 };
 
-let currentDate = new Date();
-currentDate.setHours(0, 0, 0, 0);
+// ── 날짜 ────────────────────────────────────────────────────
+let curDate = new Date(); curDate.setHours(0,0,0,0);
 
 function dateKey(d) {
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    return `${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`;
 }
+function p2(n) { return String(n).padStart(2,'0'); }
+function todayMidnight() { const d = new Date(); d.setHours(0,0,0,0); return d; }
 
-function todayDate() {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return d;
-}
-
+// ── 저장 ────────────────────────────────────────────────────
 function loadPlan(key) {
-    try {
-        const raw = localStorage.getItem('dailyplan_' + key);
-        return raw ? JSON.parse(raw) : { tasks: [] };
-    } catch { return { tasks: [] }; }
+    try { return JSON.parse(localStorage.getItem('dp2_' + key) || '{"tasks":[]}'); }
+    catch { return {tasks:[]}; }
 }
-
 function savePlan(key, plan) {
-    localStorage.setItem('dailyplan_' + key, JSON.stringify(plan));
+    localStorage.setItem('dp2_' + key, JSON.stringify(plan));
+    rescheduleAllAlarms();
+}
+function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+
+// ── 음성 파싱 ────────────────────────────────────────────────
+function parseVoice(text) {
+    let title = text;
+    let dateOffset = 0; // 0=오늘, 1=내일, 2=모레
+    let hour = null, minute = 0;
+
+    // 날짜
+    if (/모레/.test(text)) { dateOffset = 2; title = title.replace(/모레\s?/,''); }
+    else if (/내일/.test(text)) { dateOffset = 1; title = title.replace(/내일\s?/,''); }
+    else if (/오늘/.test(text)) { title = title.replace(/오늘\s?/,''); }
+
+    // 오전/오후
+    const pm = /오후/.test(title);
+    const am = /오전/.test(title);
+    title = title.replace(/(오전|오후)\s?/,'');
+
+    // 시간 (숫자 + '시')
+    const numMatch = title.match(/(\d{1,2})시\s?(\d{1,2}분?)?/);
+    if (numMatch) {
+        hour = parseInt(numMatch[1]);
+        if (numMatch[2]) minute = parseInt(numMatch[2]);
+        if (pm && hour < 12) hour += 12;
+        if (am && hour === 12) hour = 0;
+        title = title.replace(numMatch[0], '').trim();
+    } else {
+        // 한글 숫자
+        for (const [k,v] of Object.entries(KR_NUMS)) {
+            const re = new RegExp(k + '시');
+            if (re.test(title)) {
+                hour = pm && v < 12 ? v + 12 : v;
+                title = title.replace(re,'').trim();
+                break;
+            }
+        }
+        // 특수 시간대
+        if (/아침/.test(title)) { hour = 8; title = title.replace(/아침\s?/,''); }
+        else if (/점심/.test(title)) { hour = 12; title = title.replace(/점심\s?/,''); }
+        else if (/저녁/.test(title)) { hour = 18; title = title.replace(/저녁\s?/,''); }
+        else if (/밤/.test(title)) { hour = 21; title = title.replace(/밤\s?/,''); }
+    }
+
+    const taskDate = new Date(todayMidnight());
+    taskDate.setDate(taskDate.getDate() + dateOffset);
+
+    const time = hour !== null ? `${p2(hour)}:${p2(minute)}` : '';
+    return { title: title.trim() || text, date: dateKey(taskDate), time };
 }
 
-function genId() {
-    return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-}
-
+// ── 렌더 ────────────────────────────────────────────────────
 function render() {
-    const key = dateKey(currentDate);
+    const key = dateKey(curDate);
     const plan = loadPlan(key);
     const tasks = plan.tasks || [];
 
-    const today = todayDate();
-    const isToday = dateKey(currentDate) === dateKey(today);
+    const today = todayMidnight();
+    const isToday = dateKey(curDate) === dateKey(today);
 
-    // 날짜 헤더
-    const dateLabel = currentDate.toLocaleDateString('ko-KR', {
-        year: 'numeric', month: 'long', day: 'numeric', weekday: 'long'
-    });
-    document.getElementById('date-label').innerHTML =
-        dateLabel + (isToday ? '<span class="today-badge">오늘</span>' : '');
-    document.getElementById('date-sub').textContent = '';
+    // 날짜
+    document.getElementById('date-weekday').textContent =
+        curDate.toLocaleDateString('ko-KR', { year:'numeric', month:'long', day:'numeric' });
+    document.getElementById('date-main-text').textContent =
+        curDate.toLocaleDateString('ko-KR', { weekday:'long' });
+    document.getElementById('today-chip').style.display = isToday ? '' : 'none';
     document.getElementById('btn-today').style.display = isToday ? 'none' : '';
 
     // 진행률
     const active = tasks.filter(t => !t.done);
     const done   = tasks.filter(t => t.done);
-    const total  = tasks.length;
-    const doneN  = done.length;
-    const pct    = total ? Math.round(doneN / total * 100) : 0;
-
     const pw = document.getElementById('progress-wrap');
-    if (total > 0) {
-        pw.style.display = 'flex';
+    if (tasks.length > 0) {
+        pw.style.display = '';
+        const pct = Math.round(done.length / tasks.length * 100);
         document.getElementById('progress-fill').style.width = pct + '%';
-        document.getElementById('progress-label').textContent = `${doneN}/${total} 완료 (${pct}%)`;
+        document.getElementById('progress-text').textContent =
+            `${done.length}/${tasks.length} 완료 · ${pct}%`;
     } else {
         pw.style.display = 'none';
     }
 
-    // 할 일 목록
-    const activeList = document.getElementById('active-list');
-    if (active.length === 0) {
-        activeList.innerHTML = `<div class="empty"><div class="empty-icon">✅</div>할 일을 추가해보세요!</div>`;
-    } else {
-        activeList.innerHTML = active.map(taskHTML).join('');
+    // 태스크 목록
+    const area = document.getElementById('task-area');
+    if (tasks.length === 0) {
+        area.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon">🎯</div>
+                <div class="empty-text">오늘의 할 일을 추가하거나<br>🎤 음성으로 말해보세요</div>
+            </div>`;
+        return;
     }
 
-    // 완료 섹션
-    const ds = document.getElementById('done-section');
-    if (done.length > 0) {
-        ds.style.display = '';
-        document.getElementById('done-toggle-label').textContent = `완료 ${done.length}개`;
-        document.getElementById('done-list').innerHTML = done.map(taskHTML).join('');
-    } else {
-        ds.style.display = 'none';
-    }
+    area.innerHTML =
+        (active.length ? active.map(t => taskHTML(t)).join('') : '') +
+        (done.length ? `
+            <div class="done-header" id="done-hdr">
+                <span class="done-arrow" id="done-arrow">▶</span>
+                완료 ${done.length}개
+            </div>
+            <div class="done-list" id="done-list">
+                ${done.map(t => taskHTML(t)).join('')}
+            </div>` : '');
 
-    bindTaskEvents(plan, key);
+    bindEvents(plan, key);
 }
 
 function taskHTML(t) {
-    const timeHTML = t.time
-        ? `<span class="time-badge">${t.time}</span>`
-        : '';
-    const pc = PRIO_COLOR[t.priority || 'normal'];
-    const pl = PRIO_LABEL[t.priority || 'normal'];
+    const timeChip = t.time
+        ? `<span class="meta-chip chip-time">⏰ ${t.time}</span>` : '';
+    const alarmChip = t.alarm && t.alarm !== 'none'
+        ? `<span class="meta-chip chip-alarm">🔔 ${t.alarm === '4h' ? '4시간 전' : t.alarm === '1d' ? '하루 전' : '4시간/하루 전'}</span>` : '';
+    const prioChip = t.priority && t.priority !== 'normal'
+        ? `<span class="meta-chip ${PRIO_CHIP[t.priority]}">${PRIO_LABEL[t.priority]}</span>` : '';
+
     return `
-    <div class="task${t.done ? ' done' : ''}" data-tid="${t.id}">
+    <div class="task-card${t.done ? ' done' : ''}" data-tid="${t.id}">
         <button class="check-btn${t.done ? ' checked' : ''}" data-tid="${t.id}">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
                 ${t.done ? '<path d="M20 6 9 17l-5-5"/>' : ''}
             </svg>
         </button>
         <div class="task-body">
-            <input class="task-title" value="${esc(t.title)}" data-tid="${t.id}" ${t.done ? 'disabled' : ''} placeholder="할 일…">
-            <div class="task-meta">
-                ${timeHTML}
-                <button class="prio-btn" data-tid="${t.id}" style="color:${pc}">${pl}</button>
-            </div>
+            <input class="task-title-inp" value="${esc(t.title)}" data-tid="${t.id}" ${t.done ? 'disabled' : ''}>
+            <div class="task-meta">${timeChip}${alarmChip}${prioChip}</div>
         </div>
-        <button class="del-btn" data-tid="${t.id}" title="삭제">✕</button>
+        <button class="btn-del-task" data-tid="${t.id}">✕</button>
     </div>`;
 }
 
 function esc(s) {
-    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function bindTaskEvents(plan, key) {
+function bindEvents(plan, key) {
     // 완료 체크
     document.querySelectorAll('.check-btn').forEach(btn => {
         btn.onclick = () => {
@@ -529,92 +610,232 @@ function bindTaskEvents(plan, key) {
             if (t) { t.done = !t.done; savePlan(key, plan); render(); }
         };
     });
-
     // 삭제
-    document.querySelectorAll('.del-btn').forEach(btn => {
+    document.querySelectorAll('.btn-del-task').forEach(btn => {
         btn.onclick = () => {
             plan.tasks = plan.tasks.filter(x => x.id !== btn.dataset.tid);
             savePlan(key, plan); render();
         };
     });
-
-    // 제목 수정 (자동저장)
-    document.querySelectorAll('.task-title').forEach(input => {
-        let timer;
-        input.addEventListener('input', () => {
-            clearTimeout(timer);
-            timer = setTimeout(() => {
-                const t = plan.tasks.find(x => x.id === input.dataset.tid);
-                if (t) { t.title = input.value; savePlan(key, plan); }
-            }, 500);
+    // 제목 수정
+    document.querySelectorAll('.task-title-inp').forEach(inp => {
+        let tm;
+        inp.addEventListener('input', () => {
+            clearTimeout(tm);
+            tm = setTimeout(() => {
+                const t = plan.tasks.find(x => x.id === inp.dataset.tid);
+                if (t) { t.title = inp.value; savePlan(key, plan); }
+            }, 600);
         });
     });
-
-    // 우선순위 순환
-    document.querySelectorAll('.prio-btn').forEach(btn => {
-        btn.onclick = () => {
-            const t = plan.tasks.find(x => x.id === btn.dataset.tid);
-            if (!t) return;
-            const idx = PRIO_CYCLE.indexOf(t.priority || 'normal');
-            t.priority = PRIO_CYCLE[(idx + 1) % PRIO_CYCLE.length];
-            savePlan(key, plan); render();
-        };
+    // 길게 눌러서 삭제 버튼 표시
+    document.querySelectorAll('.task-card').forEach(card => {
+        let lt;
+        card.addEventListener('pointerdown', () => {
+            lt = setTimeout(() => card.classList.toggle('show-del'), 500);
+        });
+        card.addEventListener('pointerup', () => clearTimeout(lt));
+        card.addEventListener('pointercancel', () => clearTimeout(lt));
     });
-
-    // 완료 토글 버튼
-    const doneToggle = document.getElementById('done-toggle');
-    const doneList = document.getElementById('done-list');
-    if (doneToggle) {
-        doneToggle.onclick = () => {
-            const isOpen = doneList.classList.toggle('open');
-            doneToggle.classList.toggle('open', isOpen);
+    // 완료 접기
+    const doneHdr = document.getElementById('done-hdr');
+    if (doneHdr) {
+        doneHdr.onclick = () => {
+            const list = document.getElementById('done-list');
+            const arrow = document.getElementById('done-arrow');
+            list.classList.toggle('open');
+            arrow.classList.toggle('open');
         };
     }
 }
 
-// 날짜 이동
-document.getElementById('btn-prev').onclick = () => {
-    currentDate.setDate(currentDate.getDate() - 1);
-    render();
-};
-document.getElementById('btn-next').onclick = () => {
-    currentDate.setDate(currentDate.getDate() + 1);
-    render();
-};
-document.getElementById('btn-today').onclick = () => {
-    currentDate = todayDate();
-    render();
-};
-
-// 추가
-function addTask() {
-    const input = document.getElementById('add-input');
-    const title = input.value.trim();
-    if (!title) { input.focus(); return; }
-    const key = dateKey(currentDate);
+// ── 태스크 추가 ────────────────────────────────────────────
+function addTask(title, dateStr, time, prio, alarm) {
+    if (!title.trim()) return;
+    const key = dateStr || dateKey(curDate);
     const plan = loadPlan(key);
-    plan.tasks.push({
-        id: genId(),
-        title,
-        time: document.getElementById('add-time').value,
-        priority: document.getElementById('add-prio').value,
-        done: false,
-        createdAt: Date.now()
+    plan.tasks.push({ id: genId(), title: title.trim(), time: time||'', priority: prio||'normal', alarm: alarm||'', done: false, createdAt: Date.now() });
+
+    // 날짜 기준 정렬: 시간 있는 것 먼저, 그 다음 우선순위 순
+    plan.tasks.sort((a,b) => {
+        if (a.done !== b.done) return a.done ? 1 : -1;
+        if (a.time && b.time) return a.time < b.time ? -1 : 1;
+        if (a.time) return -1; if (b.time) return 1;
+        const po = {high:0, normal:1, low:2};
+        return (po[a.priority]||1) - (po[b.priority]||1);
     });
+
     savePlan(key, plan);
-    input.value = '';
-    document.getElementById('add-time').value = '';
-    document.getElementById('add-prio').value = 'normal';
-    render();
-    input.focus();
+    // 추가한 날짜가 현재 보는 날짜면 바로 렌더
+    if (key === dateKey(curDate)) render();
+    showToast(dateStr && dateStr !== dateKey(curDate)
+        ? `"${title.trim()}" → ${dateStr} 추가됨` : `"${title.trim()}" 추가됨`);
 }
 
-document.getElementById('btn-add').onclick = addTask;
+// ── 알람 스케줄 ────────────────────────────────────────────
+let sw = null;
+
+async function initSW() {
+    if (!('serviceWorker' in navigator)) return;
+    try {
+        const reg = await navigator.serviceWorker.register('./sw.js');
+        await navigator.serviceWorker.ready;
+        sw = reg.active || reg.waiting || reg.installing;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+            sw = navigator.serviceWorker.controller;
+        });
+        rescheduleAllAlarms();
+    } catch(e) { console.warn('SW 등록 실패', e); }
+}
+
+function rescheduleAllAlarms() {
+    if (!sw) { sw = navigator.serviceWorker?.controller; }
+    if (!sw) return;
+
+    const now = Date.now();
+    // 오늘 + 내일 + 모레 계획만 체크
+    for (let i = -1; i <= 7; i++) {
+        const d = new Date(todayMidnight());
+        d.setDate(d.getDate() + i);
+        const key = dateKey(d);
+        const plan = loadPlan(key);
+        (plan.tasks || []).forEach(t => {
+            if (!t.time || !t.alarm || t.alarm === 'none' || t.done) return;
+            const [hh, mm] = t.time.split(':').map(Number);
+            const taskMs = new Date(key + 'T' + p2(hh) + ':' + p2(mm) + ':00').getTime();
+
+            const schedules = [];
+            if (t.alarm === '4h' || t.alarm === 'both') schedules.push({ id: t.id+'_4h', offset: 4*60*60*1000, label:'4시간 후' });
+            if (t.alarm === '1d' || t.alarm === 'both') schedules.push({ id: t.id+'_1d', offset: 24*60*60*1000, label:'내일' });
+
+            schedules.forEach(({id, offset, label}) => {
+                const fireAt = taskMs - offset;
+                const delay  = fireAt - now;
+                if (delay > 0 && delay < 7 * 24 * 60 * 60 * 1000) {
+                    sw.postMessage({
+                        type: 'SCHEDULE',
+                        id,
+                        title: '일일계획 알림 🔔',
+                        body: `[${label}] ${t.time} ${t.title}`,
+                        delay
+                    });
+                }
+            });
+        });
+    }
+}
+
+// ── 알림 권한 ────────────────────────────────────────────────
+async function requestNotifPerm() {
+    if (!('Notification' in window)) { showToast('이 브라우저는 알림을 지원하지 않아요'); return; }
+    const perm = await Notification.requestPermission();
+    if (perm === 'granted') {
+        showToast('알림이 허용됐어요 🔔');
+        document.getElementById('btn-notif-perm').textContent = '✅';
+        rescheduleAllAlarms();
+    } else {
+        showToast('알림이 차단됐어요. 설정에서 허용해 주세요');
+    }
+}
+
+// ── 음성 인식 ────────────────────────────────────────────────
+let recognition = null;
+let isListening = false;
+
+function initVoice() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+    recognition = new SR();
+    recognition.lang = 'ko-KR';
+    recognition.continuous = false;
+    recognition.interimResults = true;
+
+    recognition.onresult = e => {
+        const transcript = [...e.results].map(r => r[0].transcript).join('');
+        document.getElementById('voice-result').textContent = transcript;
+        if (e.results[e.results.length-1].isFinal) {
+            stopListening();
+            const parsed = parseVoice(transcript);
+            document.getElementById('add-input').value = parsed.title;
+            if (parsed.time) document.getElementById('opt-time').value = parsed.time;
+            if (parsed.date !== dateKey(curDate)) {
+                // 다른 날짜면 바로 추가
+                addTask(parsed.title, parsed.date, parsed.time,
+                    document.getElementById('opt-prio').value,
+                    document.getElementById('opt-alarm').value);
+                document.getElementById('add-input').value = '';
+            } else {
+                document.getElementById('add-input').focus();
+            }
+        }
+    };
+    recognition.onerror = () => stopListening();
+    recognition.onend = () => { if (isListening) stopListening(); };
+}
+
+function startListening() {
+    if (!recognition) { showToast('음성 인식을 지원하지 않는 브라우저예요'); return; }
+    isListening = true;
+    document.getElementById('voice-overlay').classList.add('active');
+    document.getElementById('voice-result').textContent = '예: "내일 오후 두시 회의"';
+    document.getElementById('btn-mic').classList.add('listening');
+    try { recognition.start(); } catch(e) { stopListening(); }
+}
+
+function stopListening() {
+    isListening = false;
+    document.getElementById('voice-overlay').classList.remove('active');
+    document.getElementById('btn-mic').classList.remove('listening');
+    try { recognition.stop(); } catch(e) {}
+}
+
+// ── 토스트 ────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ── 이벤트 ────────────────────────────────────────────────
+document.getElementById('btn-prev').onclick = () => { curDate.setDate(curDate.getDate()-1); render(); };
+document.getElementById('btn-next').onclick = () => { curDate.setDate(curDate.getDate()+1); render(); };
+document.getElementById('btn-today').onclick = () => { curDate = todayMidnight(); render(); };
+document.getElementById('btn-notif-perm').onclick = requestNotifPerm;
+document.getElementById('btn-mic').onclick = () => isListening ? stopListening() : startListening();
+document.getElementById('btn-voice-cancel').onclick = stopListening;
+
+document.getElementById('btn-add').onclick = () => {
+    const title = document.getElementById('add-input').value.trim();
+    if (!title) return;
+    addTask(title, null,
+        document.getElementById('opt-time').value,
+        document.getElementById('opt-prio').value,
+        document.getElementById('opt-alarm').value);
+    document.getElementById('add-input').value = '';
+    document.getElementById('opt-time').value = '';
+    document.getElementById('opt-prio').value = 'normal';
+    document.getElementById('opt-alarm').value = '';
+};
+
 document.getElementById('add-input').addEventListener('keydown', e => {
-    if (e.key === 'Enter') addTask();
+    if (e.key === 'Enter') document.getElementById('btn-add').click();
 });
 
-// 초기 렌더
+// ── 알림 상태 표시 ────────────────────────────────────────
+function updateNotifBtn() {
+    const btn = document.getElementById('btn-notif-perm');
+    if (!('Notification' in window)) { btn.style.display = 'none'; return; }
+    btn.textContent = Notification.permission === 'granted' ? '🔔' : '🔕';
+    btn.title = Notification.permission === 'granted' ? '알림 켜짐' : '알림 허용 (탭)';
+}
+
+// ── 초기화 ────────────────────────────────────────────────
+initVoice();
+initSW();
+updateNotifBtn();
 render();
 </script>
 </body>
