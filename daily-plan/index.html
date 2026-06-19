@@ -920,57 +920,73 @@ async function requestNotifPerm() {
 // ── 음성 인식 ────────────────────────────────────────────────
 let recognition = null;
 let isListening = false;
+let voiceFinal = '';
+let voiceSilenceTimer = null;
 
 function initVoice() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) return;
     recognition = new SR();
     recognition.lang = 'ko-KR';
-    recognition.continuous = false;
+    recognition.continuous = true;   // 쉬어도 계속 듣기
     recognition.interimResults = true;
 
     recognition.onresult = e => {
-        const transcript = [...e.results].map(r => r[0].transcript).join('');
-        document.getElementById('voice-result').textContent = transcript;
-        if (e.results[e.results.length-1].isFinal) {
-            stopListening();
-            // 질문이면 브리핑 모드
-            if (isQuery(transcript)) {
-                briefTasks(parseQueryScope(transcript));
-                return;
-            }
-            const parsedList = parseVoiceMulti(transcript);
-            const prio  = document.getElementById('opt-prio').value;
-            const alarm = document.getElementById('opt-alarm').value;
-            const cat   = document.getElementById('opt-cat').value;
-
-            if (parsedList.length > 1) {
-                // 여러 할일: 모두 바로 추가
-                parsedList.forEach(p => addTask(p.title, p.date, p.time, p.priority || prio, alarm, p.category || cat));
-                showToast(`${parsedList.length}개 할일 추가됨`);
+        let interim = '';
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+            if (e.results[i].isFinal) {
+                voiceFinal += (voiceFinal ? ' ' : '') + e.results[i][0].transcript;
             } else {
-                // 단일 할일: 입력창에 채워서 확인 후 추가
-                const parsed = parsedList[0];
-                document.getElementById('add-input').value = parsed.title;
-                if (parsed.time) document.getElementById('opt-time').value = parsed.time;
-                if (parsed.category) document.getElementById('opt-cat').value = parsed.category;
-                if (parsed.priority) document.getElementById('opt-prio').value = parsed.priority;
-                if (parsed.date !== dateKey(curDate)) {
-                    addTask(parsed.title, parsed.date, parsed.time,
-                        parsed.priority || prio, alarm, parsed.category || cat);
-                    document.getElementById('add-input').value = '';
-                } else {
-                    document.getElementById('add-input').focus();
-                }
+                interim += e.results[i][0].transcript;
             }
         }
+        const display = voiceFinal + (interim ? (voiceFinal ? ' ' : '') + interim : '');
+        document.getElementById('voice-result').textContent = display || '듣는 중…';
+
+        // 2.5초 침묵하면 자동 완료
+        clearTimeout(voiceSilenceTimer);
+        voiceSilenceTimer = setTimeout(() => {
+            const full = display.trim();
+            stopListening();
+            if (full) handleVoiceResult(full);
+        }, 2500);
     };
-    recognition.onerror = () => stopListening();
-    recognition.onend = () => { if (isListening) stopListening(); };
+
+    recognition.onerror = e => { if (e.error !== 'no-speech') stopListening(); };
+    // continuous 모드에서 중간에 끊기면 재시작
+    recognition.onend = () => { if (isListening) { try { recognition.start(); } catch(_) {} } };
+}
+
+function handleVoiceResult(transcript) {
+    const prio  = document.getElementById('opt-prio').value;
+    const alarm = document.getElementById('opt-alarm').value;
+    const cat   = document.getElementById('opt-cat').value;
+
+    if (isQuery(transcript)) { briefTasks(parseQueryScope(transcript)); return; }
+
+    const parsedList = parseVoiceMulti(transcript);
+    if (parsedList.length > 1) {
+        parsedList.forEach(p => addTask(p.title, p.date, p.time, p.priority || prio, alarm, p.category || cat));
+        showToast(`${parsedList.length}개 할일 추가됨`);
+    } else {
+        const parsed = parsedList[0];
+        document.getElementById('add-input').value = parsed.title;
+        if (parsed.time)     document.getElementById('opt-time').value = parsed.time;
+        if (parsed.category) document.getElementById('opt-cat').value  = parsed.category;
+        if (parsed.priority) document.getElementById('opt-prio').value = parsed.priority;
+        if (parsed.date !== dateKey(curDate)) {
+            addTask(parsed.title, parsed.date, parsed.time, parsed.priority || prio, alarm, parsed.category || cat);
+            document.getElementById('add-input').value = '';
+        } else {
+            document.getElementById('add-input').focus();
+        }
+    }
 }
 
 function startListening() {
     if (!recognition) { showToast('음성 인식을 지원하지 않는 브라우저예요'); return; }
+    voiceFinal = '';
+    clearTimeout(voiceSilenceTimer);
     isListening = true;
     document.getElementById('voice-overlay').classList.add('active');
     document.getElementById('voice-result').textContent = '할 일 추가 또는 "오늘 할일 알려줘"';
@@ -979,6 +995,7 @@ function startListening() {
 }
 
 function stopListening() {
+    clearTimeout(voiceSilenceTimer);
     isListening = false;
     document.getElementById('voice-overlay').classList.remove('active');
     document.getElementById('btn-mic').classList.remove('listening');
