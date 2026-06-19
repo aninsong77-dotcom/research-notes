@@ -599,18 +599,28 @@ function parseVoice(text) {
     const taskDate = new Date(todayMidnight());
     taskDate.setDate(taskDate.getDate() + dateOffset);
 
+    // 우선순위 감지
+    let priority = '';
+    if (/중요|급해|급한|긴급|빨리/.test(title)) {
+        priority = 'high';
+        title = title.replace(/중요\s?|급해\s?|급한\s?|긴급\s?|빨리\s?/g, '').trim();
+    } else if (/나중에|여유로|여유/.test(title)) {
+        priority = 'low';
+        title = title.replace(/나중에\s?|여유로\s?|여유\s?/g, '').trim();
+    }
+
     // 카테고리 감지: 명시적 탭 언급 → 키워드 순
     let category = '';
     if (/학교\s?탭/.test(title))      { category = 'school'; title = title.replace(/학교\s?탭\s?/,''); }
     else if (/관리\s?탭/.test(title)) { category = 'manage'; title = title.replace(/관리\s?탭\s?/,''); }
     else if (/집\s?탭/.test(title))   { category = 'home';   title = title.replace(/집\s?탭\s?/,''); }
     else if (/기타\s?탭/.test(title)) { category = 'other';  title = title.replace(/기타\s?탭\s?/,''); }
-    else if (/학교|수업|과제|강의|시험/.test(title)) category = 'school';
-    else if (/관리|행정|처리|업무/.test(title))       category = 'manage';
-    else if (/집안일|청소|요리|장보기/.test(title))   category = 'home';
+    else if (/학교|수업|과제|강의|시험|공부|상담센터|도서관|교수|학점/.test(title)) category = 'school';
+    else if (/건물|관리비|임대|수리|점검|계약|청구서|행정|처리|업무/.test(title))  category = 'manage';
+    else if (/집안일|청소|요리|장보기|빨래|설거지|정리|냉장고/.test(title))        category = 'home';
 
     const time = hour !== null ? `${p2(hour)}:${p2(minute)}` : '';
-    return { title: title.trim() || text, date: dateKey(taskDate), time, category };
+    return { title: title.trim() || text, date: dateKey(taskDate), time, category, priority };
 }
 
 // ── 렌더 ────────────────────────────────────────────────────
@@ -864,7 +874,7 @@ function initVoice() {
 
             if (parsedList.length > 1) {
                 // 여러 할일: 모두 바로 추가
-                parsedList.forEach(p => addTask(p.title, p.date, p.time, prio, alarm, p.category || cat));
+                parsedList.forEach(p => addTask(p.title, p.date, p.time, p.priority || prio, alarm, p.category || cat));
                 showToast(`${parsedList.length}개 할일 추가됨`);
             } else {
                 // 단일 할일: 입력창에 채워서 확인 후 추가
@@ -872,9 +882,10 @@ function initVoice() {
                 document.getElementById('add-input').value = parsed.title;
                 if (parsed.time) document.getElementById('opt-time').value = parsed.time;
                 if (parsed.category) document.getElementById('opt-cat').value = parsed.category;
+                if (parsed.priority) document.getElementById('opt-prio').value = parsed.priority;
                 if (parsed.date !== dateKey(curDate)) {
-                    addTask(parsed.title, parsed.date, parsed.time, prio, alarm,
-                        parsed.category || cat);
+                    addTask(parsed.title, parsed.date, parsed.time,
+                        parsed.priority || prio, alarm, parsed.category || cat);
                     document.getElementById('add-input').value = '';
                 } else {
                     document.getElementById('add-input').focus();
