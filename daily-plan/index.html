@@ -750,23 +750,36 @@ function briefTasks(scope) {
         tasks = (loadPlan(dateKey(today)).tasks || []).filter(t => !t.done);
     }
 
+    function timeToSpeech(t) {
+        if (!t) return '';
+        const [h, m] = t.split(':').map(Number);
+        const ap = h < 12 ? '오전' : '오후';
+        const hr = h === 0 ? 12 : h > 12 ? h - 12 : h;
+        const mn = m === 0 ? '' : m === 30 ? ' 반' : ` ${m}분`;
+        return `${ap} ${hr}시${mn}에 `;
+    }
+    const KR_N = ['','한','두','세','네','다섯','여섯','일곱','여덟','아홉','열'];
+    function cntWord(n) { return (n <= 10 ? KR_N[n] : n) + '가지'; }
+
     let speech = '';
     if (tasks.length === 0) {
-        speech = `${scopeLabel} 할 일이 없어요.`;
+        speech = `${scopeLabel}에는 할 일이 없어요. 여유롭게 쉬세요.`;
     } else {
-        speech = `${scopeLabel} 할 일은 ${tasks.length}개예요. `;
+        speech = `${scopeLabel} 할 일은 ${cntWord(tasks.length)}예요. `;
         tasks.forEach((t, i) => {
-            speech += `${i + 1}번, `;
-            if (t._day) speech += `${t._day}, `;
-            if (t.time) speech += `${t.time}, `;
-            speech += `${t.title}. `;
+            const connector = i === 0 ? '' : i === tasks.length - 1 ? '마지막으로 ' : '그리고 ';
+            speech += connector;
+            if (t._day) speech += `${t._day} `;
+            speech += timeToSpeech(t.time);
+            speech += t.title + '. ';
         });
     }
 
     window.speechSynthesis.cancel();
     const utter = new SpeechSynthesisUtterance(speech);
     utter.lang = 'ko-KR';
-    utter.rate = 0.9;
+    utter.rate = 0.88;
+    utter.pitch = 1.05;
     window.speechSynthesis.speak(utter);
     showToast(`${scopeLabel} 브리핑 시작`);
 }
