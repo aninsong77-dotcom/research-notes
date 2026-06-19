@@ -58,7 +58,7 @@ window.addEventListener('unhandledrejection', e => {
 
 // ── IndexedDB 초기화 ────────────────────────────────────────
 const DB_NAME = 'ResearchNotesDB';
-const DB_VERSION = 7;
+const DB_VERSION = 8;
 const STORE_PAPERS = 'papers';
 const STORE_PROJECTS = 'projects';
 const STORE_MINDMAPS = 'mindmaps';
@@ -94,6 +94,9 @@ function initDB() {
             }
             if (!d.objectStoreNames.contains(STORE_PROPOSALS)) {
                 d.createObjectStore(STORE_PROPOSALS, { keyPath: 'id' });
+            }
+            if (!d.objectStoreNames.contains('daily')) {
+                d.createObjectStore('daily', { keyPath: 'id' });
             }
             pushDebug('info', `DB 업그레이드: v${e.oldVersion} → v${e.newVersion}`);
         };
