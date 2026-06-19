@@ -799,6 +799,7 @@ function initVoice() {
     recognition.interimResults = true;
 
     recognition.onresult = e => {
+        if (!isListening) return; // stop() 후 마지막 result 이벤트 무시
         let interim = '';
         for (let i = e.resultIndex; i < e.results.length; i++) {
             if (e.results[i].isFinal) {
