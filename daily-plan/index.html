@@ -550,8 +550,8 @@ function genId() { return Date.now().toString(36) + Math.random().toString(36).s
 
 // ── 음성 여러 할일 분리 ──────────────────────────────────────
 function parseVoiceMulti(text) {
-    // "그리고", "하고", "이랑/랑", "또", "그다음", 쉼표로 분리
-    const parts = text.split(/,\s*|그리고\s*|\s+하고\s+|\s+이랑\s+|\s+랑\s+|\s+또\s+|그다음에?\s*/);
+    // 접속사 + 동사 연결어("먹고", "하고", "마치고" 등) 로 분리
+    const parts = text.split(/,\s*|그리고\s*|\s+이랑\s+|\s+랑\s+|\s+또\s+|그다음에?\s*|(?:하고|먹고|마시고|마치고|끝내고|끝나고|자고|일어나고|씻고|듣고|읽고|쓰고|가고|오고|만나고|보고|다니고|운동하고|공부하고|청소하고|요리하고|빨래하고|샤워하고)\s+/);
     const segments = parts.map(s => s.trim()).filter(s => s.length > 1);
     return segments.length > 0 ? segments.map(parseVoice) : [parseVoice(text)];
 }
