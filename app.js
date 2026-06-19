@@ -58,7 +58,7 @@ window.addEventListener('unhandledrejection', e => {
 
 // ── IndexedDB 초기화 ────────────────────────────────────────
 const DB_NAME = 'ResearchNotesDB';
-const DB_VERSION = 8;
+const DB_VERSION = 7;
 const STORE_PAPERS = 'papers';
 const STORE_PROJECTS = 'projects';
 const STORE_MINDMAPS = 'mindmaps';
@@ -66,7 +66,6 @@ const STORE_MATERIALS = 'materials';
 const STORE_SETTINGS = 'settings';   // 앱 설정(백업 폴더 핸들 등) 보관
 const STORE_NOTES = 'notes';         // 아이디어 저장소(메모)
 const STORE_PROPOSALS = 'proposals'; // 모형스케치북 미니 프로포절(프로젝트별, key=projectId)
-const STORE_DAILY = 'daily';         // 일일계획 (key=YYYY-MM-DD)
 
 let db;
 
@@ -95,9 +94,6 @@ function initDB() {
             }
             if (!d.objectStoreNames.contains(STORE_PROPOSALS)) {
                 d.createObjectStore(STORE_PROPOSALS, { keyPath: 'id' });
-            }
-            if (!d.objectStoreNames.contains(STORE_DAILY)) {
-                d.createObjectStore(STORE_DAILY, { keyPath: 'id' });
             }
             pushDebug('info', `DB 업그레이드: v${e.oldVersion} → v${e.newVersion}`);
         };
@@ -213,7 +209,6 @@ const ICON_PATHS = {
     'microscope': '<path d="M6 18h8"/><path d="M3 22h18"/><path d="M14 22a7 7 0 1 0 0-14h-1"/><path d="M9 14h2"/><path d="M9 12a2 2 0 0 1-2-2V6h6v4a2 2 0 0 1-2 2Z"/><path d="M12 6V3a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v3"/>',
     'cloud':      '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>',
     'cloud-off':  '<path d="m2 2 20 20"/><path d="M5.78 5.78A7 7 0 0 0 9 19h8.5a4.5 4.5 0 0 0 1.3-.19"/><path d="M21.53 16.5A4.5 4.5 0 0 0 17.5 10h-1.79A7 7 0 0 0 10 5.07"/>',
-    'calendar-check': '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/>',
 };
 function icon(name, size = 16) {
     const p = ICON_PATHS[name];
@@ -254,7 +249,6 @@ const state = {
     materialSelectedIds: new Set(),
     currentPdfFile: null,
     currentMaterialFile: null,
-    dailyPlanDate: null,       // 일일계획 현재 날짜 (YYYY-MM-DD, null=오늘)
 };
 
 let formVariables = [];
@@ -521,8 +515,7 @@ function renderContent() {
     // 추가 버튼 라벨을 현재 화면에 맞춤(우상단·사이드바 둘 다 같은 기능 → 같은 라벨)
     const addLabelText =
         state.view === 'materials' ? '자료 추가' :
-        state.view === 'notes' ? '메모 추가' :
-        state.view === 'dailyplan' ? '할 일 추가' : '논문 추가';
+        state.view === 'notes' ? '메모 추가' : '논문 추가';
     const addTop = document.getElementById('add-top-label');
     const addSide = document.getElementById('add-side-label');
     if (addTop)  addTop.textContent  = addLabelText;
@@ -557,7 +550,6 @@ function renderContent() {
     else if (state.view === 'references') renderReferences(container);
     else if (state.view === 'sketch') renderSketch(container);
     else if (state.view === 'notes') renderNotes(container);
-    else if (state.view === 'dailyplan') renderDailyPlan(container);
 }
 
 // ── 논문 목록 (정렬·묶기·한 줄 + 아코디언 통합) ─────────────
@@ -1563,177 +1555,6 @@ async function deleteNote(id) {
     state.notes = state.notes.filter(n => n.id !== id);
     document.getElementById('notes-count').textContent = state.notes.length;
     renderNotes(document.getElementById('content'));
-}
-
-// ── 일일계획 ────────────────────────────────────────────────
-
-function _dpTodayKey() {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-}
-
-function _dpOffsetKey(baseKey, delta) {
-    const d = new Date(baseKey + 'T00:00:00');
-    d.setDate(d.getDate() + delta);
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-}
-
-async function renderDailyPlan(container) {
-    if (!state.dailyPlanDate) state.dailyPlanDate = _dpTodayKey();
-    const dateKey = state.dailyPlanDate;
-
-    let plan = await dbGet(STORE_DAILY, dateKey);
-    if (!plan) plan = { id: dateKey, tasks: [] };
-
-    const today = _dpTodayKey();
-    const isToday = dateKey === today;
-
-    const dateObj = new Date(dateKey + 'T00:00:00');
-    const dateLabel = dateObj.toLocaleDateString('ko-KR', {
-        year: 'numeric', month: 'long', day: 'numeric', weekday: 'long'
-    });
-
-    const tasks = plan.tasks || [];
-    const doneCount = tasks.filter(t => t.done).length;
-    const total = tasks.length;
-    const pct = total ? Math.round(doneCount / total * 100) : 0;
-
-    const PRIO_COLOR = { high: '#d93025', normal: '#4285f4', low: '#80868b' };
-    const PRIO_LABEL = { high: '높음', normal: '보통', low: '낮음' };
-
-    const activeTasks = tasks.filter(t => !t.done);
-    const doneTasks   = tasks.filter(t => t.done);
-
-    const taskRowHTML = t => {
-        const timeHTML = t.time ? `<span class="dp-time-badge">${escHtml(t.time)}</span>` : '';
-        const pc = PRIO_COLOR[t.priority || 'normal'];
-        const pl = PRIO_LABEL[t.priority || 'normal'];
-        return `
-        <div class="dp-task${t.done ? ' dp-done' : ''}" data-tid="${t.id}">
-            <button class="dp-check${t.done ? ' dp-checked' : ''}" data-tid="${t.id}" title="완료 토글">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">${t.done ? '<path d="M20 6 9 17l-5-5"/>' : ''}</svg>
-            </button>
-            <div class="dp-task-body">
-                <input class="dp-title-input" value="${escHtml(t.title)}" placeholder="할 일…" data-tid="${t.id}" ${t.done ? 'disabled' : ''}>
-                <div class="dp-task-meta">
-                    ${timeHTML}
-                    <button class="dp-prio-btn" data-tid="${t.id}" style="color:${pc}" title="클릭으로 우선순위 변경">${pl}</button>
-                </div>
-            </div>
-            <button class="dp-del-btn" data-tid="${t.id}" title="삭제">✕</button>
-        </div>`;
-    };
-
-    const progressHTML = total > 0 ? `
-        <div class="dp-progress">
-            <div class="dp-progress-track"><div class="dp-progress-fill" style="width:${pct}%"></div></div>
-            <span class="dp-progress-label">${doneCount}/${total} 완료 (${pct}%)</span>
-        </div>` : '';
-
-    const activeHTML = activeTasks.length
-        ? activeTasks.map(taskRowHTML).join('')
-        : `<p class="dp-empty">오늘 할 일을 추가해보세요!</p>`;
-
-    const doneSection = doneTasks.length ? `
-        <details class="dp-done-section">
-            <summary>완료 ${doneTasks.length}개</summary>
-            ${doneTasks.map(taskRowHTML).join('')}
-        </details>` : '';
-
-    container.innerHTML = `
-        <div class="dp-wrap">
-            <div class="dp-header">
-                <button class="dp-nav-btn" id="dp-prev">&#8249;</button>
-                <div class="dp-date-info">
-                    <h2 class="dp-date">${dateLabel}</h2>
-                    ${isToday ? '<span class="dp-today-badge">오늘</span>' : ''}
-                </div>
-                <button class="dp-nav-btn" id="dp-next">&#8250;</button>
-                ${!isToday ? `<button class="dp-go-today" id="dp-goto-today">오늘로</button>` : ''}
-            </div>
-            ${progressHTML}
-            <div class="dp-add-row">
-                <input class="dp-add-input" id="dp-add-input" type="text" placeholder="할 일 입력 후 Enter…">
-                <input class="dp-add-time" id="dp-add-time" type="time" title="시간 (선택)">
-                <select class="dp-add-prio" id="dp-add-prio">
-                    <option value="normal">보통</option>
-                    <option value="high">높음</option>
-                    <option value="low">낮음</option>
-                </select>
-                <button class="btn-primary dp-add-btn" id="dp-add-btn">추가</button>
-            </div>
-            <div class="dp-list" id="dp-list">${activeHTML}</div>
-            ${doneSection}
-        </div>`;
-
-    const saveAndRender = async () => {
-        await dbPut(STORE_DAILY, plan);
-        await renderDailyPlan(container);
-    };
-
-    document.getElementById('dp-prev').onclick = () => {
-        state.dailyPlanDate = _dpOffsetKey(dateKey, -1);
-        renderDailyPlan(container);
-    };
-    document.getElementById('dp-next').onclick = () => {
-        state.dailyPlanDate = _dpOffsetKey(dateKey, 1);
-        renderDailyPlan(container);
-    };
-    document.getElementById('dp-goto-today')?.addEventListener('click', () => {
-        state.dailyPlanDate = _dpTodayKey();
-        renderDailyPlan(container);
-    });
-
-    const addInput = document.getElementById('dp-add-input');
-    const doAdd = async () => {
-        const title = addInput.value.trim();
-        if (!title) return;
-        const time  = document.getElementById('dp-add-time').value;
-        const prio  = document.getElementById('dp-add-prio').value;
-        plan.tasks.push({ id: genId(), title, time, priority: prio, done: false, createdAt: Date.now() });
-        addInput.value = '';
-        document.getElementById('dp-add-time').value = '';
-        document.getElementById('dp-add-prio').value = 'normal';
-        await saveAndRender();
-        document.getElementById('dp-add-input')?.focus();
-    };
-    addInput.addEventListener('keydown', e => { if (e.key === 'Enter') doAdd(); });
-    document.getElementById('dp-add-btn').onclick = doAdd;
-
-    container.querySelectorAll('.dp-check').forEach(btn => {
-        btn.onclick = async () => {
-            const t = plan.tasks.find(x => x.id === btn.dataset.tid);
-            if (t) { t.done = !t.done; await saveAndRender(); }
-        };
-    });
-
-    container.querySelectorAll('.dp-del-btn').forEach(btn => {
-        btn.onclick = async () => {
-            plan.tasks = plan.tasks.filter(x => x.id !== btn.dataset.tid);
-            await saveAndRender();
-        };
-    });
-
-    container.querySelectorAll('.dp-title-input').forEach(input => {
-        let timer;
-        input.addEventListener('input', () => {
-            clearTimeout(timer);
-            timer = setTimeout(async () => {
-                const t = plan.tasks.find(x => x.id === input.dataset.tid);
-                if (t) { t.title = input.value; await dbPut(STORE_DAILY, plan); }
-            }, 500);
-        });
-    });
-
-    container.querySelectorAll('.dp-prio-btn').forEach(btn => {
-        btn.onclick = async () => {
-            const t = plan.tasks.find(x => x.id === btn.dataset.tid);
-            if (!t) return;
-            const cycle = ['normal', 'high', 'low'];
-            t.priority = cycle[(cycle.indexOf(t.priority || 'normal') + 1) % cycle.length];
-            await saveAndRender();
-        };
-    });
 }
 
 // ── 자료(논문이 아닌 자료) 뷰 ──────────────────────────────
@@ -3963,7 +3784,6 @@ function bindEvents() {
     const addByView = () => {
         if (state.view === 'materials') openMaterialForm();
         else if (state.view === 'notes') addNote();
-        else if (state.view === 'dailyplan') document.getElementById('dp-add-input')?.focus();
         else openForm(null, 'edit');   // 논문 추가 → 바로 편집 창 열기
     };
     document.getElementById('btn-add').addEventListener('click', addByView);
