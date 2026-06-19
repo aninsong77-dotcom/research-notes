@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>일일계획</title>
+<style>
+:root {
+    --accent: #4285f4;
+    --accent-light: #eaf1ff;
+    --accent-mid: #d2e3fc;
+    --bg: #f1f3f4;
+    --surface: #ffffff;
+    --border: #dadce0;
+    --text: #3c4043;
+    --text-sub: #5f6368;
+    --text-muted: #80868b;
+    --danger: #d93025;
+    --success: #1e8e3e;
+    --radius: 12px;
+    --shadow: 0 1px 3px rgba(60,64,67,.1), 0 4px 8px rgba(60,64,67,.08);
+    --shadow-sm: 0 1px 2px rgba(60,64,67,.08);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    font-family: 'Noto Sans KR', 'Apple SD Gothic Neo', -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px 16px 48px;
+}
+a { color: inherit; text-decoration: none; }
+
+/* ── 헤더 ── */
+.app-header {
+    max-width: 640px;
+    margin: 0 auto 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.app-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--accent);
+    flex: 1;
+}
+.btn-research {
+    font-size: 12px;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 4px 12px;
+    background: var(--surface);
+    cursor: pointer;
+    text-decoration: none;
+}
+.btn-research:hover { background: var(--bg); }
+
+/* ── 카드 ── */
+.card {
+    max-width: 640px;
+    margin: 0 auto 14px;
+    background: var(--surface);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 18px 20px;
+}
+
+/* ── 날짜 네비 ── */
+.date-nav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.nav-btn {
+    width: 36px; height: 36px;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    background: var(--surface);
+    font-size: 20px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-sub);
+    flex-shrink: 0;
+}
+.nav-btn:hover { background: var(--bg); }
+.date-center { flex: 1; text-align: center; }
+.date-label {
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--text);
+    display: block;
+}
+.date-sub {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+.today-badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent);
+    background: var(--accent-light);
+    border-radius: 20px;
+    padding: 2px 8px;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+.btn-today {
+    font-size: 12px;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    background: var(--accent-light);
+    border-radius: 20px;
+    padding: 5px 12px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.btn-today:hover { background: var(--accent-mid); }
+
+/* ── 진행률 ── */
+.progress-wrap {
+    margin-top: 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.progress-track {
+    flex: 1;
+    height: 7px;
+    background: var(--border);
+    border-radius: 99px;
+    overflow: hidden;
+}
+.progress-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 99px;
+    transition: width .3s ease;
+}
+.progress-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    min-width: 80px;
+    text-align: right;
+}
+
+/* ── 입력 폼 ── */
+.add-form {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+.add-input {
+    flex: 1;
+    min-width: 180px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-size: 14px;
+    font-family: inherit;
+    color: var(--text);
+    background: var(--bg);
+    outline: none;
+    transition: border-color .15s;
+}
+.add-input:focus { border-color: var(--accent); background: #fff; }
+.add-time {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 8px;
+    font-size: 13px;
+    background: var(--bg);
+    color: var(--text-sub);
+    cursor: pointer;
+    outline: none;
+}
+.add-prio {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 8px;
+    font-size: 13px;
+    background: var(--bg);
+    color: var(--text-sub);
+    cursor: pointer;
+    outline: none;
+}
+.btn-add {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 9px 18px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    flex-shrink: 0;
+}
+.btn-add:hover { background: #1a73e8; }
+
+/* ── 태스크 섹션 헤더 ── */
+.section-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    letter-spacing: .4px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+}
+
+/* ── 태스크 ── */
+.task-list { display: flex; flex-direction: column; gap: 6px; }
+
+.task {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    box-shadow: var(--shadow-sm);
+    transition: border-color .15s, opacity .2s;
+}
+.task:hover { border-color: var(--accent-mid); }
+.task.done { opacity: .5; background: var(--bg); }
+
+.check-btn {
+    width: 22px; height: 22px;
+    border: 2px solid var(--border);
+    border-radius: 50%;
+    background: none;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    color: transparent;
+    transition: border-color .15s, background .15s;
+    padding: 0;
+}
+.check-btn:hover { border-color: var(--accent); }
+.check-btn.checked { background: var(--accent); border-color: var(--accent); color: #fff; }
+.check-btn svg { display: block; }
+
+.task-body { flex: 1; min-width: 0; }
+.task-title {
+    border: none;
+    outline: none;
+    font-size: 14px;
+    font-family: inherit;
+    color: var(--text);
+    background: transparent;
+    width: 100%;
+    padding: 0;
+}
+.task-title:disabled { text-decoration: line-through; color: var(--text-muted); }
+
+.task-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 3px;
+}
+.time-badge {
+    font-size: 11px;
+    color: var(--text-muted);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 6px;
+}
+.prio-btn {
+    font-size: 11px;
+    font-weight: 700;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    font-family: inherit;
+}
+.prio-btn:hover { text-decoration: underline; }
+
+.del-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 16px;
+    padding: 4px 6px;
+    border-radius: 6px;
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity .15s;
+    line-height: 1;
+}
+.task:hover .del-btn { opacity: 1; }
+.del-btn:hover { color: var(--danger); background: #fce8e6; }
+
+/* ── 완료 섹션 ── */
+.done-section {
+    max-width: 640px;
+    margin: 0 auto 14px;
+}
+.done-toggle {
+    width: 100%;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 16px;
+    font-size: 13px;
+    color: var(--text-muted);
+    font-family: inherit;
+    cursor: pointer;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--surface);
+}
+.done-toggle:hover { background: var(--bg); }
+.done-toggle-arrow { font-size: 10px; transition: transform .2s; }
+.done-toggle.open .done-toggle-arrow { transform: rotate(90deg); }
+.done-list {
+    margin-top: 6px;
+    display: none;
+    flex-direction: column;
+    gap: 6px;
+}
+.done-list.open { display: flex; }
+
+/* ── 빈 상태 ── */
+.empty {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 28px 0;
+    font-size: 14px;
+    line-height: 1.8;
+}
+.empty-icon { font-size: 36px; margin-bottom: 8px; }
+
+/* ── 푸터 ── */
+.footer {
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 32px;
+}
+</style>
+</head>
+<body>
+
+<header class="app-header">
+    <h1 class="app-title">📅 일일계획</h1>
+    <a class="btn-research" href="../">← 내 연구노트</a>
+</header>
+
+<!-- 날짜 카드 -->
+<div class="card" id="date-card">
+    <div class="date-nav">
+        <button class="nav-btn" id="btn-prev">&#8249;</button>
+        <div class="date-center">
+            <span class="date-label" id="date-label">로딩 중…</span>
+            <div class="date-sub" id="date-sub"></div>
+        </div>
+        <button class="nav-btn" id="btn-next">&#8250;</button>
+        <button class="btn-today" id="btn-today" style="display:none">오늘로</button>
+    </div>
+    <div class="progress-wrap" id="progress-wrap" style="display:none">
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+        <span class="progress-label" id="progress-label"></span>
+    </div>
+</div>
+
+<!-- 추가 폼 카드 -->
+<div class="card">
+    <div class="add-form">
+        <input class="add-input" id="add-input" type="text" placeholder="할 일 입력 후 Enter…" autocomplete="off">
+        <input class="add-time" id="add-time" type="time" title="시간 (선택)">
+        <select class="add-prio" id="add-prio">
+            <option value="normal">보통</option>
+            <option value="high">높음</option>
+            <option value="low">낮음</option>
+        </select>
+        <button class="btn-add" id="btn-add">추가</button>
+    </div>
+</div>
+
+<!-- 할 일 목록 -->
+<div class="card" id="active-card">
+    <div class="section-label">할 일</div>
+    <div class="task-list" id="active-list"></div>
+</div>
+
+<!-- 완료 섹션 -->
+<div class="done-section" id="done-section" style="display:none">
+    <button class="done-toggle" id="done-toggle">
+        <span class="done-toggle-arrow">▶</span>
+        <span id="done-toggle-label">완료 0개</span>
+    </button>
+    <div class="done-list" id="done-list"></div>
+</div>
+
+<div class="footer">데이터는 이 기기 브라우저에만 저장됩니다</div>
+
+<script>
+const PRIO_COLOR = { high: '#d93025', normal: '#4285f4', low: '#80868b' };
+const PRIO_LABEL = { high: '높음', normal: '보통', low: '낮음' };
+const PRIO_CYCLE = ['normal', 'high', 'low'];
+
+let currentDate = new Date();
+currentDate.setHours(0, 0, 0, 0);
+
+function dateKey(d) {
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function todayDate() {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+}
+
+function loadPlan(key) {
+    try {
+        const raw = localStorage.getItem('dailyplan_' + key);
+        return raw ? JSON.parse(raw) : { tasks: [] };
+    } catch { return { tasks: [] }; }
+}
+
+function savePlan(key, plan) {
+    localStorage.setItem('dailyplan_' + key, JSON.stringify(plan));
+}
+
+function genId() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
+function render() {
+    const key = dateKey(currentDate);
+    const plan = loadPlan(key);
+    const tasks = plan.tasks || [];
+
+    const today = todayDate();
+    const isToday = dateKey(currentDate) === dateKey(today);
+
+    // 날짜 헤더
+    const dateLabel = currentDate.toLocaleDateString('ko-KR', {
+        year: 'numeric', month: 'long', day: 'numeric', weekday: 'long'
+    });
+    document.getElementById('date-label').innerHTML =
+        dateLabel + (isToday ? '<span class="today-badge">오늘</span>' : '');
+    document.getElementById('date-sub').textContent = '';
+    document.getElementById('btn-today').style.display = isToday ? 'none' : '';
+
+    // 진행률
+    const active = tasks.filter(t => !t.done);
+    const done   = tasks.filter(t => t.done);
+    const total  = tasks.length;
+    const doneN  = done.length;
+    const pct    = total ? Math.round(doneN / total * 100) : 0;
+
+    const pw = document.getElementById('progress-wrap');
+    if (total > 0) {
+        pw.style.display = 'flex';
+        document.getElementById('progress-fill').style.width = pct + '%';
+        document.getElementById('progress-label').textContent = `${doneN}/${total} 완료 (${pct}%)`;
+    } else {
+        pw.style.display = 'none';
+    }
+
+    // 할 일 목록
+    const activeList = document.getElementById('active-list');
+    if (active.length === 0) {
+        activeList.innerHTML = `<div class="empty"><div class="empty-icon">✅</div>할 일을 추가해보세요!</div>`;
+    } else {
+        activeList.innerHTML = active.map(taskHTML).join('');
+    }
+
+    // 완료 섹션
+    const ds = document.getElementById('done-section');
+    if (done.length > 0) {
+        ds.style.display = '';
+        document.getElementById('done-toggle-label').textContent = `완료 ${done.length}개`;
+        document.getElementById('done-list').innerHTML = done.map(taskHTML).join('');
+    } else {
+        ds.style.display = 'none';
+    }
+
+    bindTaskEvents(plan, key);
+}
+
+function taskHTML(t) {
+    const timeHTML = t.time
+        ? `<span class="time-badge">${t.time}</span>`
+        : '';
+    const pc = PRIO_COLOR[t.priority || 'normal'];
+    const pl = PRIO_LABEL[t.priority || 'normal'];
+    return `
+    <div class="task${t.done ? ' done' : ''}" data-tid="${t.id}">
+        <button class="check-btn${t.done ? ' checked' : ''}" data-tid="${t.id}">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                ${t.done ? '<path d="M20 6 9 17l-5-5"/>' : ''}
+            </svg>
+        </button>
+        <div class="task-body">
+            <input class="task-title" value="${esc(t.title)}" data-tid="${t.id}" ${t.done ? 'disabled' : ''} placeholder="할 일…">
+            <div class="task-meta">
+                ${timeHTML}
+                <button class="prio-btn" data-tid="${t.id}" style="color:${pc}">${pl}</button>
+            </div>
+        </div>
+        <button class="del-btn" data-tid="${t.id}" title="삭제">✕</button>
+    </div>`;
+}
+
+function esc(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function bindTaskEvents(plan, key) {
+    // 완료 체크
+    document.querySelectorAll('.check-btn').forEach(btn => {
+        btn.onclick = () => {
+            const t = plan.tasks.find(x => x.id === btn.dataset.tid);
+            if (t) { t.done = !t.done; savePlan(key, plan); render(); }
+        };
+    });
+
+    // 삭제
+    document.querySelectorAll('.del-btn').forEach(btn => {
+        btn.onclick = () => {
+            plan.tasks = plan.tasks.filter(x => x.id !== btn.dataset.tid);
+            savePlan(key, plan); render();
+        };
+    });
+
+    // 제목 수정 (자동저장)
+    document.querySelectorAll('.task-title').forEach(input => {
+        let timer;
+        input.addEventListener('input', () => {
+            clearTimeout(timer);
+            timer = setTimeout(() => {
+                const t = plan.tasks.find(x => x.id === input.dataset.tid);
+                if (t) { t.title = input.value; savePlan(key, plan); }
+            }, 500);
+        });
+    });
+
+    // 우선순위 순환
+    document.querySelectorAll('.prio-btn').forEach(btn => {
+        btn.onclick = () => {
+            const t = plan.tasks.find(x => x.id === btn.dataset.tid);
+            if (!t) return;
+            const idx = PRIO_CYCLE.indexOf(t.priority || 'normal');
+            t.priority = PRIO_CYCLE[(idx + 1) % PRIO_CYCLE.length];
+            savePlan(key, plan); render();
+        };
+    });
+
+    // 완료 토글 버튼
+    const doneToggle = document.getElementById('done-toggle');
+    const doneList = document.getElementById('done-list');
+    if (doneToggle) {
+        doneToggle.onclick = () => {
+            const isOpen = doneList.classList.toggle('open');
+            doneToggle.classList.toggle('open', isOpen);
+        };
+    }
+}
+
+// 날짜 이동
+document.getElementById('btn-prev').onclick = () => {
+    currentDate.setDate(currentDate.getDate() - 1);
+    render();
+};
+document.getElementById('btn-next').onclick = () => {
+    currentDate.setDate(currentDate.getDate() + 1);
+    render();
+};
+document.getElementById('btn-today').onclick = () => {
+    currentDate = todayDate();
+    render();
+};
+
+// 추가
+function addTask() {
+    const input = document.getElementById('add-input');
+    const title = input.value.trim();
+    if (!title) { input.focus(); return; }
+    const key = dateKey(currentDate);
+    const plan = loadPlan(key);
+    plan.tasks.push({
+        id: genId(),
+        title,
+        time: document.getElementById('add-time').value,
+        priority: document.getElementById('add-prio').value,
+        done: false,
+        createdAt: Date.now()
+    });
+    savePlan(key, plan);
+    input.value = '';
+    document.getElementById('add-time').value = '';
+    document.getElementById('add-prio').value = 'normal';
+    render();
+    input.focus();
+}
+
+document.getElementById('btn-add').onclick = addTask;
+document.getElementById('add-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') addTask();
+});
+
+// 초기 렌더
+render();
+</script>
+</body>
+</html>
