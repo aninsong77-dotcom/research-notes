@@ -293,9 +293,13 @@ function renderCanvas(){
   bg.addEventListener('click',closeSheet);
   svg.appendChild(bg);
 
-  // 월 라벨
+  // 월 라벨 (클릭 → 해당 월 확대)
   KR_MONTHS.forEach((m,mi)=>{
-    const t=el('text',{x:8,y:PAD_T+mi*MONTH_H+22,fill:'#5f6368',
+    const mArea=el('rect',{x:0,y:PAD_T+mi*MONTH_H,width:PAD_L-4,height:38,
+      fill:'transparent','pointer-events':'all',style:'cursor:pointer'});
+    mArea.addEventListener('click',e=>{e.stopPropagation();zoomToMonth(mi);});
+    svg.appendChild(mArea);
+    const t=el('text',{x:8,y:PAD_T+mi*MONTH_H+22,fill:'#1a73e8',
       'font-size':'13','font-weight':'700','font-family':'inherit','pointer-events':'none'});
     t.textContent=m; svg.appendChild(t);
   });
@@ -305,7 +309,8 @@ function renderCanvas(){
     const {cx,cy,days}=week;
     const g=el('g');
 
-    // 배경 원 (흰 카드)
+    // 알람시계 파란 림 + 흰 카드
+    g.appendChild(el('circle',{cx,cy,r:RO2+11,fill:'#1a73e8','pointer-events':'none'}));
     g.appendChild(el('circle',{cx,cy,r:RO2+8,fill:'white',
       filter:'url(#shadow)'}));
 
@@ -361,6 +366,24 @@ function renderCanvas(){
       g.appendChild(path);
     }
 
+    // 시계 베젤 라벨 & 눈금 (자정/아침/낮/저녁)
+    [{h:0,lbl:'자정'},{h:6,lbl:'아침'},{h:12,lbl:'낮'},{h:18,lbl:'저녁'}].forEach(({h,lbl})=>{
+      const a=A0+h*2*Math.PI/24;
+      // 눈금선 (7일 링 바깥 ~ 흰 베젤)
+      g.appendChild(el('line',{
+        x1:cx+(RO2+1)*Math.cos(a),y1:cy+(RO2+1)*Math.sin(a),
+        x2:cx+(RO2+6)*Math.cos(a),y2:cy+(RO2+6)*Math.sin(a),
+        stroke:'#1a73e8','stroke-width':'1.5','pointer-events':'none'
+      }));
+      // 라벨
+      const lr=RO2+3;
+      const lt=el('text',{x:cx+lr*Math.cos(a),y:cy+lr*Math.sin(a),
+        'text-anchor':'middle','dominant-baseline':'middle',
+        fill:'#1565c0','font-size':'5','font-weight':'900','pointer-events':'none'});
+      lt.textContent=lbl;
+      g.appendChild(lt);
+    });
+
     // 중심 원
     const isThisWeek=week.days.some(d=>dateKey(d)===todayStr);
     const isSelWeek=week.days.some(d=>dateKey(d)===selDate);
@@ -395,6 +418,25 @@ function selectDate(dk){
   renderCanvas();
   openSheet(dk);
   applyTransform();
+}
+
+function zoomToMonth(mi){
+  const mw=weeks.filter(w=>w.month===mi);
+  if(!mw.length)return;
+  const rim=RO2+20;
+  const xs=mw.map(w=>w.cx);
+  const cy0=mw[0].cy;
+  const bL=Math.min(...xs)-rim, bR=Math.max(...xs)+rim;
+  const bT=cy0-rim, bB=cy0+rim;
+  const bW=bR-bL, bH=bB-bT;
+  const vw=window.innerWidth, vh=window.innerHeight-60;
+  const ns=Math.max(Math.min(vw/bW, vh/bH)*0.9, 0.8);
+  svg.style.transition='transform .5s cubic-bezier(.4,0,.2,1)';
+  scale=ns;
+  panX=vw/2-(bL+bW/2)*ns;
+  panY=(vh+60)/2-(bT+bH/2)*ns;
+  applyTransform();
+  setTimeout(()=>{ svg.style.transition=''; },550);
 }
 
 // ── 하단 시트 ────────────────────────────────────────────────
