@@ -182,10 +182,10 @@ html,body{width:100%;height:100%;overflow:hidden;background:#f1f3f4;touch-action
 <script>
 // ── 상수 ─────────────────────────────────────────────────────
 const CATS = {
-  school:{ label:'학교', color:'#1565c0', bg:'#bbdefb' },
-  manage:{ label:'관리', color:'#e65100', bg:'#ffcc80' },
-  home:  { label:'집',   color:'#2e7d32', bg:'#a5d6a7' },
-  other: { label:'기타', color:'#6a1b9a', bg:'#ce93d8' }
+  school:{ label:'학교', color:'#1976D2', bg:'#BBDEFB' },
+  manage:{ label:'관리', color:'#D32F2F', bg:'#FFCDD2' },
+  home:  { label:'집',   color:'#388E3C', bg:'#C8E6C9' },
+  other: { label:'기타', color:'#F57C00', bg:'#FFE0B2' }
 };
 const CAT_ORDER = ['school','manage','home','other'];
 const KR_MONTHS = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
@@ -309,10 +309,12 @@ function renderCanvas(){
     const {cx,cy,days}=week;
     const g=el('g');
 
-    // 알람시계 파란 림 + 흰 카드
-    g.appendChild(el('circle',{cx,cy,r:RO2+11,fill:'#1a73e8','pointer-events':'none'}));
-    g.appendChild(el('circle',{cx,cy,r:RO2+8,fill:'white',
-      filter:'url(#shadow)'}));
+    // 얇은 테두리 + 히트 영역 (클릭 시 주 전체 확대)
+    g.appendChild(el('circle',{cx,cy,r:RO2+8,fill:'transparent',
+      stroke:'#E0E0E0','stroke-width':'0.8','pointer-events':'none'}));
+    const bgZone=el('circle',{cx,cy,r:RO2+8,fill:'transparent',style:'cursor:zoom-in'});
+    bgZone.addEventListener('click',e=>{e.stopPropagation();zoomToWeek(week);});
+    g.appendChild(bgZone);
 
     // ── 바깥 링: 7일 ──
     days.forEach((day,di)=>{
@@ -321,96 +323,72 @@ function renderCanvas(){
       const catKey=dayColors(dk);
       const isToday=dk===todayStr;
       const isPast=day<today0();
-      // 빈 날: 연한 회색(구글 스타일), 과거: 더 연하게
-      let fill=catKey?CATS[catKey].color:isPast?'#dadce0':'#e8eaed';
-      // 완료된 할일만 있는 날은 살짝 투명하게
+      let fill=catKey?CATS[catKey].color:isPast?'#CFD8DC':'#ECEFF1';
       if(catKey){
         const allDone=(loadPlan(dk).tasks||[]).every(t=>t.done);
         if(allDone) fill=CATS[catKey].bg||fill;
       }
 
       const path=el('path',{d:annSector(cx,cy,RO1,RO2,aS,aE),fill,
-        'data-date':dk,style:'cursor:pointer'});
-      if(isToday){ path.setAttribute('stroke','#1a73e8'); path.setAttribute('stroke-width','2.5'); }
+        'data-date':dk,style:'cursor:zoom-in'});
+      if(isToday){ path.setAttribute('stroke','#1A73E8'); path.setAttribute('stroke-width','2.5'); }
       if(dk===selDate){ path.setAttribute('stroke','#202124'); path.setAttribute('stroke-width','2.5'); }
-      path.addEventListener('click',e=>{ e.stopPropagation(); selectDate(dk); });
+      path.addEventListener('click',e=>{ e.stopPropagation(); zoomToWeek(week,()=>selectDate(dk)); });
       g.appendChild(path);
 
       // 요일 라벨
       const ma=(aS+aE)/2, lr=RO2+16;
       const lt=el('text',{x:cx+lr*Math.cos(ma),y:cy+lr*Math.sin(ma),
         'text-anchor':'middle','dominant-baseline':'middle',
-        fill:isToday?'#1a73e8':'#80868b',
+        fill:isToday?'#1A73E8':'#78909C',
         'font-size':'9','font-weight':'700','pointer-events':'none'});
       lt.textContent=KR_DAYS[di]; g.appendChild(lt);
     });
 
     // ── 안쪽 링: 24시간 ──
-    // 각 주 원마다 자신의 선택된 날(or 오늘) 24시간 표시
     const innerDayKey=week.days.some(d=>dateKey(d)===selDate)
       ?selDate
       :(week.days.some(d=>dateKey(d)===todayStr)?todayStr:null);
 
-    for(let h=0;h<24;h++){
-      const aS=A0+h*2*Math.PI/24, aE=A0+(h+1)*2*Math.PI/24;
-      const color=innerDayKey?hourColor(innerDayKey,h):null;
-      const colorDone=innerDayKey?hourColorDone(innerDayKey,h):null;
-      const emptyColor=(h>=6&&h<=22)?'#f1f3f4':'#e8eaed';
-      const fill=color||(colorDone||emptyColor);
-      const path=el('path',{d:annSector(cx,cy,RI1,RI2,aS,aE),
-        fill,
-        'pointer-events':innerDayKey?'all':'none',
-        style:innerDayKey?'cursor:pointer':''});
-      if(color){ path.setAttribute('stroke','white'); path.setAttribute('stroke-width','0.8'); }
-      if(innerDayKey) path.addEventListener('click',e=>{ e.stopPropagation(); selectDate(innerDayKey); });
-      g.appendChild(path);
-    }
+    // 빈 링 배경 (얇은 원형 스트로크)
+    g.appendChild(el('circle',{cx,cy,r:(RI1+RI2)/2,fill:'none',
+      stroke:'#E8EAF6','stroke-width':String(RI2-RI1),'pointer-events':'none'}));
 
-    // 시계 베젤 라벨 & 눈금 (자정/아침/낮/저녁)
-    [{h:0,lbl:'자정'},{h:6,lbl:'아침'},{h:12,lbl:'낮'},{h:18,lbl:'저녁'}].forEach(({h,lbl})=>{
-      const a=A0+h*2*Math.PI/24;
-      // 눈금선 (7일 링 바깥 ~ 흰 베젤)
-      g.appendChild(el('line',{
-        x1:cx+(RO2+1)*Math.cos(a),y1:cy+(RO2+1)*Math.sin(a),
-        x2:cx+(RO2+6)*Math.cos(a),y2:cy+(RO2+6)*Math.sin(a),
-        stroke:'#1a73e8','stroke-width':'1.5','pointer-events':'none'
-      }));
-      // 라벨
-      const lr=RO2+3;
-      const lt=el('text',{x:cx+lr*Math.cos(a),y:cy+lr*Math.sin(a),
-        'text-anchor':'middle','dominant-baseline':'middle',
-        fill:'#1565c0','font-size':'5','font-weight':'900','pointer-events':'none'});
-      lt.textContent=lbl;
-      g.appendChild(lt);
-    });
+    // 할일 있는 시간만 색칠
+    if(innerDayKey){
+      for(let h=0;h<24;h++){
+        const color=hourColor(innerDayKey,h)||hourColorDone(innerDayKey,h);
+        if(!color)continue;
+        const aS=A0+h*2*Math.PI/24, aE=A0+(h+1)*2*Math.PI/24;
+        const hp=el('path',{d:annSector(cx,cy,RI1,RI2,aS,aE),fill:color,
+          style:'cursor:zoom-in'});
+        hp.addEventListener('click',e=>{e.stopPropagation();zoomToWeek(week,()=>selectDate(innerDayKey));});
+        g.appendChild(hp);
+      }
+    }
 
     // 중심 원
     const isThisWeek=week.days.some(d=>dateKey(d)===todayStr);
     const isSelWeek=week.days.some(d=>dateKey(d)===selDate);
-    const centerFill=isSelWeek?'#1a73e8':(isThisWeek?'#4285f4':'#e8eaed');
+    const centerFill=isSelWeek?'#1A73E8':(isThisWeek?'#4285F4':'#B0BEC5');
     const centerD=isSelWeek?new Date(selDate+'T00:00:00'):week.mon;
 
-    const centerCircle=el('circle',{cx,cy,r:RI1-2,fill:centerFill,'pointer-events':'all',style:'cursor:pointer'});
+    const centerCircle=el('circle',{cx,cy,r:RI1-2,fill:centerFill,'pointer-events':'all',style:'cursor:zoom-in'});
     centerCircle.addEventListener('click',e=>{
       e.stopPropagation();
       const dk=isSelWeek?selDate:(dateKey(week.days.find(d=>dateKey(d)===todayStr)||week.days[0]));
-      selectDate(dk);
+      zoomToWeek(week,()=>selectDate(dk));
     });
     g.appendChild(centerCircle);
 
     const wt=el('text',{x:cx,y:cy,'text-anchor':'middle','dominant-baseline':'middle',
-      fill:(isSelWeek||isThisWeek)?'white':'#9aa0a6',
+      fill:(isSelWeek||isThisWeek)?'white':'#CFD8DC',
       'font-size':'7.5','font-weight':'800','pointer-events':'none'});
     wt.textContent=`${centerD.getMonth()+1}/${centerD.getDate()}`;
     g.appendChild(wt);
 
     svg.appendChild(g);
   });
-
-  // 드롭 섀도우 필터
-  const defs=el('defs');
-  defs.innerHTML=`<filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="1" stdDeviation="3" flood-color="rgba(0,0,0,0.12)"/></filter>`;
-  svg.insertBefore(defs,svg.firstChild);
 }
 
 function selectDate(dk){
@@ -437,6 +415,18 @@ function zoomToMonth(mi){
   panY=(vh+60)/2-(bT+bH/2)*ns;
   applyTransform();
   setTimeout(()=>{ svg.style.transition=''; },550);
+}
+
+function zoomToWeek(week,cb){
+  const rim=RO2+12;
+  const vw=window.innerWidth,vh=window.innerHeight;
+  const ns=Math.min(vw/(rim*2),(vh-56)/(rim*2))*0.88;
+  svg.style.transition='transform .4s cubic-bezier(.4,0,.2,1)';
+  scale=ns;
+  panX=vw/2-week.cx*ns;
+  panY=(vh+56)/2-week.cy*ns;
+  applyTransform();
+  setTimeout(()=>{ svg.style.transition=''; if(cb)cb(); },420);
 }
 
 // ── 하단 시트 ────────────────────────────────────────────────
