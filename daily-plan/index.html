@@ -365,22 +365,21 @@ function renderCanvas(){
     const isThisWeek=week.days.some(d=>dateKey(d)===todayStr);
     const isSelWeek=week.days.some(d=>dateKey(d)===selDate);
     const centerFill=isSelWeek?'#1a73e8':(isThisWeek?'#4285f4':'#e8eaed');
-    g.appendChild(el('circle',{cx,cy,r:RI1-2,fill:centerFill,'pointer-events':'all',style:'cursor:pointer'}));
-
-    // 중심: 선택된 날 날짜 표시 (없으면 주 시작일)
     const centerD=isSelWeek?new Date(selDate+'T00:00:00'):week.mon;
-    const wt=el('text',{x:cx,y:cy-1,'text-anchor':'middle','dominant-baseline':'middle',
+
+    const centerCircle=el('circle',{cx,cy,r:RI1-2,fill:centerFill,'pointer-events':'all',style:'cursor:pointer'});
+    centerCircle.addEventListener('click',e=>{
+      e.stopPropagation();
+      const dk=isSelWeek?selDate:(dateKey(week.days.find(d=>dateKey(d)===todayStr)||week.days[0]));
+      selectDate(dk);
+    });
+    g.appendChild(centerCircle);
+
+    const wt=el('text',{x:cx,y:cy,'text-anchor':'middle','dominant-baseline':'middle',
       fill:(isSelWeek||isThisWeek)?'white':'#9aa0a6',
       'font-size':'7.5','font-weight':'800','pointer-events':'none'});
     wt.textContent=`${centerD.getMonth()+1}/${centerD.getDate()}`;
     g.appendChild(wt);
-
-    // 중심 원 탭 → 해당 날 시트 열기
-    g.querySelector('circle:last-of-type')?.addEventListener('click',e=>{
-      e.stopPropagation();
-      const dk=isSelWeek?selDate:dateKey(week.days.find(d=>dateKey(d)===todayStr)||week.days[0]);
-      selectDate(dk);
-    });
 
     svg.appendChild(g);
   });
