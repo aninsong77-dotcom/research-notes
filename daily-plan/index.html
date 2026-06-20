@@ -9,7 +9,7 @@
 <link rel="manifest" href="manifest.json">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
-html,body{width:100%;height:100%;overflow:hidden;background:#111827;touch-action:none;font-family:'Apple SD Gothic Neo','Noto Sans KR',-apple-system,sans-serif;}
+html,body{width:100%;height:100%;overflow:hidden;background:#f1f3f4;touch-action:none;font-family:'Apple SD Gothic Neo','Noto Sans KR',-apple-system,sans-serif;}
 
 /* ── 뷰포트 & 캔버스 ── */
 #vp{position:fixed;inset:0;overflow:hidden;cursor:grab;}
@@ -19,29 +19,31 @@ html,body{width:100%;height:100%;overflow:hidden;background:#111827;touch-action
 /* ── 상단바 ── */
 #topbar{
   position:fixed;top:0;left:0;right:0;z-index:100;
-  height:calc(env(safe-area-inset-top,0px) + 52px);
+  height:calc(env(safe-area-inset-top,0px) + 56px);
   padding-top:env(safe-area-inset-top,0px);
-  background:linear-gradient(180deg,rgba(17,24,39,0.97) 70%,transparent);
+  background:linear-gradient(180deg,rgba(241,243,244,1) 65%,rgba(241,243,244,0));
   display:flex;align-items:center;padding-left:16px;padding-right:12px;gap:8px;
   pointer-events:none;
 }
 #topbar>*{pointer-events:all;}
-#date-label{color:white;font-size:15px;font-weight:800;flex:1;letter-spacing:-.3px;}
+#date-label{color:#202124;font-size:15px;font-weight:800;flex:1;letter-spacing:-.3px;}
 .tbtn{
   width:40px;height:40px;border-radius:50%;border:none;
-  background:rgba(255,255,255,0.12);color:white;cursor:pointer;
+  background:white;color:#5f6368;cursor:pointer;
   display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  box-shadow:0 1px 4px rgba(0,0,0,.18);
 }
-.tbtn:active{background:rgba(255,255,255,0.25);}
-.tbtn.listening{background:#e53935;animation:pulse 1s infinite;}
+.tbtn:active{background:#e8f0fe;}
+.tbtn.listening{background:#e53935;color:white;animation:pulse 1s infinite;}
 @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(229,57,53,.5)}50%{box-shadow:0 0 0 10px rgba(229,57,53,0)}}
 
 /* ── 줌 힌트 ── */
 #hint{
   position:fixed;bottom:16px;left:50%;transform:translateX(-50%);
-  color:rgba(255,255,255,0.35);font-size:12px;font-weight:600;
+  color:#5f6368;font-size:12px;font-weight:600;
   pointer-events:none;z-index:50;transition:opacity .5s;
-  background:rgba(0,0,0,.4);padding:6px 14px;border-radius:20px;
+  background:white;padding:6px 14px;border-radius:20px;
+  box-shadow:0 1px 6px rgba(0,0,0,.15);
 }
 
 /* ── 하단 시트 ── */
@@ -239,8 +241,15 @@ function dayColors(dateStr){
 
 function hourColor(dateStr,h){
   const tasks=(loadPlan(dateStr).tasks||[]);
-  const t=tasks.find(t=>t.time&&parseInt(t.time)===h);
+  // 해당 시간대에 걸치는 모든 할일 (HH:MM → 시 단위 매핑)
+  const t=tasks.find(t=>t.time&&!t.done&&parseInt(t.time.split(':')[0])===h);
   return t?CATS[t.category||'other'].color:null;
+}
+
+function hourColorDone(dateStr,h){
+  const tasks=(loadPlan(dateStr).tasks||[]);
+  const t=tasks.find(t=>t.time&&t.done&&parseInt(t.time.split(':')[0])===h);
+  return t?CATS[t.category||'other'].bg:null; // 완료된 건 연한 색
 }
 
 // ── SVG 유틸 ─────────────────────────────────────────────────
@@ -286,7 +295,7 @@ function renderCanvas(){
 
   // 월 라벨
   KR_MONTHS.forEach((m,mi)=>{
-    const t=el('text',{x:8,y:PAD_T+mi*MONTH_H+24,fill:'rgba(255,255,255,0.45)',
+    const t=el('text',{x:8,y:PAD_T+mi*MONTH_H+22,fill:'#5f6368',
       'font-size':'13','font-weight':'700','font-family':'inherit','pointer-events':'none'});
     t.textContent=m; svg.appendChild(t);
   });
@@ -296,9 +305,9 @@ function renderCanvas(){
     const {cx,cy,days}=week;
     const g=el('g');
 
-    // 배경 원
-    g.appendChild(el('circle',{cx,cy,r:RO2+6,fill:'rgba(255,255,255,0.04)',
-      stroke:'rgba(255,255,255,0.09)','stroke-width':'1'}));
+    // 배경 원 (흰 카드)
+    g.appendChild(el('circle',{cx,cy,r:RO2+8,fill:'white',
+      filter:'url(#shadow)'}));
 
     // ── 바깥 링: 7일 ──
     days.forEach((day,di)=>{
@@ -307,25 +316,32 @@ function renderCanvas(){
       const catKey=dayColors(dk);
       const isToday=dk===todayStr;
       const isPast=day<today0();
-      let fill=catKey?CATS[catKey].color:isPast?'rgba(255,255,255,0.05)':'rgba(255,255,255,0.08)';
+      // 빈 날: 연한 회색(구글 스타일), 과거: 더 연하게
+      let fill=catKey?CATS[catKey].color:isPast?'#dadce0':'#e8eaed';
+      // 완료된 할일만 있는 날은 살짝 투명하게
+      if(catKey){
+        const allDone=(loadPlan(dk).tasks||[]).every(t=>t.done);
+        if(allDone) fill=CATS[catKey].bg||fill;
+      }
 
       const path=el('path',{d:annSector(cx,cy,RO1,RO2,aS,aE),fill,
         'data-date':dk,style:'cursor:pointer'});
-      if(isToday){ path.setAttribute('stroke','#ffd600'); path.setAttribute('stroke-width','2'); }
-      if(dk===selDate){ path.setAttribute('stroke','white'); path.setAttribute('stroke-width','2.5'); }
+      if(isToday){ path.setAttribute('stroke','#1a73e8'); path.setAttribute('stroke-width','2.5'); }
+      if(dk===selDate){ path.setAttribute('stroke','#202124'); path.setAttribute('stroke-width','2.5'); }
       path.addEventListener('click',e=>{ e.stopPropagation(); selectDate(dk); });
       g.appendChild(path);
 
       // 요일 라벨
-      const ma=(aS+aE)/2, lr=RO2+15;
+      const ma=(aS+aE)/2, lr=RO2+16;
       const lt=el('text',{x:cx+lr*Math.cos(ma),y:cy+lr*Math.sin(ma),
         'text-anchor':'middle','dominant-baseline':'middle',
-        fill:isToday?'#ffd600':'rgba(255,255,255,0.45)',
+        fill:isToday?'#1a73e8':'#80868b',
         'font-size':'9','font-weight':'700','pointer-events':'none'});
       lt.textContent=KR_DAYS[di]; g.appendChild(lt);
     });
 
-    // ── 안쪽 링: 24시간 (선택된 날 또는 오늘) ──
+    // ── 안쪽 링: 24시간 ──
+    // 각 주 원마다 자신의 선택된 날(or 오늘) 24시간 표시
     const innerDayKey=week.days.some(d=>dateKey(d)===selDate)
       ?selDate
       :(week.days.some(d=>dateKey(d)===todayStr)?todayStr:null);
@@ -333,9 +349,14 @@ function renderCanvas(){
     for(let h=0;h<24;h++){
       const aS=A0+h*2*Math.PI/24, aE=A0+(h+1)*2*Math.PI/24;
       const color=innerDayKey?hourColor(innerDayKey,h):null;
+      const colorDone=innerDayKey?hourColorDone(innerDayKey,h):null;
+      const emptyColor=(h>=6&&h<=22)?'#f1f3f4':'#e8eaed';
+      const fill=color||(colorDone||emptyColor);
       const path=el('path',{d:annSector(cx,cy,RI1,RI2,aS,aE),
-        fill:color||'rgba(255,255,255,0.07)','pointer-events':innerDayKey?'all':'none',
+        fill,
+        'pointer-events':innerDayKey?'all':'none',
         style:innerDayKey?'cursor:pointer':''});
+      if(color){ path.setAttribute('stroke','white'); path.setAttribute('stroke-width','0.8'); }
       if(innerDayKey) path.addEventListener('click',e=>{ e.stopPropagation(); selectDate(innerDayKey); });
       g.appendChild(path);
     }
@@ -343,18 +364,23 @@ function renderCanvas(){
     // 중심 원
     const isThisWeek=week.days.some(d=>dateKey(d)===todayStr);
     g.appendChild(el('circle',{cx,cy,r:RI1-2,
-      fill:isThisWeek?'#ffd600':'rgba(255,255,255,0.12)',
+      fill:isThisWeek?'#1a73e8':'#e8eaed',
       'pointer-events':'none'}));
 
     // 주 시작일 텍스트 (중심)
     const wt=el('text',{x:cx,y:cy,'text-anchor':'middle','dominant-baseline':'middle',
-      fill:isThisWeek?'#111827':'rgba(255,255,255,0.3)',
+      fill:isThisWeek?'white':'#9aa0a6',
       'font-size':'8','font-weight':'800','pointer-events':'none'});
     wt.textContent=`${week.mon.getMonth()+1}/${week.mon.getDate()}`;
     g.appendChild(wt);
 
     svg.appendChild(g);
   });
+
+  // 드롭 섀도우 필터
+  const defs=el('defs');
+  defs.innerHTML=`<filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="1" stdDeviation="3" flood-color="rgba(0,0,0,0.12)"/></filter>`;
+  svg.insertBefore(defs,svg.firstChild);
 }
 
 function selectDate(dk){
