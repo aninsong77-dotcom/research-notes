@@ -327,7 +327,7 @@ function renderCanvas(){
         const allDone=(loadPlan(dk).tasks||[]).every(t=>t.done);
         if(allDone) fill=CATS[catKey].bg||fill;
       }
-      const path=el('path',{d:annSector(cx,cy,RO1,RO2,aS,aE),fill,'data-date':dk});
+      const path=el('path',{d:annSector(cx,cy,RO1,RO2,aS,aE),fill,'data-date':dk,'data-ring':'outer'});
       if(isToday){ path.setAttribute('stroke','#1A73E8'); path.setAttribute('stroke-width','2.5'); }
       if(dk===selDate){ path.setAttribute('stroke','#202124'); path.setAttribute('stroke-width','2.5'); }
       g.appendChild(path);
@@ -371,11 +371,14 @@ function renderCanvas(){
     wt.textContent=`${centerD.getMonth()+1}/${centerD.getDate()}`;
     g.appendChild(wt);
 
-    // 그룹 클릭: 해당 주 전체 화면 확대
+    // 그룹 클릭: 요일 세그먼트 → 해당일 확대, 그 외 → 주 확대
     g.addEventListener('click',e=>{
       e.stopPropagation();
       const dk=e.target.getAttribute('data-date');
-      zoomToWeek(week, dk ? ()=>selectDate(dk) : undefined);
+      const isOuter=e.target.getAttribute('data-ring')==='outer';
+      if(dk && isOuter) zoomToDay(week, ()=>selectDate(dk));
+      else if(dk) zoomToWeek(week, ()=>selectDate(dk));
+      else zoomToWeek(week);
     });
 
     svg.appendChild(g);
@@ -406,6 +409,23 @@ function zoomToMonth(mi){
   panY=(vh+60)/2-(bT+bH/2)*ns;
   applyTransform();
   setTimeout(()=>{ svg.style.transition=''; },550);
+}
+
+function zoomToDay(week,cb){
+  const vw=window.innerWidth,vh=window.innerHeight;
+  const ts=Math.min(vw/(RO2*2),(vh-56)/(RO2*2))*0.94;
+  const tx=vw/2-week.cx*ts,ty=(vh+56)/2-week.cy*ts;
+  const s0=scale,x0=panX,y0=panY;
+  const dur=360,t0=performance.now();
+  function ease(t){return t<.5?2*t*t:1-2*(1-t)*(1-t);}
+  function frame(now){
+    const p=Math.min((now-t0)/dur,1),e=ease(p);
+    scale=s0+(ts-s0)*e; panX=x0+(tx-x0)*e; panY=y0+(ty-y0)*e;
+    applyTransform();
+    if(p<1)requestAnimationFrame(frame);
+    else if(cb)cb();
+  }
+  requestAnimationFrame(frame);
 }
 
 function zoomToWeek(week,cb){
