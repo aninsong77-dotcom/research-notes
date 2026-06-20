@@ -190,6 +190,14 @@ const CATS = {
 const CAT_ORDER = ['school','manage','home','other'];
 const KR_MONTHS = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
 const KR_DAYS   = ['월','화','수','목','금','토','일'];
+const MONTH_COLORS=[
+  {c:'#1A73E8',bg:'#E8F0FE'},{c:'#D93025',bg:'#FCE8E6'},
+  {c:'#1E8E3E',bg:'#E6F4EA'},{c:'#F9AB00',bg:'#FEF9E0'},
+  {c:'#1A73E8',bg:'#E8F0FE'},{c:'#D93025',bg:'#FCE8E6'},
+  {c:'#1E8E3E',bg:'#E6F4EA'},{c:'#F9AB00',bg:'#FEF9E0'},
+  {c:'#1A73E8',bg:'#E8F0FE'},{c:'#D93025',bg:'#FCE8E6'},
+  {c:'#1E8E3E',bg:'#E6F4EA'},{c:'#F9AB00',bg:'#FEF9E0'},
+];
 const KR_NUMS   = {한:1,두:2,세:3,네:4,다섯:5,여섯:6,일곱:7,여덟:8,아홉:9,열:10,열한:11,열두:12};
 
 // ── 지오메트리 상수 ──────────────────────────────────────────
@@ -293,27 +301,36 @@ function renderCanvas(){
   bg.addEventListener('click',closeSheet);
   svg.appendChild(bg);
 
-  // 월 라벨 (클릭 → 해당 월 확대)
+  // 월별 배경 + 라벨
   KR_MONTHS.forEach((m,mi)=>{
+    const mc=MONTH_COLORS[mi];
+    // 월 배경 rect
+    svg.appendChild(el('rect',{
+      x:0,y:PAD_T+mi*MONTH_H+4,width:W,height:MONTH_H-8,
+      fill:mc.bg,rx:'10','pointer-events':'none'
+    }));
+    // 클릭 영역
     const mArea=el('rect',{x:0,y:PAD_T+mi*MONTH_H,width:PAD_L-4,height:38,
       fill:'transparent','pointer-events':'all',style:'cursor:pointer'});
     mArea.addEventListener('click',e=>{e.stopPropagation();zoomToMonth(mi);});
     svg.appendChild(mArea);
-    const t=el('text',{x:8,y:PAD_T+mi*MONTH_H+22,fill:'#1a73e8',
+    // 라벨
+    const t=el('text',{x:8,y:PAD_T+mi*MONTH_H+22,fill:mc.c,
       'font-size':'13','font-weight':'700','font-family':'inherit','pointer-events':'none'});
     t.textContent=m; svg.appendChild(t);
   });
 
   // 주 원 렌더
   weeks.forEach((week,wi)=>{
-    const {cx,cy,days}=week;
+    const {cx,cy,days,month}=week;
+    const mc=MONTH_COLORS[month];
     const g=el('g');
     g.style.cursor='pointer';
 
     // 배경 히트 영역
     g.appendChild(el('circle',{cx,cy,r:RO2+8,fill:'rgba(0,0,0,0)','pointer-events':'all'}));
     g.appendChild(el('circle',{cx,cy,r:RO2+8,fill:'none',
-      stroke:'#E0E0E0','stroke-width':'0.8','pointer-events':'none'}));
+      stroke:mc.c,'stroke-width':'1.5',opacity:'0.45','pointer-events':'none'}));
 
     // ── 바깥 링: 7일 ──
     days.forEach((day,di)=>{
