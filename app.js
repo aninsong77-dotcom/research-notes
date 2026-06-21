@@ -1608,42 +1608,48 @@ function renderMindmapView(container) {
 
 function mmDraw(focusId = null) {
     if (!_mmCont || !_mmTree) return;
-    mmCalcH(_mmTree);
 
-    const rKids = (_mmTree.children || []).filter(c => (c.side || 'r') !== 'l');
-    const lKids = (_mmTree.children || []).filter(c => c.side === 'l');
-    const rH = mmSideH(rKids), lH = mmSideH(lKids);
-    const PAD = 60;
-    const rootX  = PAD + mmLDepth(lKids) * (MM_NW + MM_HGAP);
-    const rootCY = Math.max(rH, lH, MM_NH) / 2 + PAD;
+    const PAD = 40;
+    const topNodes = _mmTree.children || [];
+    const hasSel = !!_mmSel;
 
-    _mmTree._x = rootX; _mmTree._y = rootCY - MM_NH / 2;
-
-    // 오른쪽 가지 배치
-    let ry = rootCY - rH / 2;
-    for (const c of rKids) {
-        ry += (c._h || MM_NH) / 2;
-        mmPosR(c, rootX + MM_NW + MM_HGAP, ry);
-        ry += (c._h || MM_NH) / 2 + MM_VGAP;
+    // 빈 상태 — 노드가 하나도 없을 때
+    if (topNodes.length === 0) {
+        _mmCont.innerHTML = `
+            <div class="mm-wrap">
+                <div class="mm-bar">
+                    <button class="btn-primary" id="mm-add-r">노드 추가</button>
+                    <button class="btn-secondary" id="mm-add-sib" style="display:none">형제 추가</button>
+                    <button class="btn-secondary" id="mm-rename" style="display:none">이름 변경</button>
+                    <button class="btn-secondary" id="mm-del" style="display:none">삭제</button>
+                </div>
+                <div class="mm-area" id="mm-area" tabindex="0"
+                     style="display:flex;align-items:center;justify-content:center;min-height:260px">
+                    <div style="color:var(--text-muted);text-align:center;line-height:2">
+                        「노드 추가」를 누르거나 <kbd>Tab</kbd>으로 첫 노드를 추가하세요
+                    </div>
+                </div>
+            </div>`;
+        tmmBind(_mmCont);
+        return;
     }
-    // 왼쪽 가지 배치
-    let ly = rootCY - lH / 2;
-    for (const c of lKids) {
-        ly += (c._h || MM_NH) / 2;
-        mmPosL(c, rootX - MM_HGAP, ly);
-        ly += (c._h || MM_NH) / 2 + MM_VGAP;
-    }
 
-    const all  = mmCollect(_mmTree);
+    // 각 최상위 노드 높이 계산 후 세로로 쌓기
+    topNodes.forEach(n => mmCalcH(n));
+    let curY = PAD;
+    topNodes.forEach(n => {
+        mmPosR(n, PAD, curY + n._h / 2);
+        curY += n._h + MM_VGAP * 2;
+    });
+
+    const all = topNodes.flatMap(n => mmCollect(n));
     const maxX = Math.max(...all.map(({n}) => n._x + MM_NW)) + PAD;
-    const maxY = Math.max(...all.map(({n}) => n._y + MM_NH)) + PAD;
+    const maxY = curY + PAD;
 
-    // SVG 연결선 — 방향에 따라 베지어 시작/끝 반전
+    // SVG 연결선
     const edges = all.filter(({p}) => p).map(({n, p}) => {
-        const side = mmGetSide(n.id);
-        const x1 = side === 'l' ? p._x        : p._x + MM_NW;
-        const x2 = side === 'l' ? n._x + MM_NW : n._x;
-        const y1 = p._y + MM_NH / 2, y2 = n._y + MM_NH / 2;
+        const x1 = p._x + MM_NW, y1 = p._y + MM_NH / 2;
+        const x2 = n._x,          y2 = n._y + MM_NH / 2;
         const mx = (x1 + x2) / 2;
         return `<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}"
                      fill="none" stroke="${p.color}" stroke-width="2.5" opacity="0.5"/>`;
@@ -1651,36 +1657,24 @@ function mmDraw(focusId = null) {
 
     // 노드 HTML
     const nodeEls = all.map(({n}) => {
-        const sel         = n.id === _mmSel;
-        const isRoot      = n.id === _mmTree.id;
-        const side        = isRoot ? 'r' : mmGetSide(n.id);
-        const isRootChild = !isRoot && (_mmTree.children || []).some(c => c.id === n.id);
-        const hasCh       = (n.children || []).length > 0;
-
-        // 접기 버튼: 왼쪽 노드는 노드 왼쪽에, 오른쪽 노드는 오른쪽에
-        const colIcon = n.collapsed ? (side === 'l' ? '◀' : '▶') : '▼';
-        const colBtn  = hasCh && !isRoot
-            ? `<button class="mm-col-btn${side === 'l' ? ' mm-col-l' : ''}" data-id="${n.id}" title="${n.collapsed ? '펼치기' : '접기'}">${colIcon}</button>`
+        const sel    = n.id === _mmSel;
+        const hasCh  = (n.children || []).length > 0;
+        const colBtn = hasCh
+            ? `<button class="mm-col-btn" data-id="${n.id}" title="${n.collapsed ? '펼치기' : '접기'}">${n.collapsed ? '▶' : '▼'}</button>`
             : '';
-
-        // 팔레트: 루트 직계 자식에만 방향 전환 버튼 추가
-        const flipBtn = sel && isRootChild
-            ? `<button class="mm-flip" data-id="${n.id}" title="${side === 'l' ? '오른쪽으로 이동' : '왼쪽으로 이동'}">${side === 'l' ? '→' : '←'}</button>`
-            : '';
-        const palette = sel && !isRoot ? `<div class="mm-palette">
-            ${flipBtn}
+        const palette = sel ? `<div class="mm-palette">
             ${MM_COLORS.map((c, i) =>
                 `<button class="mm-cdot${n.color===c?' active':''}" data-id="${n.id}" data-color="${c}"
                  style="background:${c}" title="${MM_COLOR_LABELS[i]}"></button>`
             ).join('')}
         </div>` : '';
 
-        return `<div class="mm-node${sel?' mm-sel':''}${isRoot?' mm-root':''}" data-id="${n.id}"
+        return `<div class="mm-node${sel ? ' mm-sel' : ''}" data-id="${n.id}"
                     style="left:${n._x}px;top:${n._y}px;width:${MM_NW}px;height:${MM_NH}px;
-                           border-color:${n.color};${isRoot?`background:${n.color};`:''}">
+                           border-color:${n.color};${sel ? `background:${n.color};` : ''}">
             ${colBtn}
             <span class="mm-ntxt" data-id="${n.id}"
-                  style="${isRoot?'color:#fff;font-weight:700;':''}">${escHtml(n.text||'(빈 노드)')}</span>
+                  style="${sel ? 'color:#fff;' : ''}">${escHtml(n.text || '(빈 노드)')}</span>
             ${palette}
         </div>`;
     }).join('');
@@ -1688,11 +1682,10 @@ function mmDraw(focusId = null) {
     _mmCont.innerHTML = `
         <div class="mm-wrap">
             <div class="mm-bar">
-                <button class="btn-primary"   id="mm-add-r"  title="오른쪽으로 하위 노드 추가 (Tab)">하위 추가 →</button>
-                <button class="btn-secondary" id="mm-add-l"  title="왼쪽으로 하위 노드 추가">← 하위 추가</button>
-                <button class="btn-secondary" id="mm-add-sib" title="같은 방향으로 형제 노드 추가 (Enter)">형제 추가</button>
-                <button class="btn-secondary" id="mm-rename" title="선택 노드 이름 변경 (F2)">이름 변경</button>
-                <button class="btn-secondary" id="mm-del"    title="선택 노드 삭제 (Delete)">삭제</button>
+                <button class="btn-primary"   id="mm-add-r"   title="${hasSel ? '하위 노드 추가 (Tab)' : '새 노드 추가 (Tab)'}">${hasSel ? '하위 추가' : '노드 추가'}</button>
+                <button class="btn-secondary" id="mm-add-sib" title="형제 노드 추가 (Enter)"${hasSel ? '' : ' style="display:none"'}>형제 추가</button>
+                <button class="btn-secondary" id="mm-rename"  title="이름 변경 (F2)"${hasSel ? '' : ' style="display:none"'}>이름 변경</button>
+                <button class="btn-secondary" id="mm-del"     title="삭제 (Delete)"${hasSel ? '' : ' style="display:none"'}>삭제</button>
                 <span class="mm-hint"><kbd>Tab</kbd>하위 · <kbd>Enter</kbd>형제 · <kbd>Del</kbd>삭제 · <kbd>F2</kbd>/더블클릭 편집</span>
             </div>
             <div class="mm-area" id="mm-area" tabindex="0">
@@ -1717,109 +1710,106 @@ function tmmBind(container) {
     const canvas = container.querySelector('#mm-canvas');
     area.focus();
 
-    canvas.addEventListener('click', e => {
-        const colBtn = e.target.closest('.mm-col-btn');
-        const cdot   = e.target.closest('.mm-cdot');
-        const flip   = e.target.closest('.mm-flip');
-        const node   = e.target.closest('.mm-node');
+    if (canvas) {
+        canvas.addEventListener('click', e => {
+            const colBtn = e.target.closest('.mm-col-btn');
+            const cdot   = e.target.closest('.mm-cdot');
+            const node   = e.target.closest('.mm-node');
 
-        if (colBtn) {
-            const n = mmFind(_mmTree, colBtn.dataset.id);
-            if (n) { n.collapsed = !n.collapsed; mmSave(); mmDraw(_mmSel); }
-            e.stopPropagation(); return;
-        }
-        if (cdot) {
-            const n = mmFind(_mmTree, cdot.dataset.id);
-            if (n) { n.color = cdot.dataset.color; mmSave(); mmDraw(_mmSel); }
-            e.stopPropagation(); return;
-        }
-        if (flip) {
-            const n = mmFind(_mmTree, flip.dataset.id);
-            if (n) { n.side = n.side === 'l' ? 'r' : 'l'; mmSave(); mmDraw(_mmSel); }
-            e.stopPropagation(); return;
-        }
-        if (node) { _mmSel = node.dataset.id; mmDraw(_mmSel); return; }
-        _mmSel = null; mmDraw();
-    });
+            if (colBtn) {
+                const n = mmFind(_mmTree, colBtn.dataset.id);
+                if (n) { n.collapsed = !n.collapsed; mmSave(); mmDraw(_mmSel); }
+                e.stopPropagation(); return;
+            }
+            if (cdot) {
+                const n = mmFind(_mmTree, cdot.dataset.id);
+                if (n) { n.color = cdot.dataset.color; mmSave(); mmDraw(_mmSel); }
+                e.stopPropagation(); return;
+            }
+            if (node) { _mmSel = node.dataset.id; mmDraw(_mmSel); return; }
+            _mmSel = null; mmDraw();
+        });
 
-    // 더블클릭 → 인라인 편집 (click 후 재렌더링 때문에 data-id만 추출 후 mmDoEdit 위임)
-    canvas.addEventListener('dblclick', e => {
-        const node = e.target.closest('.mm-node');
-        if (!node) return;
-        mmDoEdit(node.dataset.id);
-    });
+        // 더블클릭 → 인라인 편집
+        canvas.addEventListener('dblclick', e => {
+            const node = e.target.closest('.mm-node');
+            if (!node) return;
+            mmDoEdit(node.dataset.id);
+        });
+    }
 
     // 키보드 단축키
     area.addEventListener('keydown', e => {
         if (_mmEdit) return;
         const selNode = _mmSel ? mmFind(_mmTree, _mmSel) : null;
-        const selSide = _mmSel && _mmSel !== _mmTree.id ? mmGetSide(_mmSel) : 'r';
 
         if (e.key === 'Tab') {
             e.preventDefault();
             const parent = selNode || _mmTree;
-            const child  = mmNew('새 노드', selSide);
-            child.color  = parent.color;
+            const child  = mmNew('새 노드');
+            child.color  = selNode ? selNode.color : MM_COLORS[(_mmTree.children.length) % MM_COLORS.length];
             parent.collapsed = false;
             (parent.children = parent.children || []).push(child);
             _mmSel = child.id; mmSave(); mmDraw(child.id);
-            setTimeout(() => mmStartEdit(child.id), 60);
+            setTimeout(() => mmDoEdit(child.id), 80);
         }
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
-            if (!_mmSel || _mmSel === _mmTree.id) return;
+            if (!_mmSel) return;
             const par = mmParent(_mmTree, _mmSel);
-            if (!par) return;
+            if (!par) {
+                // 최상위 노드 → root에 형제 추가
+                const idx = _mmTree.children.findIndex(c => c.id === _mmSel);
+                const sib = mmNew('새 노드'); sib.color = selNode?.color || MM_COLORS[_mmTree.children.length % MM_COLORS.length];
+                _mmTree.children.splice(idx + 1, 0, sib);
+                _mmSel = sib.id; mmSave(); mmDraw(sib.id);
+                setTimeout(() => mmDoEdit(sib.id), 80);
+                return;
+            }
             const idx = par.children.findIndex(c => c.id === _mmSel);
-            const sib = mmNew('새 노드', selSide); sib.color = selNode?.color || MM_COLORS[0];
+            const sib = mmNew('새 노드'); sib.color = selNode?.color || MM_COLORS[0];
             par.children.splice(idx + 1, 0, sib);
             _mmSel = sib.id; mmSave(); mmDraw(sib.id);
-            setTimeout(() => mmStartEdit(sib.id), 60);
+            setTimeout(() => mmDoEdit(sib.id), 80);
         }
-        if ((e.key === 'Delete' || e.key === 'Backspace') && _mmSel && _mmSel !== _mmTree.id) {
+        if ((e.key === 'Delete' || e.key === 'Backspace') && _mmSel) {
             const par = mmParent(_mmTree, _mmSel);
             mmRemove(_mmTree, _mmSel);
-            _mmSel = par?.id || _mmTree.id;
+            _mmSel = par && par.id !== 'root' ? par.id : null;
             mmSave(); mmDraw(_mmSel);
         }
-        if (e.key === 'F2' && _mmSel) { setTimeout(() => mmStartEdit(_mmSel), 30); }
+        if (e.key === 'F2' && _mmSel) { setTimeout(() => mmDoEdit(_mmSel), 30); }
     });
 
     // 툴바 버튼
-    const mmAddChild = (forceSide) => {
+    container.querySelector('#mm-add-r')?.addEventListener('click', () => {
         const selNode = _mmSel ? mmFind(_mmTree, _mmSel) : null;
-        const isRoot  = !_mmSel || _mmSel === _mmTree.id;
-        const side    = forceSide ?? (isRoot ? 'r' : mmGetSide(_mmSel));
         const parent  = selNode || _mmTree;
-        const child   = mmNew('새 노드', side);
-        child.color   = MM_COLORS[(_mmTree.children.length) % MM_COLORS.length];
+        const child   = mmNew('새 노드');
+        child.color   = selNode ? selNode.color : MM_COLORS[(_mmTree.children.length) % MM_COLORS.length];
         parent.collapsed = false;
         (parent.children = parent.children || []).push(child);
         _mmSel = child.id; mmSave(); mmDraw(child.id);
-        setTimeout(() => mmStartEdit(child.id), 60);
-    };
-    container.querySelector('#mm-add-r')?.addEventListener('click', () => mmAddChild('r'));
-    container.querySelector('#mm-add-l')?.addEventListener('click', () => mmAddChild('l'));
+        setTimeout(() => mmDoEdit(child.id), 80);
+    });
     container.querySelector('#mm-add-sib')?.addEventListener('click', () => {
-        if (!_mmSel || _mmSel === _mmTree.id) return;
-        const par  = mmParent(_mmTree, _mmSel);
-        if (!par) return;
-        const side = mmGetSide(_mmSel);
-        const idx  = par.children.findIndex(c => c.id === _mmSel);
-        const sib  = mmNew('새 노드', side); sib.color = mmFind(_mmTree, _mmSel)?.color || MM_COLORS[0];
+        if (!_mmSel) return;
+        const selNode = mmFind(_mmTree, _mmSel);
+        const par     = mmParent(_mmTree, _mmSel) || _mmTree;
+        const idx     = par.children.findIndex(c => c.id === _mmSel);
+        const sib     = mmNew('새 노드'); sib.color = selNode?.color || MM_COLORS[0];
         par.children.splice(idx + 1, 0, sib);
         _mmSel = sib.id; mmSave(); mmDraw(sib.id);
-        setTimeout(() => mmStartEdit(sib.id), 60);
+        setTimeout(() => mmDoEdit(sib.id), 80);
     });
     container.querySelector('#mm-rename')?.addEventListener('click', () => {
-        const id = _mmSel || _mmTree.id;
-        mmDoEdit(id);
+        if (_mmSel) mmDoEdit(_mmSel);
     });
     container.querySelector('#mm-del')?.addEventListener('click', () => {
-        if (!_mmSel || _mmSel === _mmTree.id) { showToast('중심 노드는 삭제할 수 없어요\n(더블클릭 또는 이름 변경 버튼으로 텍스트 수정 가능)', 'warn'); return; }
+        if (!_mmSel) return;
         const par = mmParent(_mmTree, _mmSel);
         mmRemove(_mmTree, _mmSel);
-        _mmSel = par?.id || _mmTree.id;
+        _mmSel = par && par.id !== 'root' ? par.id : null;
         mmSave(); mmDraw(_mmSel);
     });
 }
@@ -1835,7 +1825,7 @@ function mmDoEdit(id) {
         const inp = document.createElement('input');
         inp.className = 'mm-inp';
         inp.value     = n.text;
-        inp.style.color = n.id === _mmTree.id ? '#fff' : 'var(--text-primary)';
+        inp.style.color = 'var(--text-primary)';
         span.replaceWith(inp);
         inp.focus(); inp.select();
         const commit = () => {
