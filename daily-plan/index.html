@@ -127,6 +127,65 @@ html,body{width:100%;height:100%;overflow:hidden;background:#f1f3f4;touch-action
   font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;
 }
 
+/* ── 데이 패널 ── */
+#dpanel{
+  position:fixed;bottom:0;left:0;right:0;z-index:200;
+  height:43vh;background:#fff;border-radius:22px 22px 0 0;
+  box-shadow:0 -4px 28px rgba(0,0,0,.16);
+  transform:translateY(100%);transition:transform .35s cubic-bezier(.4,0,.2,1);
+  display:flex;flex-direction:column;
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+#dpanel.open{transform:translateY(0);}
+#dp-handle{width:38px;height:4px;border-radius:2px;background:#e0e0e0;margin:10px auto 4px;flex-shrink:0;}
+#dp-head{padding:0 16px 6px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+#dp-date{font-size:15px;font-weight:800;color:#202124;}
+#dp-close{border:none;background:none;font-size:24px;color:#b0bec5;cursor:pointer;line-height:1;padding:2px 6px;}
+#dp-cards{
+  flex:1;overflow-x:auto;overflow-y:hidden;
+  display:flex;align-items:stretch;gap:10px;padding:4px 16px;
+  scrollbar-width:none;
+}
+#dp-cards::-webkit-scrollbar{display:none;}
+.dcard{
+  flex-shrink:0;width:96px;background:#f8f9fa;border-radius:16px;
+  padding:10px 8px 10px;display:flex;flex-direction:column;align-items:center;gap:5px;
+  border-top:4px solid var(--cc,#b0bec5);position:relative;
+  transition:opacity .2s;
+}
+.dcard.done{opacity:.42;}
+.dcard-icon{font-size:28px;line-height:1.1;}
+.dcard-title{font-size:11px;font-weight:700;color:#37474f;text-align:center;word-break:break-all;line-height:1.3;flex:1;}
+.dcard-time{font-size:10px;color:#90a4ae;font-weight:600;}
+.dcard-chk{
+  position:absolute;top:6px;right:6px;width:20px;height:20px;border-radius:50%;
+  border:2px solid #cfd8dc;background:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;color:transparent;font-size:10px;font-weight:700;
+  transition:all .15s;
+}
+.dcard-chk.on{background:var(--cc);border-color:var(--cc);color:white;}
+.dcard-empty{
+  flex-shrink:0;width:160px;border-radius:16px;background:#f8f9fa;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:6px;padding:16px;color:#b0bec5;font-size:12px;font-weight:600;text-align:center;
+}
+#dp-add{
+  display:flex;gap:8px;padding:8px 12px 10px;flex-shrink:0;
+  border-top:1px solid #f1f3f4;
+}
+#dp-inp{
+  flex:1;border:2px solid #e8eaed;border-radius:14px;
+  padding:9px 12px;font-size:14px;font-family:inherit;outline:none;color:#37474f;background:#f8f9fa;
+}
+#dp-inp:focus{border-color:#4285F4;background:white;}
+#dp-inp::-webkit-search-cancel-button{display:none;}
+#dp-addbtn{
+  width:40px;height:40px;border-radius:50%;border:none;flex-shrink:0;
+  background:#4285F4;color:white;font-size:22px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 2px 8px rgba(66,133,244,.35);
+}
+
 /* ── 토스트 ── */
 #toast{
   position:fixed;bottom:24px;left:50%;
@@ -165,6 +224,19 @@ html,body{width:100%;height:100%;overflow:hidden;background:#f1f3f4;touch-action
     <button id="add-btn" aria-label="추가">+</button>
   </div>
   <div id="sh-tasks"></div>
+</div>
+
+<div id="dpanel">
+  <div id="dp-handle"></div>
+  <div id="dp-head">
+    <div id="dp-date"></div>
+    <button id="dp-close" aria-label="닫기">×</button>
+  </div>
+  <div id="dp-cards"></div>
+  <div id="dp-add">
+    <input id="dp-inp" type="search" placeholder="할 일 추가…" autocomplete="off" spellcheck="false">
+    <button id="dp-addbtn" aria-label="추가">+</button>
+  </div>
 </div>
 
 <div id="vover">
@@ -298,7 +370,7 @@ function renderCanvas(){
 
   // 배경 클릭 (시트 닫기)
   const bg=el('rect',{x:0,y:0,width:W,height:H,fill:'transparent'});
-  bg.addEventListener('click',closeSheet);
+  bg.addEventListener('click',()=>{ closeSheet(); closeDayPanel(); });
   svg.appendChild(bg);
 
   // 월별 배경 + 라벨
@@ -312,7 +384,7 @@ function renderCanvas(){
     // 클릭 영역
     const mArea=el('rect',{x:0,y:PAD_T+mi*MONTH_H,width:PAD_L-4,height:38,
       fill:'transparent','pointer-events':'all',style:'cursor:pointer'});
-    mArea.addEventListener('click',e=>{e.stopPropagation();zoomToMonth(mi);});
+    mArea.addEventListener('click',e=>{e.stopPropagation();closeSheet();closeDayPanel();zoomToMonth(mi);});
     svg.appendChild(mArea);
     // 라벨
     const t=el('text',{x:8,y:PAD_T+mi*MONTH_H+22,fill:mc.c,
@@ -388,14 +460,12 @@ function renderCanvas(){
     wt.textContent=`${centerD.getMonth()+1}/${centerD.getDate()}`;
     g.appendChild(wt);
 
-    // 그룹 클릭: 요일 세그먼트 → 해당일 확대, 그 외 → 주 확대
+    // 그룹 클릭: 모두 데이 패널로
     g.addEventListener('click',e=>{
       e.stopPropagation();
-      const dk=e.target.getAttribute('data-date');
-      const isOuter=e.target.getAttribute('data-ring')==='outer';
-      if(dk && isOuter) zoomToDay(week, ()=>selectDate(dk));
-      else if(dk) zoomToWeek(week, ()=>selectDate(dk));
-      else zoomToWeek(week);
+      const dk=e.target.getAttribute('data-date')||
+        (week.days.some(d=>dateKey(d)===selDate)?selDate:dateKey(week.days[0]));
+      zoomToDay(week,dk);
     });
 
     svg.appendChild(g);
@@ -405,7 +475,6 @@ function renderCanvas(){
 function selectDate(dk){
   selDate=dk;
   renderCanvas();
-  openSheet(dk);
   applyTransform();
 }
 
@@ -428,10 +497,14 @@ function zoomToMonth(mi){
   setTimeout(()=>{ svg.style.transition=''; },550);
 }
 
-function zoomToDay(week,cb){
+function zoomToDay(week,dk){
   const vw=window.innerWidth,vh=window.innerHeight;
-  const ts=Math.min(vw/(RO2*2),(vh-56)/(RO2*2))*0.94;
-  const tx=vw/2-week.cx*ts,ty=(vh+56)/2-week.cy*ts;
+  const panelH=vh*0.43;
+  const availH=vh-panelH-56;
+  const dia=RO2*2;
+  const ts=Math.min(vw/dia,availH/dia)*0.85;
+  const tx=vw/2-week.cx*ts;
+  const ty=56+availH/2-week.cy*ts;
   const s0=scale,x0=panX,y0=panY;
   const dur=360,t0=performance.now();
   function ease(t){return t<.5?2*t*t:1-2*(1-t)*(1-t);}
@@ -439,8 +512,8 @@ function zoomToDay(week,cb){
     const p=Math.min((now-t0)/dur,1),e=ease(p);
     scale=s0+(ts-s0)*e; panX=x0+(tx-x0)*e; panY=y0+(ty-y0)*e;
     applyTransform();
-    if(p<1)requestAnimationFrame(frame);
-    else if(cb)cb();
+    if(p<1) requestAnimationFrame(frame);
+    else { dpWeek=week; selectDate(dk); openDayPanel(dk); }
   }
   requestAnimationFrame(frame);
 }
@@ -463,10 +536,60 @@ function zoomToWeek(week,cb){
   requestAnimationFrame(frame);
 }
 
+// ── 데이 패널 ─────────────────────────────────────────────────
+let dpDk=null, dpWeek=null;
+const dpanel=document.getElementById('dpanel');
+
+function openDayPanel(dk){
+  dpDk=dk;
+  const d=new Date(dk+'T00:00:00');
+  document.getElementById('dp-date').textContent=
+    d.toLocaleDateString('ko-KR',{month:'long',day:'numeric',weekday:'long'});
+  renderDayPanel(dk);
+  dpanel.classList.add('open');
+  const plan=loadPlan(dk);
+  const n=(plan.tasks||[]).filter(t=>!t.done).length;
+  speak(n?`${d.toLocaleDateString('ko-KR',{month:'long',day:'numeric'})}, 할 일 ${n}가지`
+        :`${d.toLocaleDateString('ko-KR',{month:'long',day:'numeric'})}, 할 일이 없어요`);
+}
+
+function closeDayPanel(){
+  dpanel.classList.remove('open');
+  dpDk=null;
+}
+
+function renderDayPanel(dk){
+  const cards=document.getElementById('dp-cards');
+  const plan=loadPlan(dk);
+  const tasks=plan.tasks||[];
+  if(!tasks.length){
+    cards.innerHTML=`<div class="dcard-empty"><span style="font-size:32px">📝</span><div>할 일이 없어요</div><div style="font-size:11px;color:#ccc">아래에서 추가해보세요</div></div>`;
+    return;
+  }
+  cards.innerHTML=tasks.map(t=>{
+    const ci=CATS[t.category||'other'];
+    const icon=CAT_ICONS[t.category||'other'];
+    return `<div class="dcard${t.done?' done':''}" style="--cc:${ci.color}">
+      <button class="dcard-chk${t.done?' on':''}" data-tid="${esc(t.id)}">${t.done?'✓':''}</button>
+      <div class="dcard-icon">${icon}</div>
+      <div class="dcard-title">${esc(t.title)}</div>
+      ${t.time?`<div class="dcard-time">${t.time}</div>`:''}
+    </div>`;
+  }).join('');
+  cards.querySelectorAll('.dcard-chk').forEach(b=>{
+    b.onclick=()=>{
+      const t=plan.tasks.find(x=>x.id===b.dataset.tid);
+      if(t){t.done=!t.done;savePlan(dk,plan);renderDayPanel(dk);
+        speak(t.done?`${t.title} 완료했어요`:`${t.title} 다시 열었어요`);}
+    };
+  });
+}
+
 // ── 하단 시트 ────────────────────────────────────────────────
 const sheet=document.getElementById('sheet');
 
 function openSheet(dk){
+  closeDayPanel();
   const d=new Date(dk+'T00:00:00');
   document.getElementById('sh-title').textContent=
     d.toLocaleDateString('ko-KR',{month:'long',day:'numeric',weekday:'long'});
@@ -737,6 +860,17 @@ document.getElementById('add-btn').onclick=()=>{
 };
 document.getElementById('add-inp').addEventListener('keydown',e=>{
   if(e.key==='Enter')document.getElementById('add-btn').click();
+});
+document.getElementById('dp-close').onclick=()=>{
+  closeDayPanel();
+  if(dpWeek) zoomToWeek(dpWeek);
+};
+document.getElementById('dp-addbtn').onclick=()=>{
+  const v=document.getElementById('dp-inp').value.trim();
+  if(v&&dpDk){addTask(dpDk,v);document.getElementById('dp-inp').value='';renderDayPanel(dpDk);}
+};
+document.getElementById('dp-inp').addEventListener('keydown',e=>{
+  if(e.key==='Enter')document.getElementById('dp-addbtn').click();
 });
 
 // ── 토스트 ───────────────────────────────────────────────────

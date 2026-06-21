@@ -1,5 +1,5 @@
 // 일일계획 Service Worker
-const CACHE = 'dailyplan-v15';
+const CACHE = 'dailyplan-v16';
 const FILES = ['./', './index.html', './manifest.json'];
 
 self.addEventListener('install', e => {
