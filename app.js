@@ -1552,7 +1552,7 @@ async function tmmLoad() {
         tx.objectStore(STORE_POSTITS).get('mm_' + state.currentProjectId).onsuccess = e => {
             const rec = e.target.result;
             const projName = (state.projects || []).find(p => p.id === state.currentProjectId)?.name || '연구 주제';
-            _mmTree = rec?.tree || { id: 'root', text: projName, color: MM_COLORS[0], collapsed: false, children: [] };
+            _mmTree = rec?.tree || { id: 'root', text: '중심 주제', color: MM_COLORS[0], collapsed: false, children: [] };
             resolve();
         };
     });
@@ -1691,8 +1691,9 @@ function mmDraw(focusId = null) {
                 <button class="btn-primary"   id="mm-add-r"  title="오른쪽으로 하위 노드 추가 (Tab)">하위 추가 →</button>
                 <button class="btn-secondary" id="mm-add-l"  title="왼쪽으로 하위 노드 추가">← 하위 추가</button>
                 <button class="btn-secondary" id="mm-add-sib" title="같은 방향으로 형제 노드 추가 (Enter)">형제 추가</button>
+                <button class="btn-secondary" id="mm-rename" title="선택 노드 이름 변경 (F2)">이름 변경</button>
                 <button class="btn-secondary" id="mm-del"    title="선택 노드 삭제 (Delete)">삭제</button>
-                <span class="mm-hint"><kbd>Tab</kbd>하위 · <kbd>Enter</kbd>형제 · <kbd>Del</kbd>삭제 · <kbd>F2</kbd>편집 · 노드 선택 후 ←/→ 팔레트로 방향 전환</span>
+                <span class="mm-hint"><kbd>Tab</kbd>하위 · <kbd>Enter</kbd>형제 · <kbd>Del</kbd>삭제 · <kbd>F2</kbd>/더블클릭 편집</span>
             </div>
             <div class="mm-area" id="mm-area" tabindex="0">
                 <div class="mm-canvas" id="mm-canvas" style="min-width:${maxX}px;min-height:${maxY}px">
@@ -1741,31 +1742,11 @@ function tmmBind(container) {
         _mmSel = null; mmDraw();
     });
 
-    // 더블클릭 → 인라인 편집
+    // 더블클릭 → 인라인 편집 (click 후 재렌더링 때문에 data-id만 추출 후 mmDoEdit 위임)
     canvas.addEventListener('dblclick', e => {
-        const span = e.target.closest('.mm-ntxt');
-        if (!span) return;
-        const id = span.dataset.id;
-        const n  = mmFind(_mmTree, id);
-        if (!n) return;
-        _mmSel = id; _mmEdit = true;
-        const inp = document.createElement('input');
-        inp.className   = 'mm-inp';
-        inp.value       = n.text;
-        inp.style.color = n.id === _mmTree.id ? '#fff' : 'var(--text-primary)';
-        span.replaceWith(inp);
-        inp.focus(); inp.select();
-        const commit = () => {
-            const v = inp.value.trim();
-            n.text = v || n.text;
-            _mmEdit = false; mmSave(); mmDraw(id);
-        };
-        inp.addEventListener('blur', commit);
-        inp.addEventListener('keydown', ev => {
-            if (ev.key === 'Enter')  { ev.preventDefault(); commit(); }
-            if (ev.key === 'Escape') { _mmEdit = false; mmDraw(_mmSel); }
-            ev.stopPropagation();
-        });
+        const node = e.target.closest('.mm-node');
+        if (!node) return;
+        mmDoEdit(node.dataset.id);
     });
 
     // 키보드 단축키
@@ -1830,8 +1811,12 @@ function tmmBind(container) {
         _mmSel = sib.id; mmSave(); mmDraw(sib.id);
         setTimeout(() => mmStartEdit(sib.id), 60);
     });
+    container.querySelector('#mm-rename')?.addEventListener('click', () => {
+        const id = _mmSel || _mmTree.id;
+        mmDoEdit(id);
+    });
     container.querySelector('#mm-del')?.addEventListener('click', () => {
-        if (!_mmSel || _mmSel === _mmTree.id) { showToast('중심 노드는 삭제할 수 없어요', 'warn'); return; }
+        if (!_mmSel || _mmSel === _mmTree.id) { showToast('중심 노드는 삭제할 수 없어요\n(더블클릭 또는 이름 변경 버튼으로 텍스트 수정 가능)', 'warn'); return; }
         const par = mmParent(_mmTree, _mmSel);
         mmRemove(_mmTree, _mmSel);
         _mmSel = par?.id || _mmTree.id;
@@ -1839,10 +1824,34 @@ function tmmBind(container) {
     });
 }
 
-function mmStartEdit(id) {
-    const span = _mmCont?.querySelector(`.mm-ntxt[data-id="${id}"]`);
-    if (span) span.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+function mmDoEdit(id) {
+    if (!_mmCont) return;
+    const n = mmFind(_mmTree, id);
+    if (!n) return;
+    _mmSel = id; _mmEdit = true; mmDraw(id);
+    requestAnimationFrame(() => {
+        const span = _mmCont.querySelector(`.mm-ntxt[data-id="${id}"]`);
+        if (!span) return;
+        const inp = document.createElement('input');
+        inp.className = 'mm-inp';
+        inp.value     = n.text;
+        inp.style.color = n.id === _mmTree.id ? '#fff' : 'var(--text-primary)';
+        span.replaceWith(inp);
+        inp.focus(); inp.select();
+        const commit = () => {
+            const v = inp.value.trim();
+            n.text = v || n.text;
+            _mmEdit = false; mmSave(); mmDraw(id);
+        };
+        inp.addEventListener('blur', commit);
+        inp.addEventListener('keydown', ev => {
+            if (ev.key === 'Enter')  { ev.preventDefault(); commit(); }
+            if (ev.key === 'Escape') { _mmEdit = false; mmDraw(_mmSel); }
+            ev.stopPropagation();
+        });
+    });
 }
+function mmStartEdit(id) { mmDoEdit(id); }
 
 // 사이드바 클릭과 동일하게 화면 전환(홈 카드·로고에서 호출)
 function goToView(view) {
