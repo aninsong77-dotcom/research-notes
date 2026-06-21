@@ -2859,8 +2859,13 @@ body {
     font-size: 15px; line-height: 1; border-radius: 8px; padding: 5px 10px;
 }
 .desk-tab-add:hover { border-color: var(--accent-mid); color: var(--accent); }
+/* 자료 탭 구분 색 */
+.desk-tab-mat { border-color: var(--border); }
+.desk-tab-mat.active { background: var(--surface); border-color: #7c8fc4; }
+.desk-tab-mat .desk-tab-title { color: #5a6ea0; }
+.desk-tab-mat.active .desk-tab-title { color: #3a4e80; }
 
-/* 논문 꺼내기 선택창 */
+/* 논문/자료 꺼내기 선택창 */
 .desk-picker {
     position: absolute; top: 100%; left: 12px; z-index: 5;
     margin-top: 4px;
@@ -2877,10 +2882,14 @@ body {
 .desk-pick-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .desk-pick-meta { margin-left: auto; flex-shrink: 0; color: var(--text-muted); font-size: 11.5px; }
 .desk-pick-empty { padding: 14px; color: var(--text-muted); font-size: 13px; text-align: center; }
+.desk-pick-section { padding: 6px 10px 2px; font-size: 11px; font-weight: 700; color: var(--text-muted); letter-spacing: 0.04em; text-transform: uppercase; }
+.desk-pick-mat-badge { background: var(--accent-light); color: var(--accent); border-radius: 4px; padding: 1px 6px; font-size: 11px; }
 
 .desk-body { flex: 1; display: flex; min-height: 0; }
 .desk-pane { min-width: 0; height: 100%; overflow: auto; }
 .desk-left { background: #fff; }
+/* frame pool 슬롯 — desk-left 높이 전체를 채우는 컨테이너 */
+.desk-frame-slot { width: 100%; height: 100%; display: contents; }
 /* PDF + 툴바 래퍼 — flexbox로 툴바 고정, iframe이 남은 높이 채움 */
 .desk-pdf-wrap { display: flex; flex-direction: column; height: 100%; }
 .desk-left-toolbar { flex-shrink: 0; display: flex; gap: 6px; padding: 6px 10px; background: var(--surface); border-bottom: 1px solid var(--border); }
@@ -2894,6 +2903,41 @@ body {
 .desk-text-meta { color: var(--text-muted); font-size: 13px; margin-bottom: 20px; }
 .desk-text h4 { font-size: 13px; font-weight: 700; color: var(--accent); margin: 18px 0 5px; }
 .desk-text p { font-size: 14px; line-height: 1.7; color: var(--text-secondary); white-space: pre-wrap; margin: 0; }
+/* 자료 텍스트 뷰 */
+.desk-text-view { padding: 28px 32px; max-width: 780px; }
+.desk-txt-title { font-size: 17px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+.desk-txt-meta { font-size: 13px; color: var(--text-muted); margin-bottom: 4px; }
+.desk-txt-body { font-size: 14px; line-height: 1.75; color: var(--text-secondary); white-space: pre-wrap; margin-top: 4px; }
+
+/* 자료 오른쪽 패널 */
+.desk-mat-memo-wrap { display: flex; flex-direction: column; height: 100%; padding: 14px; gap: 8px; }
+.desk-mat-memo { flex: 1; resize: none; border: 1.5px solid var(--border); border-radius: 10px; padding: 12px; font-size: 13.5px; line-height: 1.7; font-family: inherit; color: var(--text-primary); background: var(--bg); min-height: 0; }
+.desk-mat-memo:focus { outline: none; border-color: var(--accent-mid); }
+.desk-mat-memo-bar { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.desk-mat-memo-hint { font-size: 11.5px; color: var(--text-muted); }
+.desk-mat-tags-wrap { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.desk-mat-varrow { margin-bottom: 2px; }
+.mat-var-badge { display: inline-block; background: var(--accent-light); color: var(--accent); border: 1px solid var(--accent-mid); border-radius: 6px; padding: 3px 10px; font-size: 12px; font-weight: 600; }
+.desk-mat-tags { display: flex; flex-wrap: wrap; gap: 6px; min-height: 32px; }
+.desk-mat-tags-empty { color: var(--text-muted); font-size: 13px; }
+.desk-mat-tag { display: inline-flex; align-items: center; gap: 4px; background: var(--accent-light); color: var(--accent); border: 1px solid var(--accent-mid); border-radius: 20px; padding: 3px 10px 3px 12px; font-size: 12.5px; font-weight: 500; }
+.desk-mat-tag-del { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 11px; padding: 0 1px; line-height: 1; }
+.desk-mat-tag-del:hover { color: var(--danger); }
+.desk-mat-tag-input-row { display: flex; gap: 6px; }
+.desk-mat-tag-input { flex: 1; border: 1.5px solid var(--border); border-radius: 8px; padding: 7px 10px; font-size: 13px; font-family: inherit; }
+.desk-mat-tag-input:focus { outline: none; border-color: var(--accent-mid); }
+.desk-mat-tag-hint { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
+.desk-mat-tag-page { background: var(--accent); color: #fff; border: none; border-radius: 4px; padding: 1px 5px; font-size: 11px; font-weight: 600; cursor: pointer; margin-right: 3px; }
+.desk-mat-tag-page:hover { opacity: 0.85; }
+/* PDF 텍스트 추출 인디케이터 */
+.pdf-extracting-badge { display: inline-block; margin-left: 8px; font-size: 12px; color: var(--accent); font-weight: 500; animation: pulse-opacity 1.2s ease-in-out infinite; }
+@keyframes pulse-opacity { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+.desk-mat-memo-pane, .desk-mat-tags-pane { flex: 1; overflow: auto; display: flex; flex-direction: column; }
+/* 대용량 PDF 지연 로딩 */
+.desk-pdf-lazy { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 12px; padding: 40px; text-align: center; }
+.desk-pdf-lazy-icon { font-size: 48px; }
+.desk-pdf-lazy-name { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.desk-pdf-lazy-size { font-size: 13px; color: var(--text-muted); }
 
 .desk-resizer {
     flex-shrink: 0;
@@ -3099,6 +3143,10 @@ body {
 .cv-ex-list li { position: relative; padding-left: 14px; font-size: 13px; line-height: 1.6; color: var(--text-primary); }
 .cv-ex-list li::before { content: '•'; position: absolute; left: 2px; color: var(--accent); }
 .cv-ex-memo { color: var(--text-muted); font-size: 12px; }
+.cv-mat-section { margin-top: 24px; }
+.cv-mat-section-title { font-size: 13px; font-weight: 700; color: var(--text-secondary); margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+.cv-mat-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.cv-mat-memo { font-size: 13px; color: var(--text-secondary); white-space: pre-wrap; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
 .desk-ex-memo:focus { outline: none; box-shadow: 0 0 0 2px var(--accent-mid); background: var(--surface); }
 .desk-ex-tools { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 1px; }
 .desk-ex-swatches { display: flex; gap: 5px; }

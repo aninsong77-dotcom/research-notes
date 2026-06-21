@@ -780,7 +780,7 @@ const ROW_FIELDS = [
     { key: 'theory',   label: '이론',       get: p => prdText('이론', p.analysis?.theory) },
     { key: 'subjects', label: '연구대상',   get: p => prdText('연구대상', p.analysis?.subjects) },
     { key: 'variables', label: '변인',      get: p => {
-        // 간단 변인 태그(paper.variables) + 정밀분석 변수명 둘 다 모아서(중복 제거)
+        // 간단 태그(paper.variables) + 정밀분석 변수명 둘 다 모아서(중복 제거)
         const a = p.analysis?.variables || {};
         const fromAnalysis = VAR_ROLES.flatMap(([role]) => (a[role] || []).map(v => v && v.name).filter(Boolean));
         const seen = new Set();
@@ -1443,13 +1443,35 @@ function renderCatView(container) {
         }).join('')
         : `<div class="empty-state"><div class="empty-icon">${icon('clipboard', 44)}</div><h3>이 분류에 내용이 없어요</h3><p class="muted">논문에 「${escHtml(CAT_LABEL[cur] || '')}」 항목을 채우거나, 연구 책상에서 발췌를 담아보세요.</p></div>`;
 
+    // 자료 태그 섹션
+    const matsWithTags = state.materials.filter(m => (m.deskTags || []).length > 0 || m.deskMemo?.trim());
+    const matTagsHTML = matsWithTags.length ? `
+        <div class="cv-mat-section">
+            <div class="cv-mat-section-title">${icon('library', 14)} 자료 태그 & 메모</div>
+            ${matsWithTags.map(m => {
+                const tags = (m.deskTags || []).map(t =>
+                    `<span class="desk-mat-tag" style="cursor:default">${t.page ? `<span class="desk-mat-tag-page" style="cursor:default">p.${t.page}</span>` : ''}${escHtml(t.label)}</span>`
+                ).join('');
+                const memo = m.deskMemo?.trim() ? `<div class="cv-mat-memo">${escHtml(m.deskMemo)}</div>` : '';
+                return `<div class="cv-paper">
+                    <div class="cv-paper-head">
+                        <span class="cv-paper-title">${escHtml(m.title || '제목 없음')}</span>
+                        <span class="cv-paper-meta">${escHtml(m.type || '자료')}</span>
+                        <button type="button" class="cv-open-mat btn-secondary" data-id="${m.id}">${icon('eye', 14)} 보기</button>
+                    </div>
+                    ${tags ? `<div class="cv-mat-tags">${tags}</div>` : ''}
+                    ${memo}
+                </div>`;
+            }).join('')}
+        </div>` : '';
+
     container.innerHTML = `
         <div class="cv-head">
             <span class="cv-title">분류 모아보기</span>
             <select class="cv-cat-select" id="cv-cat">${catOptions}</select>
             <span class="cv-count">${rows.length}편 · 발췌 ${totalEx}개</span>
         </div>
-        <div class="cv-list">${body}</div>`;
+        <div class="cv-list">${body}${matTagsHTML}</div>`;
 
     container.querySelector('#cv-cat')?.addEventListener('change', e => {
         state.catViewCat = e.target.value;
@@ -1457,6 +1479,8 @@ function renderCatView(container) {
     });
     container.querySelectorAll('.cv-open').forEach(b =>
         b.addEventListener('click', () => openForm(b.dataset.id, 'view')));
+    container.querySelectorAll('.cv-open-mat').forEach(b =>
+        b.addEventListener('click', () => openMaterialForm(b.dataset.id, 'view')));
 }
 
 // 사이드바 클릭과 동일하게 화면 전환(홈 카드·로고에서 호출)
@@ -1735,21 +1759,19 @@ function applyMaterialMode(mode, m) {
     document.getElementById('m-type').disabled = (mode === 'view');
     document.getElementById('m-varrole').disabled = (mode === 'view');
 
-    let extra = document.getElementById('m-view-file');
-    if (extra) extra.remove();
     document.getElementById('modal-material-title').textContent =
         mode === 'view' ? (m?.title || '자료 보기')
         : (state.editingMaterialId ? '자료 수정' : '자료 추가');
 
-    // 보기 모드에서 첨부파일 열기 버튼
-    if (mode === 'view' && m?.fileData) {
-        const btn = document.createElement('button');
-        btn.type = 'button'; btn.id = 'm-view-file'; btn.className = 'btn-pdf';
-        btn.style.marginBottom = '14px';
-        btn.innerHTML = `${icon('paperclip')} 첨부파일 열기 (${escHtml(m.fileName || '파일')})`;
-        btn.onclick = () => openMaterialFile(m);
-        const body = document.querySelector('#modal-material .modal-body');
-        body.insertBefore(btn, body.firstChild);
+    // 하단 버튼 설정
+    const fileBtn = document.getElementById('btn-mat-open-file');
+    const deskBtn = document.getElementById('btn-mat-desk');
+    fileBtn.style.display = 'none';
+    if (mode === 'view' && m) {
+        deskBtn.style.display = '';
+        deskBtn.onclick = () => { closeMaterialForm(); openDeskMaterial(m.id); };
+    } else {
+        deskBtn.style.display = 'none';
     }
 }
 
@@ -1976,6 +1998,9 @@ async function openPdf(paper) {
 let deskCtx = null;        // 살아있는 DOM 컨텍스트 { overlay, pdfUrl, onMove, onUp, _pct }
 let deskTabs = [];         // 책상에 펼쳐둔 논문 id들 (다른 화면 갔다 와도 유지)
 let deskActiveId = null;   // 현재 보고 있는 논문 id
+let deskMatTabs = [];      // 책상에 펼쳐둔 자료 id들
+let deskMatActiveId = null; // 현재 보고 있는 자료 id (논문 활성 중이면 null)
+let deskFramePool = {};    // 'p_id' | 'm_id' → { el, pdfUrl } — 한 번 그린 left 패널 재사용
 
 // 모형스케치북의 「책상」 버튼 — 책상 화면으로 돌아가기(펼쳐둔 논문 유지)
 function reopenDesk() {
@@ -1988,14 +2013,27 @@ function openDesk(paperId) {
     if (!paper) return;
     if (!deskTabs.includes(paperId)) deskTabs.push(paperId);
     deskActiveId = paperId;
-    if (state.view === 'desk' && deskCtx) deskActivate(paperId);                 // 이미 책상이면 바로 전환
-    else document.querySelector('.nav-item[data-view="desk"]')?.click();         // 아니면 책상 화면으로 이동
+    deskMatActiveId = null;
+    if (state.view === 'desk' && deskCtx) deskActivate(paperId);
+    else document.querySelector('.nav-item[data-view="desk"]')?.click();
+}
+
+// 자료 목록의 「책상에서 펼치기」
+function openDeskMaterial(materialId) {
+    const mat = state.materials.find(m => m.id === materialId);
+    if (!mat) return;
+    if (!deskMatTabs.includes(materialId)) deskMatTabs.push(materialId);
+    deskMatActiveId = materialId;
+    deskActiveId = null;
+    if (state.view === 'desk' && deskCtx) deskActivateMat(materialId);
+    else document.querySelector('.nav-item[data-view="desk"]')?.click();
 }
 
 // 책상 화면 그리기(.content 안에 렌더) — 논문을 안 열어도 열림
 function renderDesk(container) {
     deskTeardown();                       // 이전 책상 리소스/리스너 정리(탭 목록 deskTabs는 보존)
     deskTabs = deskTabs.filter(id => state.papers.some(p => p.id === id));
+    deskMatTabs = deskMatTabs.filter(id => state.materials.some(m => m.id === id));
     const pct = Math.max(25, Math.min(80, parseInt(localStorage.getItem('deskLeftPct') || '60', 10) || 60));
     container.style.padding = '0';
     container.style.overflow = 'hidden';
@@ -2018,11 +2056,14 @@ function renderDesk(container) {
         document.querySelector('.nav-item[data-view="sketch"]')?.click());
     root.querySelector('#desk-summary-btn').addEventListener('click', () => {
         if (deskActiveId) openForm(deskActiveId, 'view');
+        else if (deskMatActiveId) openMaterialForm(deskMatActiveId, 'view');
     });
     bindDeskResizer(root);
 
     if (deskActiveId && deskTabs.includes(deskActiveId)) deskActivate(deskActiveId);
+    else if (deskMatActiveId && deskMatTabs.includes(deskMatActiveId)) deskActivateMat(deskMatActiveId);
     else if (deskTabs.length) deskActivate(deskTabs[0]);
+    else if (deskMatTabs.length) deskActivateMat(deskMatTabs[0]);
     else deskRenderEmpty();
 }
 
@@ -2031,14 +2072,22 @@ function deskRenderEmpty() {
     if (!deskCtx) return;
     deskActiveId = null;
     const { overlay } = deskCtx;
-    if (deskCtx.pdfUrl) { URL.revokeObjectURL(deskCtx.pdfUrl); deskCtx.pdfUrl = null; }
-    overlay.querySelector('#desk-left').innerHTML = `
-        <div class="desk-empty">
-            ${icon('book-open', 46)}
-            <h3>내 연구책상</h3>
-            <p>논문을 펼쳐 읽으며 중요한 문장을 발췌하고,<br>오른쪽에서 발표자료를 정리하는 공간이에요.</p>
-            <button type="button" class="btn-primary" id="desk-empty-pick">＋ 논문 펼치기</button>
-        </div>`;
+    deskCtx.pdfUrl = null;
+    // pool 슬롯들은 유지하되 모두 숨기기
+    Object.values(deskFramePool).forEach(({el}) => { el.style.display = 'none'; });
+    const left = overlay.querySelector('#desk-left');
+    let emptyDiv = left.querySelector('.desk-empty');
+    if (!emptyDiv) {
+        emptyDiv = document.createElement('div');
+        emptyDiv.className = 'desk-empty';
+        left.appendChild(emptyDiv);
+    }
+    emptyDiv.style.display = '';
+    emptyDiv.innerHTML = `
+        ${icon('book-open', 46)}
+        <h3>내 연구책상</h3>
+        <p>논문이나 자료를 펼쳐 읽으며 중요한 내용을 발췌하고,<br>오른쪽에서 메모·태그·발표자료를 정리하는 공간이에요.</p>
+        <button type="button" class="btn-primary" id="desk-empty-pick">＋ 논문 / 자료 펼치기</button>`;
     overlay.querySelector('#desk-right').innerHTML = deskRightHTML(null);
     bindDeskRight(overlay, null);
     deskRenderTabs();
@@ -2050,7 +2099,8 @@ function deskTeardown() {
     if (!deskCtx) return;
     if (deskCtx.onMove) window.removeEventListener('mousemove', deskCtx.onMove);
     if (deskCtx.onUp)   window.removeEventListener('mouseup', deskCtx.onUp);
-    if (deskCtx.pdfUrl) URL.revokeObjectURL(deskCtx.pdfUrl);
+    Object.values(deskFramePool).forEach(({pdfUrl}) => { if (pdfUrl) URL.revokeObjectURL(pdfUrl); });
+    deskFramePool = {};
     deskCtx = null;
 }
 
@@ -2060,66 +2110,92 @@ function deskActivate(paperId) {
     const paper = state.papers.find(p => p.id === paperId);
     if (!paper) return;
     deskActiveId = paperId;
-    deskCtx.textOverride = false;   // 논문 전환 시 항상 기본 뷰(PDF우선)로 초기화
-    // 이전 PDF blob URL 정리 후 새로 생성
-    if (deskCtx.pdfUrl) { URL.revokeObjectURL(deskCtx.pdfUrl); deskCtx.pdfUrl = null; }
-    deskCtx.pdfUrl = paper.pdfData
-        ? URL.createObjectURL(new Blob([paper.pdfData], { type: 'application/pdf' }))
-        : null;
+    deskMatActiveId = null;
     const { overlay } = deskCtx;
-    overlay.querySelector('#desk-left').innerHTML = deskLeftHTML(paper, deskCtx.pdfUrl, false);
-    bindDeskLeftToggles(overlay, paper);
+    const left = overlay.querySelector('#desk-left');
+    const key = 'p_' + paperId;
+
+    // empty 안내 + 모든 frame 숨기기
+    left.querySelector('.desk-empty')?.remove();
+    Object.values(deskFramePool).forEach(({el}) => { el.style.display = 'none'; });
+
+    if (!deskFramePool[key]) {
+        const pdfUrl = paper.pdfData
+            ? URL.createObjectURL(new Blob([paper.pdfData], { type: 'application/pdf' }))
+            : null;
+        const el = document.createElement('div');
+        el.className = 'desk-frame-slot';
+        el.innerHTML = deskLeftHTML(paper, pdfUrl, false);
+        left.appendChild(el);
+        deskFramePool[key] = { el, pdfUrl };
+        bindDeskLeftToggles(overlay, paper, el);
+    }
+    deskFramePool[key].el.style.display = '';
+    deskCtx.pdfUrl = deskFramePool[key].pdfUrl;
+
     overlay.querySelector('#desk-right').innerHTML = deskRightHTML(paper);
     bindDeskRight(overlay, paper);
     deskRenderTabs();
 }
 
-// 텍스트 ↔ PDF/링크 전환 버튼 바인딩
-function bindDeskLeftToggles(overlay, paper) {
-    const left = overlay.querySelector('#desk-left');
-    left.querySelector('#desk-toggle-text')?.addEventListener('click', () => {
-        deskCtx.textOverride = true;
-        left.innerHTML = deskLeftHTML(paper, deskCtx.pdfUrl, true);
-        bindDeskLeftToggles(overlay, paper);
+// 텍스트 ↔ PDF/링크 전환 버튼 바인딩 (slot 단위로 교체 — desk-left 전체 교체 금지)
+function bindDeskLeftToggles(overlay, paper, slot) {
+    const pdfUrl = deskFramePool['p_' + paper.id]?.pdfUrl || null;
+    slot.querySelector('#desk-toggle-text')?.addEventListener('click', () => {
+        slot.innerHTML = deskLeftHTML(paper, pdfUrl, true);
+        bindDeskLeftToggles(overlay, paper, slot);
     });
-    left.querySelector('#desk-toggle-pdf')?.addEventListener('click', () => {
-        deskCtx.textOverride = false;
-        left.innerHTML = deskLeftHTML(paper, deskCtx.pdfUrl, false);
-        bindDeskLeftToggles(overlay, paper);
+    slot.querySelector('#desk-toggle-pdf')?.addEventListener('click', () => {
+        slot.innerHTML = deskLeftHTML(paper, pdfUrl, false);
+        bindDeskLeftToggles(overlay, paper, slot);
     });
-    left.querySelector('#desk-toggle-link')?.addEventListener('click', () => {
-        deskCtx.textOverride = false;
-        left.innerHTML = deskLeftHTML(paper, deskCtx.pdfUrl, false);
-        bindDeskLeftToggles(overlay, paper);
+    slot.querySelector('#desk-toggle-link')?.addEventListener('click', () => {
+        slot.innerHTML = deskLeftHTML(paper, pdfUrl, false);
+        bindDeskLeftToggles(overlay, paper, slot);
     });
 }
 
-// 상단 탭 줄 렌더 + 바인딩
+// 상단 탭 줄 렌더 + 바인딩 (논문 + 자료 통합)
 function deskRenderTabs() {
     const { overlay } = deskCtx;
-    const tabs = deskTabs, activeId = deskActiveId;
     const tabsEl = overlay.querySelector('#desk-tabs');
-    const tabHTML = tabs.map(id => {
+    const paperTabHTML = deskTabs.map(id => {
         const p = state.papers.find(x => x.id === id);
         if (!p) return '';
         const title = p.title || '제목 없음';
         return `
-            <div class="desk-tab ${id === activeId ? 'active' : ''}" data-id="${id}" title="${escHtml(title)}">
+            <div class="desk-tab ${id === deskActiveId ? 'active' : ''}" data-id="${id}" data-kind="paper" title="${escHtml(title)}">
                 <span class="desk-tab-icon">${p.pdfData ? icon('file-text', 14) : icon('note', 14)}</span>
                 <span class="desk-tab-title">${escHtml(title)}</span>
-                <button type="button" class="desk-tab-close" data-id="${id}" title="이 논문 닫기">✕</button>
+                <button type="button" class="desk-tab-close" data-id="${id}" data-kind="paper" title="닫기">✕</button>
             </div>`;
     }).join('');
-    tabsEl.innerHTML = tabHTML +
-        `<button type="button" class="desk-tab-add" id="desk-tab-add" title="다른 논문 꺼내기">＋</button>`;
+    const matTabHTML = deskMatTabs.map(id => {
+        const m = state.materials.find(x => x.id === id);
+        if (!m) return '';
+        const title = m.title || '제목 없음';
+        return `
+            <div class="desk-tab desk-tab-mat ${id === deskMatActiveId ? 'active' : ''}" data-id="${id}" data-kind="material" title="${escHtml(title)}">
+                <span class="desk-tab-icon">${icon('library', 14)}</span>
+                <span class="desk-tab-title">${escHtml(title)}</span>
+                <button type="button" class="desk-tab-close" data-id="${id}" data-kind="material" title="닫기">✕</button>
+            </div>`;
+    }).join('');
+    tabsEl.innerHTML = paperTabHTML + matTabHTML +
+        `<button type="button" class="desk-tab-add" id="desk-tab-add" title="논문/자료 꺼내기">＋</button>`;
 
     tabsEl.querySelectorAll('.desk-tab').forEach(t =>
         t.addEventListener('click', e => {
             if (e.target.closest('.desk-tab-close')) return;
-            deskActivate(t.dataset.id);
+            if (t.dataset.kind === 'material') deskActivateMat(t.dataset.id);
+            else deskActivate(t.dataset.id);
         }));
     tabsEl.querySelectorAll('.desk-tab-close').forEach(b =>
-        b.addEventListener('click', e => { e.stopPropagation(); deskCloseTab(b.dataset.id); }));
+        b.addEventListener('click', e => {
+            e.stopPropagation();
+            if (b.dataset.kind === 'material') deskCloseMatTab(b.dataset.id);
+            else deskCloseTab(b.dataset.id);
+        }));
     tabsEl.querySelector('#desk-tab-add').addEventListener('click', deskOpenPicker);
 }
 
@@ -2128,31 +2204,80 @@ function deskCloseTab(id) {
     const i = deskTabs.indexOf(id);
     if (i < 0) return;
     deskTabs.splice(i, 1);
-    if (deskTabs.length === 0) { deskRenderEmpty(); return; }
-    if (deskActiveId === id) deskActivate(deskTabs[Math.max(0, i - 1)]);
-    else deskRenderTabs();
+    if (deskActiveId === id) deskActiveId = null;
+    // pool에서 제거 및 blob URL 해제
+    const key = 'p_' + id;
+    if (deskFramePool[key]) {
+        if (deskFramePool[key].pdfUrl) URL.revokeObjectURL(deskFramePool[key].pdfUrl);
+        deskFramePool[key].el.remove();
+        delete deskFramePool[key];
+    }
+    if (deskTabs.length === 0 && deskMatTabs.length === 0) { deskRenderEmpty(); return; }
+    if (deskActiveId === null) {
+        if (deskTabs.length) deskActivate(deskTabs[Math.max(0, i - 1)]);
+        else deskActivateMat(deskMatTabs[0]);
+    } else deskRenderTabs();
 }
 
-// "＋ 다른 논문 꺼내기" — 현재 프로젝트 논문 중 안 열린 것 고르기
+// 자료 탭 닫기
+function deskCloseMatTab(id) {
+    const i = deskMatTabs.indexOf(id);
+    if (i < 0) return;
+    deskMatTabs.splice(i, 1);
+    if (deskMatActiveId === id) deskMatActiveId = null;
+    // pool에서 제거 및 blob URL 해제
+    const key = 'm_' + id;
+    if (deskFramePool[key]) {
+        if (deskFramePool[key].pdfUrl) URL.revokeObjectURL(deskFramePool[key].pdfUrl);
+        deskFramePool[key].el.remove();
+        delete deskFramePool[key];
+    }
+    if (deskTabs.length === 0 && deskMatTabs.length === 0) { deskRenderEmpty(); return; }
+    if (deskMatActiveId === null && deskActiveId === null) {
+        if (deskMatTabs.length) deskActivateMat(deskMatTabs[Math.max(0, i - 1)]);
+        else deskActivate(deskTabs[0]);
+    } else deskRenderTabs();
+}
+
+// "＋" — 현재 프로젝트 논문·자료 중 안 열린 것 고르기
 function deskOpenPicker() {
     const { overlay } = deskCtx;
     overlay.querySelector('.desk-picker')?.remove();
-    const open = new Set(deskTabs);
-    const avail = sortPapers(state.papers.filter(p => !open.has(p.id)));
+    const openP = new Set(deskTabs);
+    const openM = new Set(deskMatTabs);
+    const availP = sortPapers(state.papers.filter(p => !openP.has(p.id)));
+    const availM = [...state.materials].filter(m => !openM.has(m.id)).sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
     const pick = document.createElement('div');
     pick.className = 'desk-picker';
-    pick.innerHTML = avail.length
-        ? avail.map(p => `
-            <button type="button" class="desk-pick-item" data-id="${p.id}">
-                <span>${p.pdfData ? icon('file-text', 14) : icon('note', 14)}</span>
-                <span class="desk-pick-title">${escHtml(p.title || '제목 없음')}</span>
-                <span class="desk-pick-meta">${escHtml([p.year, firstAuthor(p)].filter(Boolean).join(' · '))}</span>
-            </button>`).join('')
-        : `<div class="desk-pick-empty">더 꺼낼 논문이 없어요.</div>`;
+    const paperItems = availP.map(p => `
+        <button type="button" class="desk-pick-item" data-id="${p.id}" data-kind="paper">
+            <span>${p.pdfData ? icon('file-text', 14) : icon('note', 14)}</span>
+            <span class="desk-pick-title">${escHtml(p.title || '제목 없음')}</span>
+            <span class="desk-pick-meta">${escHtml([p.year, firstAuthor(p)].filter(Boolean).join(' · '))}</span>
+        </button>`).join('');
+    const matItems = availM.map(m => `
+        <button type="button" class="desk-pick-item" data-id="${m.id}" data-kind="material">
+            <span>${icon('library', 14)}</span>
+            <span class="desk-pick-title">${escHtml(m.title || '제목 없음')}</span>
+            <span class="desk-pick-meta desk-pick-mat-badge">${escHtml(m.type || '자료')}</span>
+        </button>`).join('');
+    const hasPaper = availP.length > 0, hasMat = availM.length > 0;
+    pick.innerHTML = (hasPaper || hasMat)
+        ? (hasPaper ? `<div class="desk-pick-section">논문</div>${paperItems}` : '')
+          + (hasMat ? `<div class="desk-pick-section">자료</div>${matItems}` : '')
+        : `<div class="desk-pick-empty">더 꺼낼 항목이 없어요.</div>`;
     overlay.querySelector('.desk-topbar').appendChild(pick);
     pick.querySelectorAll('.desk-pick-item').forEach(b =>
-        b.addEventListener('click', () => { if (!deskTabs.includes(b.dataset.id)) deskTabs.push(b.dataset.id); pick.remove(); deskActivate(b.dataset.id); }));
-    // 바깥 클릭 시 닫기
+        b.addEventListener('click', () => {
+            pick.remove();
+            if (b.dataset.kind === 'material') {
+                if (!deskMatTabs.includes(b.dataset.id)) deskMatTabs.push(b.dataset.id);
+                deskActivateMat(b.dataset.id);
+            } else {
+                if (!deskTabs.includes(b.dataset.id)) deskTabs.push(b.dataset.id);
+                deskActivate(b.dataset.id);
+            }
+        }));
     const off = e => {
         if (!pick.contains(e.target) && !e.target.closest('#desk-tab-add')) {
             pick.remove();
@@ -2160,6 +2285,67 @@ function deskOpenPicker() {
         }
     };
     setTimeout(() => document.addEventListener('mousedown', off), 0);
+}
+
+// 자료 탭 활성화
+function deskActivateMat(materialId) {
+    if (!deskCtx) return;
+    const mat = state.materials.find(m => m.id === materialId);
+    if (!mat) return;
+    deskMatActiveId = materialId;
+    deskActiveId = null;
+    const { overlay } = deskCtx;
+    const left = overlay.querySelector('#desk-left');
+    const key = 'm_' + materialId;
+
+    // empty 안내 + 모든 frame 숨기기
+    left.querySelector('.desk-empty')?.remove();
+    Object.values(deskFramePool).forEach(({el}) => { el.style.display = 'none'; });
+
+    if (!deskFramePool[key]) {
+        const hasFile = !!mat.fileData;
+        const fname = (mat.fileName || '').toLowerCase();
+        const isPdf = hasFile && fname.endsWith('.pdf');
+        pushDebug('info', `자료책상 활성화 — id:${materialId} fileName:${mat.fileName} hasFile:${hasFile} isPdf:${isPdf}`);
+        const pdfUrl = isPdf
+            ? URL.createObjectURL(new Blob([mat.fileData], { type: 'application/pdf' }))
+            : null;
+        const el = document.createElement('div');
+        el.className = 'desk-frame-slot';
+        el.innerHTML = deskLeftHTMLMaterial(mat, pdfUrl);
+        left.appendChild(el);
+        deskFramePool[key] = { el, pdfUrl };
+    }
+    deskFramePool[key].el.style.display = '';
+    deskCtx.pdfUrl = deskFramePool[key].pdfUrl;
+
+    overlay.querySelector('#desk-right').innerHTML = deskRightHTMLMaterial(mat);
+    bindDeskRightMaterial(overlay, mat);
+    deskRenderTabs();
+}
+
+// 자료 왼쪽 패널 HTML
+function deskLeftHTMLMaterial(mat, pdfUrl) {
+    if (pdfUrl) {
+        return `<div class="desk-pdf-wrap">
+            <iframe class="desk-pdf" src="${pdfUrl}" title="첨부파일"></iframe>
+        </div>`;
+    }
+    // 텍스트 뷰 (첨부 없거나 PDF 아닌 경우)
+    const typeLabel = escHtml(mat.type || '자료');
+    const authorsLine = mat.authors ? `<div class="desk-txt-meta">${escHtml(mat.authors)}</div>` : '';
+    const sourceLine = mat.source ? `<div class="desk-txt-meta">${escHtml(mat.source)}</div>` : '';
+    const noteLine = mat.note ? `<div class="desk-txt-body">${escHtml(mat.note).replace(/\n/g, '<br>')}</div>` : '';
+    const fileHint = mat.fileData
+        ? `<div class="desk-txt-meta" style="margin-top:12px;color:var(--text-muted)">📎 ${escHtml(mat.fileName || '첨부파일')} (PDF 아님 — 미리보기 불가)</div>`
+        : '';
+    return `<div class="desk-text-view">
+        <div class="desk-txt-title"><span class="mat-type-badge mt-${typeLabel}">${typeLabel}</span> ${escHtml(mat.title || '제목 없음')}</div>
+        ${authorsLine}${sourceLine}
+        <hr style="margin:12px 0;border:none;border-top:1px solid var(--border)">
+        ${noteLine || '<div class="desk-txt-meta" style="color:var(--text-muted)">메모 없음</div>'}
+        ${fileHint}
+    </div>`;
 }
 
 // 구글 드라이브 공유 링크 → iframe에 띄울 수 있는 미리보기(preview) URL로 변환
@@ -2388,6 +2574,123 @@ function deskRightHTML(paper) {
         <div class="desk-rpanel desk-model-pane" id="desk-model-pane" data-panel="model" ${t === 'model' ? '' : 'hidden'}></div>`;
 }
 
+// ── 자료 전용 오른쪽 패널 ─────────────────────────────────
+let deskMatRTab = 'memo'; // 'memo' | 'tags'
+
+function deskRightHTMLMaterial(mat) {
+    const t = deskMatRTab;
+    const memo = escHtml(mat.deskMemo || '');
+    const tags = (mat.deskTags || []);
+    const varRole = mat.varRole;
+    const MAT_VAR_LABELS = { '독립': '독립변인', '종속': '종속변인', '매개': '매개변인', '조절': '조절변인' };
+
+    const memoPanel = `
+        <div class="desk-mat-memo-wrap">
+            <textarea class="desk-mat-memo" id="desk-mat-memo" placeholder="읽으면서 드는 생각, 인상적인 내용, 활용 계획 등 자유롭게">${memo}</textarea>
+            <div class="desk-mat-memo-bar">
+                <span class="desk-mat-memo-hint">포커스 벗어나면 자동 저장</span>
+                <button type="button" class="btn-primary desk-mat-memo-save" id="desk-mat-memo-save">저장</button>
+            </div>
+        </div>`;
+
+    const varBadge = varRole && MAT_VAR_LABELS[varRole]
+        ? `<span class="mat-var-badge">📌 ${MAT_VAR_LABELS[varRole]}</span>` : '';
+    const hasPdf = !!deskCtx?.pdfUrl;
+    const tagItems = tags.map((tg, i) => {
+        const pageBtn = tg.page
+            ? `<button type="button" class="desk-mat-tag-page" data-page="${tg.page}" title="${tg.page}페이지로 이동">p.${tg.page}</button>`
+            : '';
+        return `<span class="desk-mat-tag">
+            ${pageBtn}${escHtml(tg.label)}
+            <button type="button" class="desk-mat-tag-del" data-idx="${i}" title="삭제">✕</button>
+        </span>`;
+    }).join('');
+    const tagsPanel = `
+        <div class="desk-mat-tags-wrap">
+            ${varBadge ? `<div class="desk-mat-varrow">${varBadge}</div>` : ''}
+            <div class="desk-mat-tags" id="desk-mat-tags">${tagItems || '<span class="desk-mat-tags-empty">아직 태그 없음</span>'}</div>
+            <div class="desk-mat-tag-input-row">
+                <input type="text" class="desk-mat-tag-input" id="desk-mat-tag-input" placeholder="태그 내용">
+                ${hasPdf ? `<input type="number" class="desk-mat-tag-page-input" id="desk-mat-tag-page" placeholder="페이지" min="1" style="width:68px">` : ''}
+                <button type="button" class="btn-primary desk-mat-tag-add" id="desk-mat-tag-add">추가</button>
+            </div>
+            ${hasPdf ? '<div class="desk-mat-tag-hint">페이지 번호를 입력하면 태그 클릭 시 해당 페이지로 이동해요</div>' : ''}
+        </div>`;
+
+    return `
+        <div class="desk-rtabs">
+            <button type="button" class="desk-rtab ${t === 'memo' ? 'active' : ''}" data-matrtab="memo">${icon('note', 15)} 생각 메모</button>
+            <button type="button" class="desk-rtab ${t === 'tags' ? 'active' : ''}" data-matrtab="tags">${icon('tag', 15)} 태그</button>
+        </div>
+        <div class="desk-rpanel desk-mat-memo-pane" id="desk-mat-memo-pane" ${t === 'memo' ? '' : 'hidden'}>${memoPanel}</div>
+        <div class="desk-rpanel desk-mat-tags-pane" id="desk-mat-tags-pane" ${t === 'tags' ? '' : 'hidden'}>${tagsPanel}</div>`;
+}
+
+function bindDeskRightMaterial(overlay, mat) {
+    // 탭 전환
+    overlay.querySelectorAll('[data-matrtab]').forEach(b =>
+        b.addEventListener('click', () => {
+            deskMatRTab = b.dataset.matrtab;
+            overlay.querySelectorAll('[data-matrtab]').forEach(x => x.classList.toggle('active', x === b));
+            overlay.querySelector('#desk-mat-memo-pane')?.toggleAttribute('hidden', deskMatRTab !== 'memo');
+            overlay.querySelector('#desk-mat-tags-pane')?.toggleAttribute('hidden', deskMatRTab !== 'tags');
+        }));
+
+    // 메모 저장 (blur + 저장버튼)
+    const saveMemo = () => {
+        const val = overlay.querySelector('#desk-mat-memo')?.value ?? '';
+        if (val === (mat.deskMemo || '')) return;
+        mat.deskMemo = val;
+        dbPut(STORE_MATERIALS, mat);
+        const idx = state.materials.findIndex(m => m.id === mat.id);
+        if (idx >= 0) state.materials[idx] = mat;
+        showToast('메모 저장됨', 'success');
+    };
+    overlay.querySelector('#desk-mat-memo')?.addEventListener('blur', saveMemo);
+    overlay.querySelector('#desk-mat-memo-save')?.addEventListener('click', saveMemo);
+
+    // 태그 추가
+    const addTag = () => {
+        const inp = overlay.querySelector('#desk-mat-tag-input');
+        const val = inp?.value.trim();
+        if (!val) return;
+        const page = parseInt(overlay.querySelector('#desk-mat-tag-page')?.value || '', 10) || null;
+        if (!Array.isArray(mat.deskTags)) mat.deskTags = [];
+        mat.deskTags.push({ label: val, page });
+        dbPut(STORE_MATERIALS, mat);
+        const idx = state.materials.findIndex(m => m.id === mat.id);
+        if (idx >= 0) state.materials[idx] = mat;
+        inp.value = '';
+        const pi = overlay.querySelector('#desk-mat-tag-page');
+        if (pi) pi.value = '';
+        overlay.querySelector('#desk-right').innerHTML = deskRightHTMLMaterial(mat);
+        bindDeskRightMaterial(overlay, mat);
+    };
+    overlay.querySelector('#desk-mat-tag-add')?.addEventListener('click', addTag);
+    overlay.querySelector('#desk-mat-tag-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } });
+
+    // 페이지 이동
+    overlay.querySelectorAll('.desk-mat-tag-page').forEach(b =>
+        b.addEventListener('click', () => {
+            const page = b.dataset.page;
+            const iframe = overlay.querySelector('#desk-left iframe.desk-pdf');
+            if (iframe && deskCtx?.pdfUrl) {
+                iframe.src = deskCtx.pdfUrl + '#page=' + page;
+            }
+        }));
+
+    // 태그 삭제
+    overlay.querySelectorAll('.desk-mat-tag-del').forEach(b =>
+        b.addEventListener('click', () => {
+            mat.deskTags.splice(Number(b.dataset.idx), 1);
+            dbPut(STORE_MATERIALS, mat);
+            const idx = state.materials.findIndex(m => m.id === mat.id);
+            if (idx >= 0) state.materials[idx] = mat;
+            overlay.querySelector('#desk-right').innerHTML = deskRightHTMLMaterial(mat);
+            bindDeskRightMaterial(overlay, mat);
+        }));
+}
+
 // 하단 "모형 미리보기" — 프로포절 칸·가설·변인을 읽기전용으로 표시(발췌 보낼 때마다 갱신).
 // 스케치북 에디터(S)는 안 띄움 → 안전.
 function deskModelPreviewHTML() {
@@ -2512,7 +2815,7 @@ function bindDeskRight(overlay, paper) {
 // 발췌 카드 색(왼쪽 띠). 빈 문자열 = 색 없음
 const EX_COLORS = ['', '#fcd34d', '#86efac', '#93c5fd', '#f9a8d4'];
 
-// 발췌 → 모형 보내기 목적지: 프로포절 텍스트칸 4개 + 변인 태그
+// 발췌 → 모형 보내기 목적지: 프로포절 텍스트칸 4개 + 태그
 const EX_SEND_DESTS = [
     ['needs',     '필요성'],
     ['purpose',   '목적'],
@@ -2520,7 +2823,7 @@ const EX_SEND_DESTS = [
     ['subjects',  '대상'],
     ['method',    '방법'],
     ['expected',  '기대효과'],
-    ['variables', '변인 태그'],
+    ['variables', '태그'],
 ];
 
 function bindDeskExcerpts(overlay, paper) {
@@ -2539,7 +2842,7 @@ function bindDeskExcerpts(overlay, paper) {
         }));
 }
 
-// 발췌 한 조각을 모형(미니프로포절 칸 / 변인 태그)으로 보냄.
+// 발췌 한 조각을 모형(미니프로포절 칸 / 태그)으로 보냄.
 // 스케치북 내부 상태 S는 안 건드리고, 저장소(proposals/papers)에만 기록 → 다음에 스케치북 열면 반영.
 function deskSendExcerpt(overlay, paper, eid, dest) {
     const e = (paper.excerpts || []).find(x => x.id === eid);
@@ -2549,11 +2852,11 @@ function deskSendExcerpt(overlay, paper, eid, dest) {
     if (dest === 'variables') {
         if (!Array.isArray(paper.variables)) paper.variables = [];
         if (paper.variables.some(v => String(v).toLowerCase() === text.toLowerCase())) {
-            showToast('이미 변인 태그에 있어요', 'info');
+            showToast('이미 태그에 있어요', 'info');
         } else {
             paper.variables.push(text);
             dbPut(STORE_PAPERS, paper);
-            showToast('변인 태그로 보냈어요 — 스케치북 변인 패널에 떠요', 'success');
+            showToast('태그로 보냈어요 — 스케치북 변인 패널에 떠요', 'success');
         }
     } else {
         if (!state.proposal) state.proposal = defaultProposal(state.currentProjectId);
@@ -3054,12 +3357,15 @@ async function extractPdfText(file) {
         const buf = await readFile(file);
         const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
         let text = '';
-        for (let i = 1; i <= pdf.numPages; i++) {
+        const MAX_PAGES = 40; // 학술논문은 앞 40페이지면 서론~결론 충분
+        const limit = Math.min(pdf.numPages, MAX_PAGES);
+        for (let i = 1; i <= limit; i++) {
             const page = await pdf.getPage(i);
             const content = await page.getTextContent();
             text += content.items.map(item => item.str).join(' ') + '\n';
         }
-        pushDebug('info', `PDF 텍스트 추출 완료 — ${pdf.numPages}페이지 ${text.length}자`);
+        const skipped = pdf.numPages - limit;
+        pushDebug('info', `PDF 텍스트 추출 완료 — ${limit}/${pdf.numPages}페이지 ${text.length}자${skipped > 0 ? ` (${skipped}페이지 생략)` : ''}`);
         return text.trim();
     } catch(e) {
         pushDebug('warn', 'PDF 텍스트 추출 실패: ' + e.message);
@@ -3067,15 +3373,31 @@ async function extractPdfText(file) {
     }
 }
 
+// PDF 추출 중 인디케이터 표시/숨김
+function _showPdfExtractingBadge(nearElId, show) {
+    const BADGE_ID = 'pdf-extracting-badge';
+    let badge = document.getElementById(BADGE_ID);
+    if (show) {
+        if (!badge) {
+            badge = document.createElement('span');
+            badge.id = BADGE_ID;
+            badge.className = 'pdf-extracting-badge';
+            badge.textContent = '⏳ 텍스트 추출 중…';
+        }
+        const near = document.getElementById(nearElId);
+        near?.parentNode?.insertBefore(badge, near.nextSibling);
+    } else {
+        badge?.remove();
+    }
+}
+
 // 빠른추가 모달의 텍스트란에 PDF 자동 추출 채우기 (contenteditable div)
 async function _autoFillAddText(file) {
     const txtEl = document.getElementById('add-text-input');
     if (!txtEl || txtEl.textContent.trim()) return;
-    txtEl.dataset.placeholder = txtEl.dataset.placeholder || '';
-    const orig = txtEl.getAttribute('data-placeholder') || '';
-    txtEl.setAttribute('data-placeholder', 'PDF에서 텍스트 추출 중...');
+    _showPdfExtractingBadge('add-pdf-filename', true);
     const txt = await extractPdfText(file);
-    txtEl.setAttribute('data-placeholder', orig || '논문 전문을 붙여넣으세요 (AI 분석·요약에 사용됩니다)');
+    _showPdfExtractingBadge('add-pdf-filename', false);
     if (txt) { txtEl.textContent = txt; showToast('PDF 텍스트 자동 추출 완료', 'success'); }
     else showToast('텍스트 추출 실패 — 직접 붙여넣기 해주세요', 'warn');
 }
@@ -3259,8 +3581,9 @@ async function autoLoadPdfsFromBackup() {
     pushDebug('info', `PDF자동복원 시작 — 폴더핸들:${!!backupDirHandle} 논문수:${state.papers.length}`);
     if (!backupDirHandle) { pushDebug('info', 'PDF자동복원 중단: 폴더핸들 없음'); return; }
     const missingList = state.papers.filter(p => !p.pdfData || !p.fullText);
-    pushDebug('info', `복원필요논문: ${missingList.length}편 (PDF또는fullText없음)`);
-    if (missingList.length === 0) { pushDebug('info', '자동복원 중단: 누락 없음'); return; }
+    const missingMatList = state.materials.filter(m => !m.fileData);
+    pushDebug('info', `복원필요논문: ${missingList.length}편 / 복원필요자료: ${missingMatList.length}개`);
+    if (missingList.length === 0 && missingMatList.length === 0) { pushDebug('info', '자동복원 중단: 누락 없음'); return; }
     try {
         const perm = await backupDirHandle.queryPermission({ mode: 'read' });
         pushDebug('info', `폴더권한: ${perm}`);
@@ -3395,12 +3718,26 @@ async function _loadPdfsFromBackupFile(showResult) {
             await dbPut(STORE_PAPERS, merged);
             count++;
         }
+        // 자료 첨부파일 복원
+        const materials = data.materials || [];
+        let matCount = 0;
+        for (const bm of materials) {
+            const local = state.materials.find(m => m.id === bm.id);
+            if (!local) continue;
+            if (!local.fileData && bm._fileEncoded && bm.fileData) {
+                const merged = { ...local, fileData: b64ToBuf(bm.fileData), fileName: bm.fileName || local.fileName };
+                await dbPut(STORE_MATERIALS, merged);
+                matCount++;
+            }
+        }
+        if (matCount > 0) pushDebug('info', `자료 첨부파일 복원: ${matCount}개`);
         pushDebug('info', `폴더복원 완료 — ${count}편 업데이트`);
-        if (count > 0) {
+        if (count > 0 || matCount > 0) {
             await loadData();
             renderContent();
-            if (showResult) showToast(`백업에서 ${count}편 복원 완료!`, 'success');
-            else pushDebug('info', `PDF 자동 복원: ${count}개`);
+            const msg = [count > 0 ? `논문 ${count}편` : '', matCount > 0 ? `자료 ${matCount}개` : ''].filter(Boolean).join(', ');
+            if (showResult) showToast(`백업에서 ${msg} 복원 완료!`, 'success');
+            else pushDebug('info', `자동 복원: ${msg}`);
         }
     } catch(e) {
         pushDebug('warn', 'PDF 복원 실패: ' + e.message);
@@ -3929,7 +4266,7 @@ function bindEvents() {
         showToast('입력됐습니다. 내용을 확인하고 필요하면 수정하세요.', 'success');
     });
 
-    // 변인 태그 입력
+    // 태그 입력
     document.getElementById('variables-input').addEventListener('keydown', e => {
         if (e.key !== 'Enter') return;
         e.preventDefault();
@@ -3978,9 +4315,9 @@ function bindEvents() {
             document.getElementById('pdf-filename').textContent = file.name;
             const ftEl = document.getElementById('f-fulltext');
             if (ftEl && !ftEl.value.trim()) {
-                ftEl.placeholder = 'PDF에서 텍스트 추출 중...';
+                _showPdfExtractingBadge('pdf-filename', true);
                 const txt = await extractPdfText(file);
-                ftEl.placeholder = '논문 전문을 붙여넣거나 PDF 첨부 시 자동 추출됩니다.';
+                _showPdfExtractingBadge('pdf-filename', false);
                 if (txt) { ftEl.value = txt; showToast('PDF 텍스트 자동 추출 완료', 'success'); }
                 else showToast('텍스트 추출 실패 — 직접 붙여넣기 해주세요', 'warn');
             }
