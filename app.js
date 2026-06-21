@@ -58,7 +58,7 @@ window.addEventListener('unhandledrejection', e => {
 
 // ── IndexedDB 초기화 ────────────────────────────────────────
 const DB_NAME = 'ResearchNotesDB';
-const DB_VERSION = 8;
+const DB_VERSION = 9;
 const STORE_PAPERS = 'papers';
 const STORE_PROJECTS = 'projects';
 const STORE_MINDMAPS = 'mindmaps';
@@ -66,6 +66,7 @@ const STORE_MATERIALS = 'materials';
 const STORE_SETTINGS = 'settings';   // 앱 설정(백업 폴더 핸들 등) 보관
 const STORE_NOTES = 'notes';         // 아이디어 저장소(메모)
 const STORE_PROPOSALS = 'proposals'; // 모형스케치북 미니 프로포절(프로젝트별, key=projectId)
+const STORE_POSTITS = 'postits';     // 포스트잇 캔버스 (프로젝트별)
 
 let db;
 
@@ -97,6 +98,9 @@ function initDB() {
             }
             if (!d.objectStoreNames.contains('daily')) {
                 d.createObjectStore('daily', { keyPath: 'id' });
+            }
+            if (!d.objectStoreNames.contains(STORE_POSTITS)) {
+                d.createObjectStore(STORE_POSTITS, { keyPath: 'id' });
             }
             pushDebug('info', `DB 업그레이드: v${e.oldVersion} → v${e.newVersion}`);
         };
@@ -317,6 +321,7 @@ async function loadData() {
     state.materials = allMat.filter(m => m.projectId === state.currentProjectId);
     const allNotes = await dbGetAll(STORE_NOTES);
     state.notes = allNotes.filter(n => n.projectId === state.currentProjectId);
+    _mmTree = null; // 프로젝트 전환 시 마인드맵 캐시 초기화
     state.proposal = await loadProposal(state.currentProjectId);
     // 백업 폴더가 있고 PDF 없는 논문이 있으면 자동 복원 시도
     setTimeout(autoLoadPdfsFromBackup, 500);
@@ -547,7 +552,7 @@ function renderContent() {
     }
     if (state.view === 'home') renderHome(container);
     else if (state.view === 'desk') renderDesk(container);
-    else if (state.view === 'catview') renderCatView(container);
+    else if (state.view === 'postit') renderMindmapView(container);
     else if (state.view === 'papers') renderPapers(container);
     else if (state.view === 'materials') renderMaterials(container);
     else if (state.view === 'references') renderReferences(container);
@@ -847,11 +852,11 @@ function paperRowDetailHTML(paper) {
         <div class="paper-row-detail">
             <div class="prd-body">${bodyHTML}</div>
             <div class="prd-actions">
-                <button type="button" class="btn-primary prd-desk" data-id="${paper.id}">${icon('book-open')} 책상에서 펼치기</button>
-                <button type="button" class="btn-secondary prd-view" data-id="${paper.id}">${icon('eye')} 요약보기</button>
-                ${paper.pdfData ? `<button type="button" class="btn-secondary prd-pdf" data-id="${paper.id}">${icon('paperclip')} PDF 열기</button>` : ''}
-                <button type="button" class="btn-secondary prd-qc" data-id="${paper.id}">${icon('zap')} ${paper.inQuickCite ? '빠른인용 해제' : '빠른인용'}</button>
-                <button type="button" class="btn-delete prd-del" data-id="${paper.id}">${icon('trash')} 삭제</button>
+                <button type="button" class="btn-primary prd-desk" data-id="${paper.id}" title="책상 탭에서 PDF·메모 함께 펼치기">${icon('book-open')} 책상에서 펼치기</button>
+                <button type="button" class="btn-secondary prd-view" data-id="${paper.id}" title="논문 정리 내용 요약 보기">${icon('eye')} 요약보기</button>
+                ${paper.pdfData ? `<button type="button" class="btn-secondary prd-pdf" data-id="${paper.id}" title="저장된 PDF 열기">${icon('paperclip')} PDF 열기</button>` : ''}
+                <button type="button" class="btn-secondary prd-qc" data-id="${paper.id}" title="${paper.inQuickCite ? '빠른인용 목록에서 제거' : '빠른인용 목록에 추가 — 사이드바 번개 버튼에서 바로 인용 가능'}">${icon('zap')} ${paper.inQuickCite ? '빠른인용 해제' : '빠른인용'}</button>
+                <button type="button" class="btn-delete prd-del" data-id="${paper.id}" title="이 논문 삭제">${icon('trash')} 삭제</button>
             </div>
         </div>`;
 }
@@ -1444,7 +1449,8 @@ function renderCatView(container) {
         : `<div class="empty-state"><div class="empty-icon">${icon('clipboard', 44)}</div><h3>이 분류에 내용이 없어요</h3><p class="muted">논문에 「${escHtml(CAT_LABEL[cur] || '')}」 항목을 채우거나, 연구 책상에서 발췌를 담아보세요.</p></div>`;
 
     // 자료 태그 섹션
-    const matsWithTags = state.materials.filter(m => (m.deskTags || []).length > 0 || m.deskMemo?.trim());
+    const matsWithTags = state.materials.filter(m =>
+        (m.deskTags || []).length > 0 || m.deskMemo?.trim() || (m.deskMemos || []).length > 0);
     const matTagsHTML = matsWithTags.length ? `
         <div class="cv-mat-section">
             <div class="cv-mat-section-title">${icon('library', 14)} 자료 태그 & 메모</div>
@@ -1452,7 +1458,11 @@ function renderCatView(container) {
                 const tags = (m.deskTags || []).map(t =>
                     `<span class="desk-mat-tag" style="cursor:default">${t.page ? `<span class="desk-mat-tag-page" style="cursor:default">p.${t.page}</span>` : ''}${escHtml(t.label)}</span>`
                 ).join('');
-                const memo = m.deskMemo?.trim() ? `<div class="cv-mat-memo">${escHtml(m.deskMemo)}</div>` : '';
+                const memos = Array.isArray(m.deskMemos) ? m.deskMemos
+                    : (m.deskMemo?.trim() ? [{ page: 0, text: m.deskMemo }] : []);
+                const memosHTML = memos.map(memo =>
+                    `<div class="cv-mat-memo">${memo.page ? `<span class="cv-mat-memo-page">p.${memo.page}</span> ` : ''}${escHtml(memo.text)}</div>`
+                ).join('');
                 return `<div class="cv-paper">
                     <div class="cv-paper-head">
                         <span class="cv-paper-title">${escHtml(m.title || '제목 없음')}</span>
@@ -1460,7 +1470,7 @@ function renderCatView(container) {
                         <button type="button" class="cv-open-mat btn-secondary" data-id="${m.id}">${icon('eye', 14)} 보기</button>
                     </div>
                     ${tags ? `<div class="cv-mat-tags">${tags}</div>` : ''}
-                    ${memo}
+                    ${memosHTML}
                 </div>`;
             }).join('')}
         </div>` : '';
@@ -1483,6 +1493,357 @@ function renderCatView(container) {
         b.addEventListener('click', () => openMaterialForm(b.dataset.id, 'view')));
 }
 
+// ── 마인드맵 캔버스 (양방향) ─────────────────────────────────
+const MM_COLORS = ['#4a90e2','#e05454','#27ae60','#e67e22','#8e44ad','#16a085'];
+const MM_COLOR_LABELS = ['파랑','빨강','초록','주황','보라','청록'];
+const MM_NW = 130, MM_NH = 38, MM_HGAP = 72, MM_VGAP = 14;
+
+let _mmTree = null;
+let _mmSel  = null;
+let _mmEdit = false;
+let _mmCont = null;
+
+// ── 트리 유틸 ────────────────────────────────────────────────
+function mmFind(node, id) {
+    if (!node) return null;
+    if (node.id === id) return node;
+    for (const c of (node.children || [])) { const r = mmFind(c, id); if (r) return r; }
+    return null;
+}
+function mmParent(root, id) {
+    if (!root) return null;
+    for (const c of (root.children || [])) {
+        if (c.id === id) return root;
+        const r = mmParent(c, id);
+        if (r) return r;
+    }
+    return null;
+}
+function mmRemove(node, id) {
+    if (!node) return;
+    node.children = (node.children || []).filter(c => c.id !== id);
+    node.children.forEach(c => mmRemove(c, id));
+}
+function mmNew(text = '새 노드', side = 'r') {
+    return { id: genId(), text, color: MM_COLORS[0], collapsed: false, side, children: [] };
+}
+function mmCollect(node, parent = null, out = []) {
+    if (!node) return out;
+    out.push({ n: node, p: parent });
+    if (!node.collapsed) (node.children || []).forEach(c => mmCollect(c, node, out));
+    return out;
+}
+// 노드가 속한 루트 직계 자식의 side 반환 ('r' | 'l')
+function mmGetSide(id) {
+    for (const c of (_mmTree?.children || [])) {
+        if (mmFind(c, id)) return c.side || 'r';
+    }
+    return 'r';
+}
+
+// ── 저장/로드 ────────────────────────────────────────────────
+function mmSave() {
+    if (!_mmTree || !state.currentProjectId) return;
+    dbPut(STORE_POSTITS, { id: 'mm_' + state.currentProjectId, projectId: state.currentProjectId, tree: _mmTree });
+}
+async function tmmLoad() {
+    return new Promise(resolve => {
+        const tx = db.transaction(STORE_POSTITS, 'readonly');
+        tx.objectStore(STORE_POSTITS).get('mm_' + state.currentProjectId).onsuccess = e => {
+            const rec = e.target.result;
+            const projName = (state.projects || []).find(p => p.id === state.currentProjectId)?.name || '연구 주제';
+            _mmTree = rec?.tree || { id: 'root', text: projName, color: MM_COLORS[0], collapsed: false, children: [] };
+            resolve();
+        };
+    });
+}
+
+// ── 레이아웃 계산 (양방향 트리) ──────────────────────────────
+function mmCalcH(node) {
+    if (!node) return MM_NH;
+    if (node.collapsed || !(node.children || []).length) { node._h = MM_NH; return MM_NH; }
+    const total = node.children.reduce((s, c) => s + mmCalcH(c) + MM_VGAP, -MM_VGAP);
+    node._h = Math.max(MM_NH, total);
+    return node._h;
+}
+function mmSideH(kids) {
+    if (!kids.length) return 0;
+    return kids.reduce((s, c) => s + (c._h || MM_NH) + MM_VGAP, -MM_VGAP);
+}
+// 오른쪽으로 뻗는 서브트리 배치
+function mmPosR(node, x, cy) {
+    node._x = x; node._y = cy - MM_NH / 2;
+    if (node.collapsed || !(node.children || []).length) return;
+    let y = cy - (node._h || MM_NH) / 2;
+    for (const c of node.children) {
+        y += (c._h || MM_NH) / 2;
+        mmPosR(c, x + MM_NW + MM_HGAP, y);
+        y += (c._h || MM_NH) / 2 + MM_VGAP;
+    }
+}
+// 왼쪽으로 뻗는 서브트리 배치 (rx = 노드 오른쪽 끝 기준)
+function mmPosL(node, rx, cy) {
+    node._x = rx - MM_NW; node._y = cy - MM_NH / 2;
+    if (node.collapsed || !(node.children || []).length) return;
+    let y = cy - (node._h || MM_NH) / 2;
+    for (const c of node.children) {
+        y += (c._h || MM_NH) / 2;
+        mmPosL(c, rx - MM_NW - MM_HGAP, y);
+        y += (c._h || MM_NH) / 2 + MM_VGAP;
+    }
+}
+// 왼쪽 가지의 최대 깊이 (루트 X 위치 계산용)
+function mmLDepth(nodes) {
+    if (!nodes.length) return 0;
+    return 1 + Math.max(...nodes.map(n =>
+        (n.collapsed || !n.children?.length) ? 0 : mmLDepth(n.children)));
+}
+
+// ── 렌더링 ───────────────────────────────────────────────────
+function renderMindmapView(container) {
+    _mmCont = container;
+    _mmSel = null; _mmEdit = false;
+    tmmLoad().then(mmDraw);
+}
+
+function mmDraw(focusId = null) {
+    if (!_mmCont || !_mmTree) return;
+    mmCalcH(_mmTree);
+
+    const rKids = (_mmTree.children || []).filter(c => (c.side || 'r') !== 'l');
+    const lKids = (_mmTree.children || []).filter(c => c.side === 'l');
+    const rH = mmSideH(rKids), lH = mmSideH(lKids);
+    const PAD = 60;
+    const rootX  = PAD + mmLDepth(lKids) * (MM_NW + MM_HGAP);
+    const rootCY = Math.max(rH, lH, MM_NH) / 2 + PAD;
+
+    _mmTree._x = rootX; _mmTree._y = rootCY - MM_NH / 2;
+
+    // 오른쪽 가지 배치
+    let ry = rootCY - rH / 2;
+    for (const c of rKids) {
+        ry += (c._h || MM_NH) / 2;
+        mmPosR(c, rootX + MM_NW + MM_HGAP, ry);
+        ry += (c._h || MM_NH) / 2 + MM_VGAP;
+    }
+    // 왼쪽 가지 배치
+    let ly = rootCY - lH / 2;
+    for (const c of lKids) {
+        ly += (c._h || MM_NH) / 2;
+        mmPosL(c, rootX - MM_HGAP, ly);
+        ly += (c._h || MM_NH) / 2 + MM_VGAP;
+    }
+
+    const all  = mmCollect(_mmTree);
+    const maxX = Math.max(...all.map(({n}) => n._x + MM_NW)) + PAD;
+    const maxY = Math.max(...all.map(({n}) => n._y + MM_NH)) + PAD;
+
+    // SVG 연결선 — 방향에 따라 베지어 시작/끝 반전
+    const edges = all.filter(({p}) => p).map(({n, p}) => {
+        const side = mmGetSide(n.id);
+        const x1 = side === 'l' ? p._x        : p._x + MM_NW;
+        const x2 = side === 'l' ? n._x + MM_NW : n._x;
+        const y1 = p._y + MM_NH / 2, y2 = n._y + MM_NH / 2;
+        const mx = (x1 + x2) / 2;
+        return `<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}"
+                     fill="none" stroke="${p.color}" stroke-width="2.5" opacity="0.5"/>`;
+    }).join('');
+
+    // 노드 HTML
+    const nodeEls = all.map(({n}) => {
+        const sel         = n.id === _mmSel;
+        const isRoot      = n.id === _mmTree.id;
+        const side        = isRoot ? 'r' : mmGetSide(n.id);
+        const isRootChild = !isRoot && (_mmTree.children || []).some(c => c.id === n.id);
+        const hasCh       = (n.children || []).length > 0;
+
+        // 접기 버튼: 왼쪽 노드는 노드 왼쪽에, 오른쪽 노드는 오른쪽에
+        const colIcon = n.collapsed ? (side === 'l' ? '◀' : '▶') : '▼';
+        const colBtn  = hasCh && !isRoot
+            ? `<button class="mm-col-btn${side === 'l' ? ' mm-col-l' : ''}" data-id="${n.id}" title="${n.collapsed ? '펼치기' : '접기'}">${colIcon}</button>`
+            : '';
+
+        // 팔레트: 루트 직계 자식에만 방향 전환 버튼 추가
+        const flipBtn = sel && isRootChild
+            ? `<button class="mm-flip" data-id="${n.id}" title="${side === 'l' ? '오른쪽으로 이동' : '왼쪽으로 이동'}">${side === 'l' ? '→' : '←'}</button>`
+            : '';
+        const palette = sel && !isRoot ? `<div class="mm-palette">
+            ${flipBtn}
+            ${MM_COLORS.map((c, i) =>
+                `<button class="mm-cdot${n.color===c?' active':''}" data-id="${n.id}" data-color="${c}"
+                 style="background:${c}" title="${MM_COLOR_LABELS[i]}"></button>`
+            ).join('')}
+        </div>` : '';
+
+        return `<div class="mm-node${sel?' mm-sel':''}${isRoot?' mm-root':''}" data-id="${n.id}"
+                    style="left:${n._x}px;top:${n._y}px;width:${MM_NW}px;height:${MM_NH}px;
+                           border-color:${n.color};${isRoot?`background:${n.color};`:''}">
+            ${colBtn}
+            <span class="mm-ntxt" data-id="${n.id}"
+                  style="${isRoot?'color:#fff;font-weight:700;':''}">${escHtml(n.text||'(빈 노드)')}</span>
+            ${palette}
+        </div>`;
+    }).join('');
+
+    _mmCont.innerHTML = `
+        <div class="mm-wrap">
+            <div class="mm-bar">
+                <button class="btn-primary"   id="mm-add-r"  title="오른쪽으로 하위 노드 추가 (Tab)">하위 추가 →</button>
+                <button class="btn-secondary" id="mm-add-l"  title="왼쪽으로 하위 노드 추가">← 하위 추가</button>
+                <button class="btn-secondary" id="mm-add-sib" title="같은 방향으로 형제 노드 추가 (Enter)">형제 추가</button>
+                <button class="btn-secondary" id="mm-del"    title="선택 노드 삭제 (Delete)">삭제</button>
+                <span class="mm-hint"><kbd>Tab</kbd>하위 · <kbd>Enter</kbd>형제 · <kbd>Del</kbd>삭제 · <kbd>F2</kbd>편집 · 노드 선택 후 ←/→ 팔레트로 방향 전환</span>
+            </div>
+            <div class="mm-area" id="mm-area" tabindex="0">
+                <div class="mm-canvas" id="mm-canvas" style="min-width:${maxX}px;min-height:${maxY}px">
+                    <svg style="position:absolute;left:0;top:0;width:${maxX}px;height:${maxY}px;pointer-events:none">${edges}</svg>
+                    ${nodeEls}
+                </div>
+            </div>
+        </div>`;
+
+    tmmBind(_mmCont);
+
+    if (focusId) {
+        _mmCont.querySelector(`.mm-node[data-id="${focusId}"]`)
+            ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+}
+
+// ── 이벤트 바인딩 ────────────────────────────────────────────
+function tmmBind(container) {
+    const area   = container.querySelector('#mm-area');
+    const canvas = container.querySelector('#mm-canvas');
+    area.focus();
+
+    canvas.addEventListener('click', e => {
+        const colBtn = e.target.closest('.mm-col-btn');
+        const cdot   = e.target.closest('.mm-cdot');
+        const flip   = e.target.closest('.mm-flip');
+        const node   = e.target.closest('.mm-node');
+
+        if (colBtn) {
+            const n = mmFind(_mmTree, colBtn.dataset.id);
+            if (n) { n.collapsed = !n.collapsed; mmSave(); mmDraw(_mmSel); }
+            e.stopPropagation(); return;
+        }
+        if (cdot) {
+            const n = mmFind(_mmTree, cdot.dataset.id);
+            if (n) { n.color = cdot.dataset.color; mmSave(); mmDraw(_mmSel); }
+            e.stopPropagation(); return;
+        }
+        if (flip) {
+            const n = mmFind(_mmTree, flip.dataset.id);
+            if (n) { n.side = n.side === 'l' ? 'r' : 'l'; mmSave(); mmDraw(_mmSel); }
+            e.stopPropagation(); return;
+        }
+        if (node) { _mmSel = node.dataset.id; mmDraw(_mmSel); return; }
+        _mmSel = null; mmDraw();
+    });
+
+    // 더블클릭 → 인라인 편집
+    canvas.addEventListener('dblclick', e => {
+        const span = e.target.closest('.mm-ntxt');
+        if (!span) return;
+        const id = span.dataset.id;
+        const n  = mmFind(_mmTree, id);
+        if (!n) return;
+        _mmSel = id; _mmEdit = true;
+        const inp = document.createElement('input');
+        inp.className   = 'mm-inp';
+        inp.value       = n.text;
+        inp.style.color = n.id === _mmTree.id ? '#fff' : 'var(--text-primary)';
+        span.replaceWith(inp);
+        inp.focus(); inp.select();
+        const commit = () => {
+            const v = inp.value.trim();
+            n.text = v || n.text;
+            _mmEdit = false; mmSave(); mmDraw(id);
+        };
+        inp.addEventListener('blur', commit);
+        inp.addEventListener('keydown', ev => {
+            if (ev.key === 'Enter')  { ev.preventDefault(); commit(); }
+            if (ev.key === 'Escape') { _mmEdit = false; mmDraw(_mmSel); }
+            ev.stopPropagation();
+        });
+    });
+
+    // 키보드 단축키
+    area.addEventListener('keydown', e => {
+        if (_mmEdit) return;
+        const selNode = _mmSel ? mmFind(_mmTree, _mmSel) : null;
+        const selSide = _mmSel && _mmSel !== _mmTree.id ? mmGetSide(_mmSel) : 'r';
+
+        if (e.key === 'Tab') {
+            e.preventDefault();
+            const parent = selNode || _mmTree;
+            const child  = mmNew('새 노드', selSide);
+            child.color  = parent.color;
+            parent.collapsed = false;
+            (parent.children = parent.children || []).push(child);
+            _mmSel = child.id; mmSave(); mmDraw(child.id);
+            setTimeout(() => mmStartEdit(child.id), 60);
+        }
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            if (!_mmSel || _mmSel === _mmTree.id) return;
+            const par = mmParent(_mmTree, _mmSel);
+            if (!par) return;
+            const idx = par.children.findIndex(c => c.id === _mmSel);
+            const sib = mmNew('새 노드', selSide); sib.color = selNode?.color || MM_COLORS[0];
+            par.children.splice(idx + 1, 0, sib);
+            _mmSel = sib.id; mmSave(); mmDraw(sib.id);
+            setTimeout(() => mmStartEdit(sib.id), 60);
+        }
+        if ((e.key === 'Delete' || e.key === 'Backspace') && _mmSel && _mmSel !== _mmTree.id) {
+            const par = mmParent(_mmTree, _mmSel);
+            mmRemove(_mmTree, _mmSel);
+            _mmSel = par?.id || _mmTree.id;
+            mmSave(); mmDraw(_mmSel);
+        }
+        if (e.key === 'F2' && _mmSel) { setTimeout(() => mmStartEdit(_mmSel), 30); }
+    });
+
+    // 툴바 버튼
+    const mmAddChild = (forceSide) => {
+        const selNode = _mmSel ? mmFind(_mmTree, _mmSel) : null;
+        const isRoot  = !_mmSel || _mmSel === _mmTree.id;
+        const side    = forceSide ?? (isRoot ? 'r' : mmGetSide(_mmSel));
+        const parent  = selNode || _mmTree;
+        const child   = mmNew('새 노드', side);
+        child.color   = MM_COLORS[(_mmTree.children.length) % MM_COLORS.length];
+        parent.collapsed = false;
+        (parent.children = parent.children || []).push(child);
+        _mmSel = child.id; mmSave(); mmDraw(child.id);
+        setTimeout(() => mmStartEdit(child.id), 60);
+    };
+    container.querySelector('#mm-add-r')?.addEventListener('click', () => mmAddChild('r'));
+    container.querySelector('#mm-add-l')?.addEventListener('click', () => mmAddChild('l'));
+    container.querySelector('#mm-add-sib')?.addEventListener('click', () => {
+        if (!_mmSel || _mmSel === _mmTree.id) return;
+        const par  = mmParent(_mmTree, _mmSel);
+        if (!par) return;
+        const side = mmGetSide(_mmSel);
+        const idx  = par.children.findIndex(c => c.id === _mmSel);
+        const sib  = mmNew('새 노드', side); sib.color = mmFind(_mmTree, _mmSel)?.color || MM_COLORS[0];
+        par.children.splice(idx + 1, 0, sib);
+        _mmSel = sib.id; mmSave(); mmDraw(sib.id);
+        setTimeout(() => mmStartEdit(sib.id), 60);
+    });
+    container.querySelector('#mm-del')?.addEventListener('click', () => {
+        if (!_mmSel || _mmSel === _mmTree.id) { showToast('중심 노드는 삭제할 수 없어요', 'warn'); return; }
+        const par = mmParent(_mmTree, _mmSel);
+        mmRemove(_mmTree, _mmSel);
+        _mmSel = par?.id || _mmTree.id;
+        mmSave(); mmDraw(_mmSel);
+    });
+}
+
+function mmStartEdit(id) {
+    const span = _mmCont?.querySelector(`.mm-ntxt[data-id="${id}"]`);
+    if (span) span.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+}
+
 // 사이드바 클릭과 동일하게 화면 전환(홈 카드·로고에서 호출)
 function goToView(view) {
     state.view = view;
@@ -1497,6 +1858,15 @@ function goToView(view) {
 function noteMatchesQuery(n, q) {
     return [n.title, n.content].some(f => f && String(f).toLowerCase().includes(q));
 }
+
+const NOTE_COLORS = [
+    { key: 'white',  bg: '#ffffff',  bd: '#e2e8f0' },
+    { key: 'yellow', bg: '#fef9c3',  bd: '#fde047' },
+    { key: 'green',  bg: '#d1fae5',  bd: '#6ee7b7' },
+    { key: 'blue',   bg: '#dbeafe',  bd: '#93c5fd' },
+    { key: 'pink',   bg: '#fce7f3',  bd: '#f9a8d4' },
+    { key: 'purple', bg: '#ede9fe',  bd: '#c4b5fd' },
+];
 
 function renderNotes(container, q = '') {
     let notes = [...state.notes].sort(
@@ -1525,11 +1895,18 @@ function renderNotes(container, q = '') {
 function noteCardHTML(n) {
     const when = n.updatedAt || n.addedAt;
     const date = when ? new Date(when).toLocaleDateString('ko-KR') : '';
+    const c = NOTE_COLORS.find(c => c.key === (n.color || 'white')) || NOTE_COLORS[0];
+    const dots = NOTE_COLORS.map(nc =>
+        `<button class="note-cdot${nc.key === (n.color || 'white') ? ' active' : ''}"
+                 data-color="${nc.key}" title="${nc.key}"
+                 style="background:${nc.bg};border-color:${nc.bd}"></button>`
+    ).join('');
     return `
-        <div class="note-card" data-id="${n.id}">
+        <div class="note-card" data-id="${n.id}" style="background:${c.bg};border-color:${c.bd}">
             <input class="note-title" placeholder="제목(선택)" value="${escHtml(n.title || '')}">
             <textarea class="note-body" placeholder="메모를 입력하세요...">${escHtml(n.content || '')}</textarea>
             <div class="note-foot">
+                <div class="note-cdots">${dots}</div>
                 <span class="note-date">${date}</span>
                 <button class="note-del" title="메모 삭제">삭제</button>
             </div>
@@ -1552,6 +1929,20 @@ function bindNotes(container) {
         titleEl.addEventListener('input', queueSave);
         bodyEl.addEventListener('input', queueSave);
         card.querySelector('.note-del').addEventListener('click', () => deleteNote(id));
+
+        // 색상 선택
+        card.querySelectorAll('.note-cdot').forEach(dot => {
+            dot.addEventListener('click', () => {
+                const colorKey = dot.dataset.color;
+                const c = NOTE_COLORS.find(nc => nc.key === colorKey) || NOTE_COLORS[0];
+                card.style.background  = c.bg;
+                card.style.borderColor = c.bd;
+                card.querySelectorAll('.note-cdot').forEach(d =>
+                    d.classList.toggle('active', d.dataset.color === colorKey));
+                const note = state.notes.find(n => n.id === id);
+                if (note) { note.color = colorKey; note.updatedAt = Date.now(); dbPut(STORE_NOTES, note); }
+            });
+        });
     });
 }
 
@@ -2041,11 +2432,15 @@ function renderDesk(container) {
         <div class="desk-view" id="desk-view">
             <div class="desk-topbar">
                 <div class="desk-tabs" id="desk-tabs"></div>
-                <button type="button" class="desk-summary" id="desk-summary-btn" title="현재 논문 요약보기">${icon('eye')} 요약보기</button>
-                <button type="button" class="desk-sketch" title="모형스케치북으로 — 거기서 「책상」으로 돌아옴">${icon('nodes')} 스케치북</button>
+                <div class="desk-topbar-actions">
+                    <button type="button" class="desk-summary" id="desk-summary-btn" title="현재 논문 요약보기">${icon('eye')} 요약보기</button>
+                    <button type="button" class="desk-sketch" title="모형스케치북으로 — 거기서 「책상」으로 돌아옴">${icon('nodes')} 스케치북</button>
+                </div>
             </div>
             <div class="desk-body">
-                <div class="desk-pane desk-left" id="desk-left" style="flex:0 0 ${pct}%"></div>
+                <div class="desk-pane desk-left" id="desk-left" style="flex:0 0 ${pct}%">
+                    <div class="desk-drag-shield" id="desk-drag-shield"></div>
+                </div>
                 <div class="desk-resizer" id="desk-resizer" title="끌어서 폭 조절"></div>
                 <div class="desk-pane desk-right" id="desk-right"></div>
             </div>
@@ -2219,26 +2614,9 @@ function openDeskBmPopup(anchorEl, item, storeKey) {
     popup.querySelector('#desk-bm-add').addEventListener('click', saveBm);
     popup.querySelector('#desk-bm-input').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); saveBm(); } });
 
-    // 페이지 이동 — 새 blob URL 생성으로 강제 재로딩
+    // 페이지 이동
     popup.querySelectorAll('.desk-bm-page').forEach(b =>
-        b.addEventListener('click', () => {
-            const page = b.dataset.page;
-            const key = deskActiveId ? 'p_' + deskActiveId : deskMatActiveId ? 'm_' + deskMatActiveId : null;
-            if (!key || !deskFramePool[key]) { showToast('PDF가 열려있지 않아요', 'warn'); return; }
-            const entry = deskFramePool[key];
-            const iframe = entry.el.querySelector('iframe.desk-pdf');
-            if (!iframe) { showToast('PDF 뷰어를 찾을 수 없어요', 'warn'); return; }
-            // 이전 blob URL 해제 후 새로 생성 (fragment만 바꾸면 재로딩 안 됨)
-            if (entry.pdfUrl) URL.revokeObjectURL(entry.pdfUrl);
-            const srcObj = deskActiveId
-                ? state.papers.find(p => p.id === deskActiveId)?.pdfData
-                : state.materials.find(m => m.id === deskMatActiveId)?.fileData;
-            if (!srcObj) { showToast('PDF 데이터를 찾을 수 없어요', 'warn'); return; }
-            const newUrl = URL.createObjectURL(new Blob([srcObj], { type: 'application/pdf' }));
-            entry.pdfUrl = newUrl;
-            deskCtx.pdfUrl = newUrl;
-            iframe.src = newUrl + '#page=' + page;
-        }));
+        b.addEventListener('click', () => deskNavToPage(b.dataset.page)));
 
     // 북마크 삭제
     popup.querySelectorAll('.desk-bm-del').forEach(b =>
@@ -2282,9 +2660,10 @@ function deskActivate(paperId) {
         const pdfUrl = paper.pdfData
             ? URL.createObjectURL(new Blob([paper.pdfData], { type: 'application/pdf' }))
             : null;
+        const startPage = (paper.deskBookmarks || []).length ? paper.deskBookmarks[0].page : 0;
         const el = document.createElement('div');
         el.className = 'desk-frame-slot';
-        el.innerHTML = deskLeftHTML(paper, pdfUrl, false);
+        el.innerHTML = deskLeftHTML(paper, pdfUrl, false, startPage);
         left.appendChild(el);
         deskFramePool[key] = { el, pdfUrl };
         bindDeskLeftToggles(overlay, paper, el);
@@ -2472,9 +2851,10 @@ function deskActivateMat(materialId) {
         const pdfUrl = isPdf
             ? URL.createObjectURL(new Blob([mat.fileData], { type: 'application/pdf' }))
             : null;
+        const startPage = (mat.deskBookmarks || []).length ? mat.deskBookmarks[0].page : 0;
         const el = document.createElement('div');
         el.className = 'desk-frame-slot';
-        el.innerHTML = deskLeftHTMLMaterial(mat, pdfUrl);
+        el.innerHTML = deskLeftHTMLMaterial(mat, pdfUrl, startPage);
         left.appendChild(el);
         deskFramePool[key] = { el, pdfUrl };
         bindDeskLeftMat(el, mat);
@@ -2493,12 +2873,31 @@ function bindDeskLeftMat(slot, mat) {
     });
 }
 
+// 현재 책상에 펼쳐진 PDF를 특정 페이지로 이동 (새 blob URL 생성 방식 — hash-only 변경은 크롬에서 무시됨)
+function deskNavToPage(page) {
+    const key = deskActiveId ? 'p_' + deskActiveId : deskMatActiveId ? 'm_' + deskMatActiveId : null;
+    if (!key || !deskFramePool[key]) { showToast('PDF가 열려있지 않아요', 'warn'); return; }
+    const entry = deskFramePool[key];
+    const iframe = entry.el.querySelector('iframe.desk-pdf');
+    if (!iframe) { showToast('PDF 뷰어를 찾을 수 없어요', 'warn'); return; }
+    if (entry.pdfUrl) URL.revokeObjectURL(entry.pdfUrl);
+    const srcData = deskActiveId
+        ? state.papers.find(p => p.id === deskActiveId)?.pdfData
+        : state.materials.find(m => m.id === deskMatActiveId)?.fileData;
+    if (!srcData) { showToast('PDF 데이터를 찾을 수 없어요', 'warn'); return; }
+    const newUrl = URL.createObjectURL(new Blob([srcData], { type: 'application/pdf' }));
+    entry.pdfUrl = newUrl;
+    deskCtx.pdfUrl = newUrl;
+    iframe.src = newUrl + '#page=' + page;
+}
+
 // 자료 왼쪽 패널 HTML
-function deskLeftHTMLMaterial(mat, pdfUrl) {
+function deskLeftHTMLMaterial(mat, pdfUrl, startPage = 0) {
     if (pdfUrl) {
+        const src = startPage ? `${pdfUrl}#page=${startPage}` : pdfUrl;
         return `<div class="desk-pdf-wrap">
             <div class="desk-left-toolbar"><button type="button" class="desk-view-toggle" id="desk-bm-btn">📌 북마크</button></div>
-            <iframe class="desk-pdf" src="${pdfUrl}" title="첨부파일"></iframe>
+            <iframe class="desk-pdf" src="${src}" title="첨부파일"></iframe>
         </div>`;
     }
     // 텍스트 뷰 (첨부 없거나 PDF 아닌 경우)
@@ -2527,7 +2926,7 @@ function drivePreviewUrl(link) {
     return null;
 }
 
-function deskLeftHTML(paper, pdfUrl, forceText = false) {
+function deskLeftHTML(paper, pdfUrl, forceText = false, startPage = 0) {
     const hasText = !!(paper.fullText?.trim() || paper.abstract?.trim() || paper.methods?.trim() || paper.findings?.trim());
 
     const bmBtn = `<button type="button" class="desk-view-toggle" id="desk-bm-btn">📌 북마크</button>`;
@@ -2537,9 +2936,10 @@ function deskLeftHTML(paper, pdfUrl, forceText = false) {
         const textBtn = hasText
             ? `<button type="button" class="desk-view-toggle" id="desk-toggle-text">${icon('note', 13)} 텍스트로 보기</button>`
             : '';
+        const src = startPage ? `${pdfUrl}#page=${startPage}` : pdfUrl;
         return `<div class="desk-pdf-wrap">
             <div class="desk-left-toolbar">${textBtn}${bmBtn}</div>
-            <iframe class="desk-pdf" src="${pdfUrl}" title="PDF"></iframe>
+            <iframe class="desk-pdf" src="${src}" title="PDF"></iframe>
         </div>`;
     }
 
@@ -2598,11 +2998,18 @@ function deskLeftHTML(paper, pdfUrl, forceText = false) {
 
 // 캔버스/패널 사이 핸들을 끌어 왼쪽 폭 조절(전역 비율 localStorage 저장)
 function bindDeskResizer(overlay) {
-    const left = overlay.querySelector('#desk-left');
-    const body = overlay.querySelector('.desk-body');
+    const left    = overlay.querySelector('#desk-left');
+    const body    = overlay.querySelector('.desk-body');
     const resizer = overlay.querySelector('#desk-resizer');
+    const shield  = overlay.querySelector('#desk-drag-shield');
     let dragging = false;
-    resizer.addEventListener('mousedown', e => { dragging = true; e.preventDefault(); document.body.style.userSelect = 'none'; });
+
+    resizer.addEventListener('mousedown', e => {
+        dragging = true;
+        if (shield) shield.style.display = 'block'; // iframe 마우스 이벤트 차단
+        e.preventDefault();
+        document.body.style.userSelect = 'none';
+    });
     const onMove = e => {
         if (!dragging) return;
         const r = body.getBoundingClientRect();
@@ -2614,6 +3021,7 @@ function bindDeskResizer(overlay) {
     const onUp = () => {
         if (!dragging) return;
         dragging = false;
+        if (shield) shield.style.display = 'none'; // 차단 해제
         document.body.style.userSelect = '';
         if (deskCtx && deskCtx._pct) localStorage.setItem('deskLeftPct', String(Math.round(deskCtx._pct)));
     };
@@ -2720,22 +3128,20 @@ function deskRightHTML(paper) {
     const excerptInner = paper ? `
             <div class="desk-right-inner">
                 ${infoHTML}
-                <div class="desk-catch">
-                    <div class="desk-catch-head">
-                        <span>${icon('clipboard', 14)} 붙여넣기 받는 칸</span>
-                    </div>
-                    <textarea class="desk-catch-text" placeholder="왼쪽에서 드래그 → 복사(Ctrl+C) → 여기 붙여넣기(Ctrl+V) → 분류 고르고 담기"></textarea>
-                    <div class="desk-catch-bar">
-                        <span class="desk-cat-label">분류</span>
-                        <select class="desk-cat-select" id="desk-cat-select">${cats}</select>
-                        <button type="button" class="desk-add btn-primary">담기</button>
+                <div class="desk-memolist" id="desk-excerpts">${deskExcerptsHTML(paper)}</div>
+                <div class="desk-memo-input-wrap">
+                    <div class="desk-memo-input-title">메모 입력 <span class="desk-memo-input-hint">Ctrl+Enter 저장</span></div>
+                    <textarea class="desk-memo-input" id="desk-memo-input" placeholder="왼쪽 PDF에서 복사한 내용이나 생각을 자유롭게 입력하세요" rows="4"></textarea>
+                    <div class="desk-memo-input-bar">
+                        <select class="desk-cat-select" id="desk-cat-select" title="라벨">${cats}</select>
+                        <input type="number" class="desk-memo-page-input" id="desk-memo-page" placeholder="페이지" min="1">
+                        <button type="button" class="desk-add btn-primary">저장</button>
                     </div>
                 </div>
-                <div class="desk-excerpts" id="desk-excerpts">${deskExcerptsHTML(paper)}</div>
             </div>` : `
             <div class="desk-rpanel-empty">
                 ${icon('book-open', 34)}
-                <p>논문을 펼치면 여기서 중요한 문장을<br>복사해 분류할 수 있어요.</p>
+                <p>논문을 펼치면 여기서 중요한 내용을<br>메모하고 라벨로 분류할 수 있어요.</p>
             </div>`;
     // 논문 북마크 패널
     const pbookmarks = (paper?.deskBookmarks || []);
@@ -2802,54 +3208,64 @@ function deskRightHTML(paper) {
 
     return `
         <div class="desk-rtabs">
-            <button type="button" class="desk-rtab ${t === 'excerpt' ? 'active' : ''}" data-rtab="excerpt">${icon('clipboard', 15)} 복사붙이기 분류</button>
-            <button type="button" class="desk-rtab ${t === 'model' ? 'active' : ''}" data-rtab="model">${icon('bar-chart', 15)} 발표자료 만들기</button>
+            <button type="button" class="desk-rtab ${t === 'excerpt' ? 'active' : ''}" data-rtab="excerpt" title="PDF 발췌·메모 입력"><span class="desk-rtab-2l">${icon('clipboard', 15)}<span>요약<br>메모</span></span></button>
+            <button type="button" class="desk-rtab ${t === 'model' ? 'active' : ''}" data-rtab="model" title="연구 모델·프로포절 작성"><span class="desk-rtab-2l-grid"><span>프</span><span>로</span><span>포</span><span>절</span><span>정</span><span></span><span></span><span>리</span></span></button>
+            <button type="button" class="desk-rtab ${t === 'catview' ? 'active' : ''}" data-rtab="catview" title="논문·자료를 카테고리별로 모아보기">${icon('layers', 15)} 모아보기</button>
         </div>
         <div class="desk-rpanel desk-right-top" id="desk-right-top" data-panel="excerpt" ${t === 'excerpt' ? '' : 'hidden'}>${excerptInner}</div>
-        <div class="desk-rpanel desk-model-pane" id="desk-model-pane" data-panel="model" ${t === 'model' ? '' : 'hidden'}></div>`;
+        <div class="desk-rpanel desk-model-pane" id="desk-model-pane" data-panel="model" ${t === 'model' ? '' : 'hidden'}></div>
+        <div class="desk-rpanel desk-catview-pane" id="desk-catview-pane" data-panel="catview" ${t === 'catview' ? '' : 'hidden'}></div>`;
 }
 
 // ── 자료 전용 오른쪽 패널 ─────────────────────────────────
-let deskMatRTab = 'memo'; // 'memo' | 'tags' (북마크는 팝업으로 이동)
+let deskMatRTab = 'memo';
+
+// 레거시 deskTags + deskMemo → deskMemos 배열로 통합 (표시 전용, 저장은 최초 조작 시)
+function matGetMemos(mat) {
+    if (Array.isArray(mat.deskMemos) && mat.deskMemos.length > 0) return mat.deskMemos;
+    const out = [];
+    // 레거시 태그 → label + text 동일한 메모로
+    (mat.deskTags || []).forEach(t => out.push({ id: genId(), label: 'tag', page: t.page || 0, text: t.label }));
+    // 레거시 문자열 메모
+    if (mat.deskMemo?.trim()) out.push({ id: genId(), label: 'free', page: 0, text: mat.deskMemo });
+    return out;
+}
+
+// 라벨 select 옵션 (EXCERPT_CATS 전체)
+const MAT_MEMO_CATS = EXCERPT_CATS.map(([k, l]) =>
+    `<option value="${k}">${l}</option>`).join('');
+let matMemoAddCat = 'free';
 
 function deskRightHTMLMaterial(mat) {
-    const t = deskMatRTab;
-    const memo = escHtml(mat.deskMemo || '');
-    const tags = (mat.deskTags || []);
-    const varRole = mat.varRole;
-    const MAT_VAR_LABELS = { '독립': '독립변인', '종속': '종속변인', '매개': '매개변인', '조절': '조절변인' };
+    const memos = matGetMemos(mat);
+    const hasPdf = !!deskCtx?.pdfUrl;
+    const memoItems = memos.map((m, i) => {
+        const label = CAT_LABEL[m.label] || m.label || '기타';
+        const pageBtn = m.page
+            ? `<button type="button" class="desk-mat-memo-page" data-page="${m.page}" title="${m.page}페이지로 이동">p.${m.page}</button>`
+            : '';
+        return `<div class="desk-mat-memo-item">
+            <span class="desk-ex-label cat-${m.label}">${escHtml(label)}</span>
+            ${pageBtn}<span class="desk-mat-memo-text">${escHtml(m.text)}</span>
+            <button type="button" class="desk-mat-memo-del" data-idx="${i}" title="삭제">✕</button>
+        </div>`;
+    }).join('');
+
+    const cats = EXCERPT_CATS.map(([k, l]) =>
+        `<option value="${k}" ${k === matMemoAddCat ? 'selected' : ''}>${l}</option>`).join('');
 
     const memoPanel = `
-        <div class="desk-mat-memo-wrap">
-            <textarea class="desk-mat-memo" id="desk-mat-memo" placeholder="읽으면서 드는 생각, 인상적인 내용, 활용 계획 등 자유롭게">${memo}</textarea>
-            <div class="desk-mat-memo-bar">
-                <span class="desk-mat-memo-hint">포커스 벗어나면 자동 저장</span>
-                <button type="button" class="btn-primary desk-mat-memo-save" id="desk-mat-memo-save">저장</button>
+        <div class="desk-mat-memolist-wrap">
+            <div class="desk-mat-memolist" id="desk-mat-memolist">${memoItems}</div>
+            <div class="desk-mat-memo-input-wrap">
+                <div class="desk-memo-input-title">메모 입력 <span class="desk-memo-input-hint">Ctrl+Enter 저장</span></div>
+                <textarea class="desk-mat-memo-input" id="desk-mat-memo-input" placeholder="읽으면서 드는 생각, 중요한 내용, 활용 계획 등을 자유롭게 입력하세요" rows="4"></textarea>
+                <div class="desk-mat-memo-input-bar">
+                    <select class="desk-cat-select" id="desk-mat-cat-select" title="라벨">${cats}</select>
+                    ${hasPdf ? `<input type="number" class="desk-mat-memo-page-input" id="desk-mat-memo-page" placeholder="페이지" min="1">` : ''}
+                    <button type="button" class="btn-primary" id="desk-mat-memo-add">저장</button>
+                </div>
             </div>
-        </div>`;
-
-    const varBadge = varRole && MAT_VAR_LABELS[varRole]
-        ? `<span class="mat-var-badge">📌 ${MAT_VAR_LABELS[varRole]}</span>` : '';
-    const hasPdf = !!deskCtx?.pdfUrl;
-    const tagItems = tags.map((tg, i) => {
-        const pageBtn = tg.page
-            ? `<button type="button" class="desk-mat-tag-page" data-page="${tg.page}" title="${tg.page}페이지로 이동">p.${tg.page}</button>`
-            : '';
-        return `<span class="desk-mat-tag">
-            ${pageBtn}${escHtml(tg.label)}
-            <button type="button" class="desk-mat-tag-del" data-idx="${i}" title="삭제">✕</button>
-        </span>`;
-    }).join('');
-    const tagsPanel = `
-        <div class="desk-mat-tags-wrap">
-            ${varBadge ? `<div class="desk-mat-varrow">${varBadge}</div>` : ''}
-            <div class="desk-mat-tags" id="desk-mat-tags">${tagItems || '<span class="desk-mat-tags-empty">아직 태그 없음</span>'}</div>
-            <div class="desk-mat-tag-input-row">
-                <input type="text" class="desk-mat-tag-input" id="desk-mat-tag-input" placeholder="태그 내용">
-                ${hasPdf ? `<input type="number" class="desk-mat-tag-page-input" id="desk-mat-tag-page" placeholder="페이지" min="1" style="width:68px">` : ''}
-                <button type="button" class="btn-primary desk-mat-tag-add" id="desk-mat-tag-add">추가</button>
-            </div>
-            ${hasPdf ? '<div class="desk-mat-tag-hint">페이지 번호를 입력하면 태그 클릭 시 해당 페이지로 이동해요</div>' : ''}
         </div>`;
 
     const bookmarks = (mat.deskBookmarks || []);
@@ -2918,77 +3334,58 @@ function deskRightHTMLMaterial(mat) {
         </div>`;
 
     return `
-        <div class="desk-rtabs">
-            <button type="button" class="desk-rtab ${t === 'memo' ? 'active' : ''}" data-matrtab="memo">${icon('note', 15)} 생각 메모</button>
-            <button type="button" class="desk-rtab ${t === 'tags' ? 'active' : ''}" data-matrtab="tags">${icon('tag', 15)} 태그</button>
-        </div>
-        <div class="desk-rpanel desk-mat-memo-pane" id="desk-mat-memo-pane" ${t === 'memo' ? '' : 'hidden'}>${memoPanel}</div>
-        <div class="desk-rpanel desk-mat-tags-pane" id="desk-mat-tags-pane" ${t === 'tags' ? '' : 'hidden'}>${tagsPanel}</div>`;
+        <div class="desk-rpanel desk-mat-memo-pane" id="desk-mat-memo-pane">${memoPanel}</div>`;
 }
 
 function bindDeskRightMaterial(overlay, mat) {
-    // 탭 전환
-    overlay.querySelectorAll('[data-matrtab]').forEach(b =>
-        b.addEventListener('click', () => {
-            deskMatRTab = b.dataset.matrtab;
-            overlay.querySelectorAll('[data-matrtab]').forEach(x => x.classList.toggle('active', x === b));
-            overlay.querySelector('#desk-mat-memo-pane')?.toggleAttribute('hidden', deskMatRTab !== 'memo');
-            overlay.querySelector('#desk-mat-tags-pane')?.toggleAttribute('hidden', deskMatRTab !== 'tags');
-        }));
-
-    // 메모 저장 (blur + 저장버튼)
-    const saveMemo = () => {
-        const val = overlay.querySelector('#desk-mat-memo')?.value ?? '';
-        if (val === (mat.deskMemo || '')) return;
-        mat.deskMemo = val;
+    // 메모 추가 (저장 버튼 + Ctrl+Enter)
+    const addMemo = () => {
+        const ta = overlay.querySelector('#desk-mat-memo-input');
+        const text = ta?.value.trim();
+        if (!text) return;
+        const label = overlay.querySelector('#desk-mat-cat-select')?.value || matMemoAddCat;
+        const page = parseInt(overlay.querySelector('#desk-mat-memo-page')?.value || '', 10) || 0;
+        // 레거시 마이그레이션: 기존 태그/문자열 메모 → 배열로 전환 후 추가
+        if (!Array.isArray(mat.deskMemos) || mat.deskMemos.length === 0) {
+            mat.deskMemos = matGetMemos(mat);
+            delete mat.deskMemo;
+            delete mat.deskTags;
+        }
+        mat.deskMemos.unshift({ id: genId(), label, page, text });
         dbPut(STORE_MATERIALS, mat);
         const idx = state.materials.findIndex(m => m.id === mat.id);
         if (idx >= 0) state.materials[idx] = mat;
-        showToast('메모 저장됨', 'success');
-    };
-    overlay.querySelector('#desk-mat-memo')?.addEventListener('blur', saveMemo);
-    overlay.querySelector('#desk-mat-memo-save')?.addEventListener('click', saveMemo);
-
-    // 태그 추가
-    const addTag = () => {
-        const inp = overlay.querySelector('#desk-mat-tag-input');
-        const val = inp?.value.trim();
-        if (!val) return;
-        const page = parseInt(overlay.querySelector('#desk-mat-tag-page')?.value || '', 10) || null;
-        if (!Array.isArray(mat.deskTags)) mat.deskTags = [];
-        mat.deskTags.push({ label: val, page });
-        dbPut(STORE_MATERIALS, mat);
-        const idx = state.materials.findIndex(m => m.id === mat.id);
-        if (idx >= 0) state.materials[idx] = mat;
-        inp.value = '';
-        const pi = overlay.querySelector('#desk-mat-tag-page');
-        if (pi) pi.value = '';
         overlay.querySelector('#desk-right').innerHTML = deskRightHTMLMaterial(mat);
         bindDeskRightMaterial(overlay, mat);
     };
-    overlay.querySelector('#desk-mat-tag-add')?.addEventListener('click', addTag);
-    overlay.querySelector('#desk-mat-tag-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } });
+    overlay.querySelector('#desk-mat-memo-add')?.addEventListener('click', addMemo);
+    overlay.querySelector('#desk-mat-memo-input')?.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); addMemo(); }
+    });
 
-    // 페이지 이동
-    overlay.querySelectorAll('.desk-mat-tag-page').forEach(b =>
+    // 메모 삭제
+    overlay.querySelectorAll('.desk-mat-memo-del').forEach(b =>
         b.addEventListener('click', () => {
-            const page = b.dataset.page;
-            const iframe = overlay.querySelector('#desk-left iframe.desk-pdf');
-            if (iframe && deskCtx?.pdfUrl) {
-                iframe.src = deskCtx.pdfUrl + '#page=' + page;
+            if (!Array.isArray(mat.deskMemos) || mat.deskMemos.length === 0) {
+                mat.deskMemos = matGetMemos(mat);
+                delete mat.deskMemo; delete mat.deskTags;
             }
-        }));
-
-    // 태그 삭제
-    overlay.querySelectorAll('.desk-mat-tag-del').forEach(b =>
-        b.addEventListener('click', () => {
-            mat.deskTags.splice(Number(b.dataset.idx), 1);
+            mat.deskMemos.splice(Number(b.dataset.idx), 1);
             dbPut(STORE_MATERIALS, mat);
             const idx = state.materials.findIndex(m => m.id === mat.id);
             if (idx >= 0) state.materials[idx] = mat;
             overlay.querySelector('#desk-right').innerHTML = deskRightHTMLMaterial(mat);
             bindDeskRightMaterial(overlay, mat);
         }));
+
+    // 메모 페이지 이동
+    overlay.querySelectorAll('.desk-mat-memo-page').forEach(b =>
+        b.addEventListener('click', () => deskNavToPage(b.dataset.page)));
+
+    // 라벨 드롭다운 상태 유지
+    overlay.querySelector('#desk-mat-cat-select')?.addEventListener('change', e => {
+        matMemoAddCat = e.target.value;
+    });
 
     // 북마크는 툴바 팝업(openDeskBmPopup)으로 이동
 }
@@ -3011,7 +3408,7 @@ function deskModelPreviewHTML() {
     const vars = deskCollectVariables();
     const varHTML = `<div class="dmp-field"><div class="dmp-k">변인</div><div class="dmp-vars">${vars.length ? vars.map(v => `<span class="tag tag-variable">${escHtml(v)}</span>`).join('') : '<span class="muted">아직 없음 — 변인 발췌를 보내보세요</span>'}</div></div>`;
     return `
-        <div class="desk-model-head">${icon('bar-chart', 14)} 발표자료 만들기</div>
+        <div class="desk-model-head">${icon('bar-chart', 14)} 프로포절 정리</div>
         <div class="desk-model-body">
             ${field('needs', '연구 필요성')}
             ${field('purpose', '연구 목적')}
@@ -3038,7 +3435,7 @@ function deskCollectVariables() {
     return out;
 }
 
-// 우측 패널 탭 전환 (복사붙이기 분류 ↔ 발표자료 만들기)
+// 우측 패널 탭 전환 (복사붙이기 분류 ↔ 발표자료 만들기 ↔ 모아보기)
 function deskActivateRTab(overlay, tab) {
     deskRTab = tab;
     overlay.querySelectorAll('.desk-rtab').forEach(b =>
@@ -3047,6 +3444,110 @@ function deskActivateRTab(overlay, tab) {
         p.hidden = (p.dataset.panel !== tab);
     });
     if (tab === 'model') deskRenderModel(overlay);
+    if (tab === 'catview') {
+        const pane = overlay.querySelector('#desk-catview-pane');
+        if (pane) deskRenderCatView(overlay, pane);
+    }
+}
+
+// 책상 내 모아보기 탭 렌더링
+// 논문/자료 "보기" 클릭 시 모달 대신 책상 탭으로 이동
+function deskRenderCatView(overlay, container) {
+    const known = new Set(EXCERPT_CATS.map(([k]) => k));
+    const catOf = e => (known.has(e.cat) ? e.cat : 'free');
+    const cur = (state.catViewCat && known.has(state.catViewCat)) ? state.catViewCat : EXCERPT_CATS[0][0];
+    state.catViewCat = cur;
+
+    const rows = sortPapers(state.papers).map(p => ({
+        p,
+        fieldVal: catFieldValue(p, cur),
+        excerpts: (p.excerpts || []).filter(e => catOf(e) === cur),
+    })).filter(r => r.fieldVal || r.excerpts.length);
+
+    const totalEx = rows.reduce((n, r) => n + r.excerpts.length, 0);
+    const catOptions = EXCERPT_CATS.map(([k, l]) =>
+        `<option value="${k}" ${k === cur ? 'selected' : ''}>${l}</option>`).join('');
+
+    const body = rows.length
+        ? rows.map(({ p, fieldVal, excerpts }) => {
+            const fieldHTML = fieldVal
+                ? (Array.isArray(fieldVal)
+                    ? `<div class="cv-field-tags">${fieldVal.map(v => `<span class="tag tag-variable">${escHtml(v)}</span>`).join('')}</div>`
+                    : `<div class="cv-field-text">${escHtml(fieldVal)}</div>`)
+                : '';
+            const exHTML = excerpts.length
+                ? `<ul class="cv-ex-list">${excerpts.map(e =>
+                    `<li>${escHtml(e.text)}${e.memo ? `<span class="cv-ex-memo"> — ${escHtml(e.memo)}</span>` : ''}</li>`
+                ).join('')}</ul>`
+                : '';
+            return `
+            <div class="cv-paper">
+                <div class="cv-paper-head">
+                    <span class="cv-paper-title">${escHtml(p.title || '제목 없음')}</span>
+                    <span class="cv-paper-meta">${escHtml([firstAuthor(p), p.year].filter(Boolean).join(', '))}</span>
+                    <button type="button" class="cv-open btn-secondary" data-id="${p.id}">${icon('eye', 14)} 보기</button>
+                </div>
+                ${fieldHTML}${exHTML}
+            </div>`;
+        }).join('')
+        : `<div class="empty-state"><div class="empty-icon">${icon('clipboard', 44)}</div><h3>이 분류에 내용이 없어요</h3><p class="muted">논문에 「${escHtml(CAT_LABEL[cur] || '')}」 항목을 채우거나, 연구 책상에서 발췌를 담아보세요.</p></div>`;
+
+    const matsWithTags = state.materials.filter(m =>
+        (m.deskTags || []).length > 0 || m.deskMemo?.trim() || (m.deskMemos || []).length > 0);
+    const matTagsHTML = matsWithTags.length ? `
+        <div class="cv-mat-section">
+            <div class="cv-mat-section-title">${icon('library', 14)} 자료 태그 & 메모</div>
+            ${matsWithTags.map(m => {
+                const tags = (m.deskTags || []).map(t =>
+                    `<span class="desk-mat-tag" style="cursor:default">${t.page ? `<span class="desk-mat-tag-page" style="cursor:default">p.${t.page}</span>` : ''}${escHtml(t.label)}</span>`
+                ).join('');
+                const memos = Array.isArray(m.deskMemos) ? m.deskMemos
+                    : (m.deskMemo?.trim() ? [{ page: 0, text: m.deskMemo }] : []);
+                const memosHTML = memos.map(memo =>
+                    `<div class="cv-mat-memo">${memo.page ? `<span class="cv-mat-memo-page">p.${memo.page}</span> ` : ''}${escHtml(memo.text)}</div>`
+                ).join('');
+                return `<div class="cv-paper">
+                    <div class="cv-paper-head">
+                        <span class="cv-paper-title">${escHtml(m.title || '제목 없음')}</span>
+                        <span class="cv-paper-meta">${escHtml(m.type || '자료')}</span>
+                        <button type="button" class="cv-open-mat btn-secondary" data-id="${m.id}">${icon('eye', 14)} 보기</button>
+                    </div>
+                    ${tags ? `<div class="cv-mat-tags">${tags}</div>` : ''}
+                    ${memosHTML}
+                </div>`;
+            }).join('')}
+        </div>` : '';
+
+    container.innerHTML = `
+        <div class="cv-head">
+            <span class="cv-title">모아보기</span>
+            <select class="cv-cat-select" id="desk-cv-cat">${catOptions}</select>
+            <span class="cv-count">${rows.length}편 · 발췌 ${totalEx}개</span>
+        </div>
+        <div class="cv-list">${body}${matTagsHTML}</div>`;
+
+    container.querySelector('#desk-cv-cat')?.addEventListener('change', e => {
+        state.catViewCat = e.target.value;
+        deskRenderCatView(overlay, container);
+    });
+    // 논문 "보기" → 책상 왼쪽 탭으로 열기
+    container.querySelectorAll('.cv-open').forEach(b =>
+        b.addEventListener('click', () => {
+            const paper = state.papers.find(p => p.id === b.dataset.id);
+            if (!paper) return;
+            if (!deskTabs.includes(b.dataset.id)) deskTabs.push(b.dataset.id);
+            deskActivate(b.dataset.id);
+            deskRenderTabs();
+        }));
+    // 자료 "보기" → 책상 왼쪽 자료 탭으로 열기
+    container.querySelectorAll('.cv-open-mat').forEach(b =>
+        b.addEventListener('click', () => {
+            const mat = state.materials.find(m => m.id === b.dataset.id);
+            if (!mat) return;
+            if (!deskMatTabs.includes(b.dataset.id)) deskMatTabs.push(b.dataset.id);
+            deskActivateMat(b.dataset.id);
+            deskRenderTabs();
+        }));
 }
 
 function deskRenderModel(overlay) {
@@ -3063,54 +3564,44 @@ function deskRenderModel(overlay) {
     });
 }
 
-// 카테고리별로 묶어 한눈에 (EXCERPT_CATS 순서)
+// 메모 통합 리스트 — 라벨 배지 + 페이지 + 내용 + 삭제
 function deskExcerptsHTML(paper) {
     const list = paper.excerpts || [];
     if (!list.length) {
-        return `<div class="desk-ex-empty">아직 담은 게 없어요.<br>왼쪽에서 중요한 문장을 복사해 위 칸에 붙여넣고 담아보세요.</div>`;
+        return '';
     }
-    return EXCERPT_CATS.map(([k, label]) => {
-        const items = list.filter(e => e.cat === k);
-        if (!items.length) return '';
-        const cards = items.map(e => {
-            const style = e.color ? ` style="border-left:4px solid ${e.color}"` : '';
-            const sw = EX_COLORS.map(c =>
-                `<button type="button" class="desk-ex-sw ${e.color === c ? 'on' : ''}" data-eid="${e.id}" data-color="${c}" style="background:${c || '#ffffff'}" title="${c ? '색 칠하기' : '색 없음'}"></button>`
-            ).join('');
-            return `
-            <div class="desk-ex-card" data-eid="${e.id}"${style}>
-                <div class="desk-ex-text" contenteditable="true" data-eid="${e.id}">${escHtml(e.text)}</div>
-                <div class="desk-ex-memo" contenteditable="true" data-eid="${e.id}" data-ph="＋ 메모">${escHtml(e.memo || '')}</div>
-                <div class="desk-ex-tools">
-                    <div class="desk-ex-swatches">${sw}</div>
-                    <div class="desk-ex-tbtns">
-                        <button type="button" class="desk-ex-del" data-eid="${e.id}" title="삭제">${icon('trash', 12)} 삭제</button>
-                    </div>
-                </div>
-            </div>`;
-        }).join('');
-        return `
-            <div class="desk-ex-group">
-                <div class="desk-ex-gtitle">
-                    <span class="desk-ex-badge cat-${k}">${label}</span>
-                    <span class="desk-ex-count">${items.length}</span>
-                </div>
-                ${cards}
-            </div>`;
+    return list.map(e => {
+        const label = CAT_LABEL[e.cat] || e.cat || '기타';
+        const pageBtn = e.page
+            ? `<button type="button" class="desk-mat-memo-page" data-page="${e.page}" title="${e.page}페이지로 이동">p.${e.page}</button>`
+            : '';
+        return `<div class="desk-mat-memo-item">
+            <span class="desk-ex-label cat-${e.cat}">${escHtml(label)}</span>
+            ${pageBtn}
+            <span class="desk-mat-memo-text">${escHtml(e.text)}</span>
+            <button type="button" class="desk-ex-del" data-eid="${e.id}" title="삭제">✕</button>
+        </div>`;
     }).join('');
 }
 
 function bindDeskRight(overlay, paper) {
-    // 우측 탭(복사붙이기 분류 ↔ 발표자료 만들기 ↔ 북마크) 전환 — 논문 없어도 동작
+    // 우측 탭(복사붙이기 분류 ↔ 발표자료 만들기 ↔ 모아보기) 전환 — 논문 없어도 동작
     overlay.querySelectorAll('.desk-rtab').forEach(b =>
         b.addEventListener('click', () => deskActivateRTab(overlay, b.dataset.rtab)));
-    // 논문 탭 전환 등으로 다시 그려질 때, 발표자료 탭이 켜져 있었으면 내용 채움
+    // 논문 탭 전환 등으로 다시 그려질 때, 현재 탭 내용 유지
     if (deskRTab === 'model') deskRenderModel(overlay);
-    // 발췌(복사붙이기) 관련은 논문이 펼쳐져 있을 때만
+    if (deskRTab === 'catview') {
+        const pane = overlay.querySelector('#desk-catview-pane');
+        if (pane) deskRenderCatView(overlay, pane);
+    }
+    // 메모 입력 관련은 논문이 펼쳐져 있을 때만
     if (!paper) return;
     const catSel = overlay.querySelector('#desk-cat-select');
     if (catSel) catSel.addEventListener('change', () => { deskAddCat = catSel.value; });
-    overlay.querySelector('.desk-add').addEventListener('click', () => deskAddExcerpt(overlay, paper));
+    overlay.querySelector('.desk-add')?.addEventListener('click', () => deskAddExcerpt(overlay, paper));
+    overlay.querySelector('#desk-memo-input')?.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); deskAddExcerpt(overlay, paper); }
+    });
     bindDeskExcerpts(overlay, paper);
 
     // 북마크는 툴바 팝업(openDeskBmPopup)으로 이동
@@ -3133,17 +3624,9 @@ const EX_SEND_DESTS = [
 function bindDeskExcerpts(overlay, paper) {
     overlay.querySelectorAll('.desk-ex-del').forEach(b =>
         b.addEventListener('click', () => deskDelExcerpt(overlay, paper, b.dataset.eid)));
-    // 본문/메모 인라인 편집 — 포커스 잃을 때 저장(재렌더 안 함: 커서 유지)
-    overlay.querySelectorAll('.desk-ex-text').forEach(el =>
-        el.addEventListener('blur', () => deskUpdateExcerpt(paper, el.dataset.eid, 'text', el.textContent.trim())));
-    overlay.querySelectorAll('.desk-ex-memo').forEach(el =>
-        el.addEventListener('blur', () => deskUpdateExcerpt(paper, el.dataset.eid, 'memo', el.textContent.trim())));
-    // 색 칠하기 — 저장 후 다시 그려 띠 반영
-    overlay.querySelectorAll('.desk-ex-sw').forEach(b =>
-        b.addEventListener('click', () => {
-            deskUpdateExcerpt(paper, b.dataset.eid, 'color', b.dataset.color);
-            deskRenderExcerpts(overlay, paper);
-        }));
+    // 페이지 이동
+    overlay.querySelectorAll('#desk-excerpts .desk-mat-memo-page').forEach(b =>
+        b.addEventListener('click', () => deskNavToPage(b.dataset.page)));
 }
 
 // 발췌 한 조각을 모형(미니프로포절 칸 / 태그)으로 보냄.
@@ -3191,14 +3674,18 @@ function deskRenderExcerpts(overlay, paper) {
 }
 
 function deskAddExcerpt(overlay, paper) {
-    const ta = overlay.querySelector('.desk-catch-text');
-    const text = (ta.value || '').trim();
-    if (!text) { ta.focus(); return; }
+    const ta = overlay.querySelector('#desk-memo-input');
+    const text = (ta?.value || '').trim();
+    if (!text) { ta?.focus(); return; }
+    const page = parseInt(overlay.querySelector('#desk-memo-page')?.value || '', 10) || 0;
     if (!Array.isArray(paper.excerpts)) paper.excerpts = [];
-    // 같은 카테고리 맨 앞에 오도록 최신순 unshift (paper는 state.papers의 참조 → 메모리도 갱신)
-    paper.excerpts.unshift({ id: genId(), cat: deskAddCat, text, memo: '', color: '', createdAt: Date.now() });
+    paper.excerpts.unshift({ id: genId(), cat: deskAddCat, text, page, createdAt: Date.now() });
     dbPut(STORE_PAPERS, paper);
+    const idx = state.papers.findIndex(p => p.id === paper.id);
+    if (idx >= 0) state.papers[idx] = paper;
     ta.value = '';
+    const pi = overlay.querySelector('#desk-memo-page');
+    if (pi) pi.value = '';
     deskRenderExcerpts(overlay, paper);
     ta.focus();
 }
@@ -4160,13 +4647,19 @@ function buildDebugReport() {
         논문수: state.papers.length,
         자료수: state.materials.length,
     };
+    const fmtDt = t => {
+        const d = new Date(t);
+        const date = `${d.getMonth()+1}/${d.getDate()}`;
+        const time = d.toLocaleTimeString('ko-KR', { hour12: false });
+        return `${date} ${time}`;
+    };
     const lines = DEBUG_LOG.map(d =>
-        `[${new Date(d.t).toLocaleTimeString('ko-KR', { hour12: false })}] ${d.level.toUpperCase()}: ${d.msg}`);
+        `[${fmtDt(d.t)}] ${d.level.toUpperCase()}: ${d.msg}`);
     let persistedSection = '';
     try {
         const stored = JSON.parse(localStorage.getItem('debugPersist') || '[]');
         if (stored.length) {
-            const pLines = stored.map(d => `[${new Date(d.t).toLocaleTimeString('ko-KR', { hour12: false })}] ${d.level.toUpperCase()}: ${d.msg}`);
+            const pLines = stored.map(d => `[${fmtDt(d.t)}] ${d.level.toUpperCase()}: ${d.msg}`);
             persistedSection = `\n\n--- 이전 세션 오류·경고 (localStorage, ${stored.length}건) ---\n` + pLines.join('\n');
         }
     } catch(e) {}

@@ -2639,6 +2639,86 @@ body {
     gap: 14px;
     align-items: start;
 }
+/* ─── 마인드맵 캔버스 ──────────────────────────────────────── */
+.mm-wrap { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+.mm-bar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 10px 18px; border-bottom: 1px solid var(--border);
+    flex-shrink: 0; background: var(--surface);
+}
+.mm-hint {
+    font-size: 12px; color: var(--text-muted);
+    display: flex; gap: 8px; align-items: center;
+}
+.mm-hint kbd {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 3px; padding: 1px 5px; font-size: 11px;
+    font-family: inherit; color: var(--text-secondary);
+}
+.mm-area {
+    flex: 1; overflow: auto; min-height: 0; outline: none;
+    background-color: var(--bg);
+    background-image: radial-gradient(circle, var(--border) 1px, transparent 1px);
+    background-size: 24px 24px;
+}
+.mm-canvas { position: relative; }
+.mm-node {
+    position: absolute; border: 2.5px solid; border-radius: 8px;
+    background: var(--surface);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,.10);
+    cursor: pointer; user-select: none;
+    transition: box-shadow .12s;
+    overflow: visible;
+}
+.mm-node:hover { box-shadow: 0 4px 14px rgba(0,0,0,.18); }
+.mm-node.mm-sel { box-shadow: 0 0 0 3px rgba(74,144,226,.4), 0 4px 14px rgba(0,0,0,.18); }
+.mm-node.mm-root { border-radius: 12px; }
+.mm-ntxt {
+    font-size: 13px; padding: 0 28px 0 10px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    max-width: 100%; pointer-events: none;
+}
+.mm-node.mm-sel .mm-ntxt { pointer-events: auto; }
+.mm-inp {
+    width: calc(100% - 20px); border: none; outline: none;
+    background: transparent; font: inherit; font-size: 13px;
+    text-align: center; padding: 0 4px;
+}
+.mm-col-btn {
+    position: absolute; right: 5px; top: 50%; transform: translateY(-50%);
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--bg); border: 1px solid var(--border);
+    font-size: 9px; cursor: pointer; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-muted); z-index: 2;
+}
+.mm-col-btn:hover { background: var(--border); }
+/* 왼쪽 방향 노드 — 접기 버튼을 노드 왼쪽에 배치 */
+.mm-col-l { right: auto; left: 5px; }
+/* 방향 전환 버튼 (팔레트 안) */
+.mm-flip {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 1px 6px; font-size: 12px;
+    cursor: pointer; color: var(--text-secondary);
+    transition: background .12s;
+}
+.mm-flip:hover { background: var(--accent-light); color: var(--accent); }
+.mm-palette {
+    position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 8px;
+    display: flex; gap: 6px; box-shadow: 0 4px 12px rgba(0,0,0,.18);
+    z-index: 10;
+}
+.mm-cdot {
+    width: 18px; height: 18px; border-radius: 50%;
+    border: 2px solid transparent; cursor: pointer; padding: 0;
+    transition: transform .1s, box-shadow .1s;
+}
+.mm-cdot:hover { transform: scale(1.3); }
+.mm-cdot.active { box-shadow: 0 0 0 2.5px rgba(0,0,0,.35); transform: scale(1.2); }
+
 .note-card {
     display: flex;
     flex-direction: column;
@@ -2673,11 +2753,19 @@ body {
 .note-foot {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 6px;
     margin-top: 8px;
     padding-top: 8px;
-    border-top: 1px solid #efe4c0;
+    border-top: 1px solid rgba(0,0,0,.08);
 }
+.note-cdots { display: flex; gap: 5px; align-items: center; margin-right: auto; }
+.note-cdot {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid; cursor: pointer; padding: 0; flex-shrink: 0;
+    transition: transform .12s, box-shadow .12s;
+}
+.note-cdot:hover { transform: scale(1.35); }
+.note-cdot.active { transform: scale(1.2); box-shadow: 0 0 0 2px rgba(0,0,0,.3); }
 .note-date { font-size: 11.5px; color: var(--text-muted); }
 .note-del {
     border: none;
@@ -2689,7 +2777,7 @@ body {
     border-radius: 6px;
     font-family: inherit;
 }
-.note-del:hover { background: #fce8e6; color: var(--danger); }
+.note-del:hover { background: rgba(220,53,69,.1); color: var(--danger); }
 
 /* ── 저작권 표시 ──────────────────────────────────────────── */
 .copyright {
@@ -2778,12 +2866,29 @@ body {
     position: relative;
     flex-shrink: 0;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 6px 10px;
     padding: 7px 16px 0;
     background: var(--surface);
     border-bottom: 1px solid var(--border);
+}
+/* 탭이 좁아지면 버튼 그룹이 아래 줄로 내려오며 오른쪽 정렬 */
+.desk-topbar-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-shrink: 0;
+    margin-left: auto;
+    padding-bottom: 6px;
+}
+/* iframe 드래그 중 마우스 이벤트 가로채기 방지용 투명 shield */
+.desk-drag-shield {
+    display: none;
+    position: absolute;
+    inset: 0;
+    z-index: 50;
+    cursor: col-resize;
 }
 .desk-close {
     flex-shrink: 0;
@@ -2800,7 +2905,6 @@ body {
 .desk-close:hover { border-color: var(--accent-mid); color: var(--accent); }
 .desk-sketch {
     flex-shrink: 0;
-    margin-bottom: 6px;
     padding: 7px 14px;
     border: 1.5px solid var(--accent-mid);
     border-radius: 18px;
@@ -2813,7 +2917,6 @@ body {
 .desk-sketch:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
 .desk-summary {
     flex-shrink: 0;
-    margin-bottom: 6px;
     padding: 7px 14px;
     border: 1.5px solid var(--border);
     border-radius: 18px;
@@ -2887,7 +2990,7 @@ body {
 
 .desk-body { flex: 1; display: flex; min-height: 0; }
 .desk-pane { min-width: 0; height: 100%; overflow: auto; }
-.desk-left { background: #fff; }
+.desk-left { background: #fff; position: relative; }
 /* frame pool 슬롯 — desk-left 높이 전체를 채우는 컨테이너 */
 .desk-frame-slot { width: 100%; height: 100%; display: contents; }
 /* PDF + 툴바 래퍼 — flexbox로 툴바 고정, iframe이 남은 높이 채움 */
@@ -2910,11 +3013,28 @@ body {
 .desk-txt-body { font-size: 14px; line-height: 1.75; color: var(--text-secondary); white-space: pre-wrap; margin-top: 4px; }
 
 /* 자료 오른쪽 패널 */
-.desk-mat-memo-wrap { display: flex; flex-direction: column; height: 100%; padding: 14px; gap: 8px; }
-.desk-mat-memo { flex: 1; resize: none; border: 1.5px solid var(--border); border-radius: 10px; padding: 12px; font-size: 13.5px; line-height: 1.7; font-family: inherit; color: var(--text-primary); background: var(--bg); min-height: 0; }
-.desk-mat-memo:focus { outline: none; border-color: var(--accent-mid); }
-.desk-mat-memo-bar { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
-.desk-mat-memo-hint { font-size: 11.5px; color: var(--text-muted); }
+/* 페이지 연동 메모 패널 */
+/* 논문 패널과 동일한 구조로 통일 */
+.desk-mat-memolist-wrap { display: flex; flex-direction: column; height: 100%; }
+.desk-mat-memolist { display: flex; flex-direction: column; gap: 7px; overflow-y: auto; flex: 1; min-height: 0; padding: 10px 14px; }
+.desk-mat-memo-empty { color: var(--text-muted); font-size: 12px; padding: 4px 0; }
+.desk-mat-memo-item { display: flex; align-items: flex-start; gap: 7px; padding: 8px 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 9px; }
+.desk-mat-memo-page { flex-shrink: 0; font-size: 11px; font-weight: 700; background: var(--accent-light); color: var(--accent); border: 1px solid var(--accent-mid); border-radius: 5px; padding: 2px 7px; cursor: pointer; }
+.desk-mat-memo-page:hover { background: var(--accent); color: #fff; }
+.desk-mat-memo-text { flex: 1; font-size: 13px; line-height: 1.6; color: var(--text-primary); white-space: pre-wrap; word-break: break-word; }
+.desk-mat-memo-del { flex-shrink: 0; background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 13px; padding: 0 2px; line-height: 1; }
+.desk-mat-memo-del:hover { color: var(--danger, #e53935); }
+.desk-mat-memo-input-wrap {
+    position: sticky; bottom: 0; background: var(--surface);
+    border-top: 1px solid var(--border); padding: 10px 14px; flex-shrink: 0;
+}
+.desk-mat-memo-input { width: 100%; box-sizing: border-box; resize: vertical; border: 1.5px solid var(--border); border-radius: 10px; padding: 9px 11px; font: inherit; font-size: 13px; line-height: 1.55; background: var(--bg); color: var(--text-primary); min-height: 120px; }
+.desk-mat-memo-input:focus { outline: none; border-color: var(--accent-mid); }
+.desk-mat-memo-input-bar { display: flex; gap: 6px; margin-top: 7px; align-items: center; flex-wrap: wrap; }
+.desk-mat-memo-page-input { width: 72px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; background: var(--bg); color: var(--text-primary); }
+.desk-mat-memo-page-hint { font-size: 11px; color: var(--text-muted); }
+/* 모아보기 메모 페이지 표시 */
+.cv-mat-memo-page { font-size: 11px; font-weight: 700; background: var(--accent-light); color: var(--accent); border-radius: 4px; padding: 1px 5px; }
 .desk-mat-tags-wrap { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
 .desk-mat-varrow { margin-bottom: 2px; }
 .mat-var-badge { display: inline-block; background: var(--accent-light); color: var(--accent); border: 1px solid var(--accent-mid); border-radius: 6px; padding: 3px 10px; font-size: 12px; font-weight: 600; }
@@ -2990,12 +3110,25 @@ body {
 .desk-rtabs { display: flex; flex-shrink: 0; border-bottom: 1px solid var(--border); background: var(--bg); }
 .desk-rtab {
     flex: 1; border: none; background: none; cursor: pointer;
-    padding: 10px 8px; font-size: 12.5px; font-weight: 700;
+    padding: 6px 6px; font-size: 12.5px; font-weight: 700;
     color: var(--text-muted); border-bottom: 2px solid transparent;
     transition: color .12s ease, border-color .12s ease;
+    display: flex; align-items: center; justify-content: center;
 }
 .desk-rtab:hover { color: var(--accent); }
 .desk-rtab.active { color: var(--accent); border-bottom-color: var(--accent); background: var(--surface); }
+/* 요약 메모 탭 — 아이콘 + 두 줄 텍스트 */
+.desk-rtab-2l { display: flex; align-items: center; gap: 4px; }
+.desk-rtab-2l span { font-size: 12px; line-height: 1.3; text-align: left; }
+/* 프로포절 두 줄 탭 — 4열 그리드로 글자 정렬 */
+.desk-rtab-2l-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    text-align: center;
+    font-size: 12.5px;
+    line-height: 1.4;
+    width: 100%;
+}
 
 /* 두 탭 패널 공통 — 영역을 꽉 채우고 내부에서만 스크롤 */
 .desk-rpanel { flex: 1 1 auto; min-height: 0; overflow: auto; }
@@ -3115,39 +3248,32 @@ body {
 }
 .desk-cat-select:focus { outline: none; border-color: var(--accent-mid); }
 
-/* 발췌 목록 — 카테고리별 묶음 */
-.desk-excerpts { padding: 14px 16px; display: flex; flex-direction: column; gap: 16px; }
-.desk-ex-empty { color: var(--text-muted); font-size: 13px; line-height: 1.6; text-align: center; padding: 30px 10px; }
-.desk-ex-group { display: flex; flex-direction: column; gap: 7px; }
-.desk-ex-gtitle { display: flex; align-items: center; gap: 7px; }
-.desk-ex-badge { padding: 2px 9px; border-radius: 10px; font-size: 11px; font-weight: 700; color: #fff; background: var(--accent); }
-.desk-ex-count { font-size: 11px; color: var(--text-muted); }
-.desk-ex-card {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 9px 11px;
+/* 통합 메모 리스트 (논문 요약메모 + 자료 메모 공통) */
+.desk-memolist { padding: 10px 14px; display: flex; flex-direction: column; gap: 7px; }
+.desk-memo-empty { color: var(--text-muted); font-size: 12px; padding: 6px 0 2px; }
+/* 라벨 배지 */
+.desk-ex-label { flex-shrink: 0; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; color: #fff; background: var(--accent); }
+/* 메모 입력 영역 타이틀 */
+.desk-memo-input-title {
+    font-size: 12px; font-weight: 700; color: var(--text-secondary);
+    margin-bottom: 6px; display: flex; align-items: center; gap: 4px;
 }
-.desk-ex-text {
-    font-size: 13px;
-    line-height: 1.55;
-    color: var(--text-primary);
-    white-space: pre-wrap;
-    border-radius: 6px;
+.desk-memo-input-hint { font-weight: 400; color: var(--text-muted); font-size: 11px; }
+/* 메모 입력 영역 (하단 고정) */
+.desk-memo-input-wrap {
+    position: sticky; bottom: 0; background: var(--surface);
+    border-top: 1px solid var(--border); padding: 10px 14px; flex-shrink: 0;
 }
-.desk-ex-text:focus { outline: none; box-shadow: 0 0 0 2px var(--accent-mid); background: var(--surface); }
-.desk-ex-memo {
-    font-size: 12px;
-    line-height: 1.5;
-    color: var(--text-secondary);
-    white-space: pre-wrap;
-    border-radius: 6px;
-    min-height: 1em;
+.desk-memo-input {
+    width: 100%; box-sizing: border-box; resize: vertical;
+    border: 1.5px solid var(--border); border-radius: 10px;
+    padding: 9px 11px; font: inherit; font-size: 13px; line-height: 1.55;
+    background: var(--bg); color: var(--text-primary);
+    min-height: 120px;
 }
-.desk-ex-memo:empty::before { content: attr(data-ph); color: var(--text-muted); opacity: 0.6; }
+.desk-memo-input:focus { outline: none; border-color: var(--accent-mid); }
+.desk-memo-input-bar { display: flex; gap: 6px; margin-top: 7px; align-items: center; flex-wrap: wrap; }
+.desk-memo-page-input { width: 72px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; background: var(--bg); color: var(--text-primary); }
 
 /* 보기 모달 — 담은 발췌(항목별) */
 .ve-excerpts { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }

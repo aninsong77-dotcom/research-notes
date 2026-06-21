@@ -243,6 +243,20 @@ function openAuthModal() {
 
 const SYNC_STORES = ['papers', 'materials', 'notes', 'projects', 'mindmaps', 'proposals'];
 
+// undefined 값 필드 재귀 제거 — Firestore는 undefined를 허용하지 않음
+function stripUndefined(obj) {
+    if (Array.isArray(obj)) return obj.map(stripUndefined);
+    if (obj && typeof obj === 'object') {
+        const out = {};
+        for (const [k, v] of Object.entries(obj)) {
+            if (v === undefined) continue;
+            out[k] = stripUndefined(v);
+        }
+        return out;
+    }
+    return obj;
+}
+
 // PDF·파일 바이너리 + 대용량 텍스트 제거 후 Firestore에 올릴 수 있는 객체 반환
 // fullText·attachedImages는 로컬 전용 (Firestore 1MB 한도 초과 방지)
 function stripBinary(store, item) {
@@ -254,7 +268,7 @@ function stripBinary(store, item) {
         delete obj.attachedImages;
     }
     if (store === 'materials') delete obj.fileData;
-    return obj;
+    return stripUndefined(obj);
 }
 
 // Firestore 컬렉션 참조

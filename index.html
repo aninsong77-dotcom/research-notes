@@ -54,19 +54,19 @@
             <div id="project-selector"></div>
         </div>
         <nav class="sidebar-nav">
-            <button class="nav-item" data-view="desk">
+            <button class="nav-item" data-view="desk" title="논문·자료를 책상에 펼쳐 읽고 메모하기">
                 <span class="nav-icon">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><path d="M12 3v18"/></svg>
                 </span>
                 <span>내 연구책상</span>
             </button>
-            <button class="nav-item" data-view="catview">
+            <button class="nav-item" data-view="postit" title="연구 내용을 트리 구조로 정리하는 마인드맵 캔버스">
                 <span class="nav-icon">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.5 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3Z"/><path d="M15 3v6h6"/><path d="M10 12h4"/><path d="M8 16h8"/></svg>
                 </span>
-                <span>분류 모아보기</span>
+                <span>마인드맵</span>
             </button>
-            <button class="nav-item" data-view="sketch">
+            <button class="nav-item" data-view="sketch" title="변인과 화살표로 연구 모형을 자유롭게 그리는 스케치북">
                 <span class="nav-icon">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
@@ -74,16 +74,16 @@
                 </span>
                 <span>모형스케치북</span>
             </button>
-            <button class="nav-item" data-view="notes">
+            <button class="nav-item" data-view="notes" title="아이디어·자유 메모 작성">
                 <span class="nav-icon">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <line x1="9" y1="18" x2="15" y2="18"/><line x1="10" y1="22" x2="14" y2="22"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/>
                     </svg>
                 </span>
-                <span>아이디어</span>
+                <span>아이디어/메모</span>
                 <span class="nav-count" id="notes-count">0</span>
             </button>
-            <button class="nav-item" data-view="papers">
+            <button class="nav-item" data-view="papers" title="논문 목록 — 추가·검색·정리">
                 <span class="nav-icon">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
@@ -92,7 +92,7 @@
                 <span>논문</span>
                 <span class="nav-count" id="papers-count">0</span>
             </button>
-            <button class="nav-item" data-view="materials">
+            <button class="nav-item" data-view="materials" title="기타 자료(도서·척도·웹자료) 목록">
                 <span class="nav-icon">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
@@ -101,7 +101,7 @@
                 <span>기타자료</span>
                 <span class="nav-count" id="materials-count">0</span>
             </button>
-            <button class="nav-item" data-view="references">
+            <button class="nav-item" data-view="references" title="APA 참고문헌 목록 — 복사·내보내기">
                 <span class="nav-icon">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3" cy="6" r="1" fill="currentColor"/><circle cx="3" cy="12" r="1" fill="currentColor"/><circle cx="3" cy="18" r="1" fill="currentColor"/>
@@ -114,7 +114,7 @@
             <button class="btn-mini-open" id="btn-open-mini" title="빠른 인용 창 열기">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:5px"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>빠른 인용
             </button>
-            <button class="btn-add" id="btn-add">
+            <button class="btn-add" id="btn-add" title="논문 또는 자료 추가">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="vertical-align:middle;margin-right:4px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 <span id="add-side-label">논문 추가</span>
             </button>
@@ -157,14 +157,14 @@
                     placeholder="제목, 저자, 변인, 메모 등 단어 검색...">
             </div>
             <div class="search-mode-toggle" id="search-mode-toggle" title="검색 범위 선택">
-                <button class="sm-btn active" data-mode="fulltext">전체단어</button>
-                <button class="sm-btn" data-mode="keyword">키워드만</button>
+                <button class="sm-btn active" data-mode="fulltext" title="제목·저자·초록·메모 전체에서 검색">전체단어</button>
+                <button class="sm-btn" data-mode="keyword" title="키워드 필드만 검색">키워드만</button>
                 <button class="sm-btn sm-btn-riss" data-mode="riss" title="RISS 인용하기 텍스트를 붙여넣어 서지정보를 자동으로 입력해요">RISS</button>
             </div>
             <select class="paper-jump" id="paper-jump" title="논문을 골라 정리 내용 보기">
                 <option value="">논문 보기…</option>
             </select>
-            <button class="btn-primary" id="btn-add-top">
+            <button class="btn-primary" id="btn-add-top" title="논문 또는 자료 추가">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="vertical-align:middle;margin-right:5px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span id="add-top-label">논문 추가</span>
             </button>
             <button class="btn-help-guide" id="btn-help-guide" title="사용법">
@@ -181,18 +181,18 @@
             <div class="modal-sticky-top">
                 <div class="modal-header">
                     <h2 id="modal-form-title">논문 추가</h2>
-                    <button class="modal-close" id="close-form">✕</button>
+                    <button class="modal-close" id="close-form" title="닫기">✕</button>
                 </div>
                 <div id="read-status-bar" class="read-status-bar">
                     <span class="read-status-label">읽기 상태</span>
                     <div id="read-status-btns" class="read-status-btns"></div>
                     <div class="status-bar-actions">
-                        <button type="button" class="btn-ai btn-ai-quick" id="btn-ai-summarize-quick"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-1px;margin-right:4px"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>AI 분석</button>
-                        <button type="button" class="sbar-btn view-only" id="sbar-delete">삭제</button>
-                        <button type="button" class="sbar-btn view-only" id="sbar-close">닫기</button>
-                        <button type="button" class="sbar-btn sbar-primary view-only" id="sbar-edit">수정</button>
-                        <button type="button" class="sbar-btn edit-only" id="sbar-cancel">취소</button>
-                        <button type="button" class="sbar-btn sbar-primary edit-only" id="sbar-save">저장</button>
+                        <button type="button" class="btn-ai btn-ai-quick" id="btn-ai-summarize-quick" title="AI로 논문 자동 분석 (Groq API 필요)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-1px;margin-right:4px"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>AI 분석</button>
+                        <button type="button" class="sbar-btn view-only" id="sbar-delete" title="이 논문 삭제">삭제</button>
+                        <button type="button" class="sbar-btn view-only" id="sbar-close" title="창 닫기">닫기</button>
+                        <button type="button" class="sbar-btn sbar-primary view-only" id="sbar-edit" title="수정 모드로 전환">수정</button>
+                        <button type="button" class="sbar-btn edit-only" id="sbar-cancel" title="수정 취소">취소</button>
+                        <button type="button" class="sbar-btn sbar-primary edit-only" id="sbar-save" title="변경 내용 저장">저장</button>
                     </div>
                 </div>
             </div>
@@ -207,7 +207,7 @@
                     <div class="riss-paste-row">
                         <textarea id="riss-input" rows="2"
                             placeholder="예: 박지선. (2025). 사회비교경향성이 자기은폐에 미치는 영향. 한국심리학회지: 문화 및 사회문제, 31(1), 167-187."></textarea>
-                        <button class="btn-secondary" id="btn-riss-parse">자동 입력</button>
+                        <button class="btn-secondary" id="btn-riss-parse" title="RISS 텍스트로 서지정보 자동 입력">자동 입력</button>
                     </div>
                 </div>
 
@@ -216,7 +216,7 @@
                     <div class="doi-lookup-label"><svg class="ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> DOI로 자동 불러오기 (영어 논문 / DOI 있는 논문)</div>
                     <div class="doi-lookup-row">
                         <input type="text" id="doi-input" placeholder="예: 10.1037/abc123  또는  https://doi.org/10.xxxx/xxx">
-                        <button class="btn-secondary" id="btn-doi-lookup">자동 불러오기</button>
+                        <button class="btn-secondary" id="btn-doi-lookup" title="DOI로 서지정보 자동 불러오기">자동 불러오기</button>
                     </div>
                 </div>
 
@@ -235,7 +235,7 @@
                                 <label>PDF 파일 <small style="color:var(--text-muted)">— 이 기기에만 저장됨 (동기화 안 됨)</small></label>
                                 <div class="file-upload">
                                     <input type="file" id="f-pdf" accept=".pdf" style="display:none">
-                                    <button type="button" class="btn-file" id="btn-pick-pdf"><svg class="ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg> PDF 선택</button>
+                                    <button type="button" class="btn-file" id="btn-pick-pdf" title="PDF 파일 선택 (이 기기에만 저장)"><svg class="ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg> PDF 선택</button>
                                     <span id="pdf-filename">선택된 파일 없음</span>
                                 </div>
                                 <small style="color:var(--text-muted)">여러 기기에서 보려면 구글 드라이브에 올리고 아래 PDF 링크란을 사용하세요.</small>
@@ -249,7 +249,7 @@
                             <div class="form-group full">
                                 <label>이미지 첨부 <small style="color:var(--text-muted)">— 그림·표·수식 캡처본</small></label>
                                 <div id="ft-images-list"></div>
-                                <button type="button" class="btn-secondary edit-only" id="btn-add-ft-image">+ 이미지 추가</button>
+                                <button type="button" class="btn-secondary edit-only" id="btn-add-ft-image" title="논문 그림·표·수식 이미지 추가">+ 이미지 추가</button>
                                 <input type="file" id="ft-image-input" accept="image/*" style="display:none">
                             </div>
                         </div>
@@ -430,12 +430,12 @@
                     </div>
 
                     <div class="form-actions">
-                        <button type="button" class="btn-delete view-only" id="btn-delete-paper">삭제</button>
+                        <button type="button" class="btn-delete view-only" id="btn-delete-paper" title="이 논문 삭제">삭제</button>
                         <div class="form-actions-spacer"></div>
-                        <button type="button" class="btn-secondary edit-only" id="btn-cancel-form">취소</button>
-                        <button type="button" class="btn-secondary view-only" id="btn-close-view">닫기</button>
-                        <button type="button" class="btn-primary view-only" id="btn-switch-edit"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg> 수정</button>
-                        <button type="submit" class="btn-primary edit-only">저장</button>
+                        <button type="button" class="btn-secondary edit-only" id="btn-cancel-form" title="수정 취소">취소</button>
+                        <button type="button" class="btn-secondary view-only" id="btn-close-view" title="창 닫기">닫기</button>
+                        <button type="button" class="btn-primary view-only" id="btn-switch-edit" title="수정 모드로 전환"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg> 수정</button>
+                        <button type="submit" class="btn-primary edit-only" title="변경 내용 저장">저장</button>
                     </div>
                 </form>
             </div>
@@ -447,7 +447,7 @@
         <div class="modal modal-large">
             <div class="modal-header">
                 <h2>논문 추가</h2>
-                <button class="modal-close" id="close-add-choice">✕</button>
+                <button class="modal-close" id="close-add-choice" title="닫기">✕</button>
             </div>
             <div class="modal-body">
                 <!-- 제목·저자·연도 -->
@@ -465,7 +465,7 @@
                     <div class="pdf-drop-zone" id="add-pdf-dropzone">
                         <span class="pdf-drop-icon">📄</span>
                         <span>PDF를 여기 끌어다 놓거나</span>
-                        <button type="button" class="btn-secondary" id="btn-add-pdf-pick">파일 선택</button>
+                        <button type="button" class="btn-secondary" id="btn-add-pdf-pick" title="PDF 파일 선택">파일 선택</button>
                         <input type="file" id="add-pdf-file" accept=".pdf" style="display:none">
                     </div>
                     <span id="add-pdf-filename" style="display:none;font-size:12px;color:var(--accent);font-weight:600"></span>
@@ -483,12 +483,12 @@
                     <p class="ai-caution">⚠️ AI 분석 결과는 부정확할 수 있습니다. 반드시 원문과 대조해 확인하세요.</p>
                     <div id="add-text-input" class="text-add-editable" contenteditable="true"
                          data-placeholder="논문 텍스트를 붙여넣으세요."></div>
-                    <button type="button" class="btn-ai" id="btn-add-text-analyze" style="margin-top:8px">🤖 AI로 제목·저자·초록 자동 채우기</button>
+                    <button type="button" class="btn-ai" id="btn-add-text-analyze" style="margin-top:8px" title="붙여넣은 텍스트에서 AI가 서지정보 자동 추출">🤖 AI로 제목·저자·초록 자동 채우기</button>
                 </div>
 
                 <div class="form-actions" style="margin-top:16px">
-                    <button type="button" class="btn-secondary" id="btn-add-cancel">취소</button>
-                    <button type="button" class="btn-primary" id="btn-add-save">저장</button>
+                    <button type="button" class="btn-secondary" id="btn-add-cancel" title="추가 취소">취소</button>
+                    <button type="button" class="btn-primary" id="btn-add-save" title="논문 저장">저장</button>
                 </div>
             </div>
         </div>
@@ -499,7 +499,7 @@
         <div class="modal modal-sm">
             <div class="modal-header">
                 <h2><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px;margin-right:6px"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>AI 설정 (Groq)</h2>
-                <button class="modal-close" id="close-ai-settings">✕</button>
+                <button class="modal-close" id="close-ai-settings" title="닫기">✕</button>
             </div>
             <div class="modal-body">
                 <div class="form-group full">
@@ -515,8 +515,8 @@
                     </div>
                 </div>
                 <div class="form-actions" style="margin-top:16px">
-                    <button type="button" class="btn-secondary" id="btn-ai-key-cancel">취소</button>
-                    <button type="button" class="btn-primary" id="btn-ai-key-save">저장</button>
+                    <button type="button" class="btn-secondary" id="btn-ai-key-cancel" title="취소">취소</button>
+                    <button type="button" class="btn-primary" id="btn-ai-key-save" title="API 키 저장">저장</button>
                 </div>
             </div>
         </div>
@@ -527,7 +527,7 @@
         <div class="modal">
             <div class="modal-header">
                 <h2 id="modal-material-title">자료 추가</h2>
-                <button class="modal-close" id="close-material">✕</button>
+                <button class="modal-close" id="close-material" title="닫기">✕</button>
             </div>
             <div class="modal-body">
                 <form id="material-form">
@@ -573,20 +573,20 @@
                             <label>첨부 파일</label>
                             <div class="file-upload">
                                 <input type="file" id="m-file" style="display:none">
-                                <button type="button" class="btn-file" id="btn-pick-mfile"><svg class="ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg> 파일 선택</button>
+                                <button type="button" class="btn-file" id="btn-pick-mfile" title="자료 파일 선택 (PDF, 이미지 등)"><svg class="ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg> 파일 선택</button>
                                 <span id="mfile-name">선택된 파일 없음</span>
                             </div>
                         </div>
                     </div>
                     <div class="form-actions">
-                        <button type="button" class="btn-delete view-only" id="btn-delete-material">삭제</button>
+                        <button type="button" class="btn-delete view-only" id="btn-delete-material" title="이 자료 삭제">삭제</button>
                         <div class="form-actions-spacer"></div>
-                        <button type="button" class="btn-secondary view-only" id="btn-mat-open-file" style="display:none">📎 파일 열기</button>
-                        <button type="button" class="btn-secondary view-only" id="btn-mat-desk" style="display:none">📖 책상에서 펼치기</button>
-                        <button type="button" class="btn-secondary edit-only" id="btn-cancel-material">취소</button>
-                        <button type="button" class="btn-secondary view-only" id="btn-close-material-view">닫기</button>
-                        <button type="button" class="btn-primary view-only" id="btn-switch-material-edit"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg> 수정</button>
-                        <button type="submit" class="btn-primary edit-only">저장</button>
+                        <button type="button" class="btn-secondary view-only" id="btn-mat-open-file" style="display:none" title="첨부 파일 열기">📎 파일 열기</button>
+                        <button type="button" class="btn-secondary view-only" id="btn-mat-desk" style="display:none" title="책상에서 자료 펼치기">📖 책상에서 펼치기</button>
+                        <button type="button" class="btn-secondary edit-only" id="btn-cancel-material" title="수정 취소">취소</button>
+                        <button type="button" class="btn-secondary view-only" id="btn-close-material-view" title="창 닫기">닫기</button>
+                        <button type="button" class="btn-primary view-only" id="btn-switch-material-edit" title="수정 모드로 전환"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg> 수정</button>
+                        <button type="submit" class="btn-primary edit-only" title="변경 내용 저장">저장</button>
                     </div>
                 </form>
             </div>
@@ -598,7 +598,7 @@
         <div class="modal modal-large">
             <div class="modal-header">
                 <h2>내연구노트 사용 방법</h2>
-                <button class="modal-close" id="btn-help-close">✕</button>
+                <button class="modal-close" id="btn-help-close" title="닫기">✕</button>
             </div>
             <div class="help-scroll-wrap">
             <div class="modal-body" id="help-modal-body" style="padding:1.2rem 1.5rem 1.5rem;">
@@ -690,16 +690,16 @@
         <div class="modal">
             <div class="modal-header">
                 <h2><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg> 디버그 로그</h2>
-                <button class="modal-close" id="close-debug">✕</button>
+                <button class="modal-close" id="close-debug" title="닫기">✕</button>
             </div>
             <div class="modal-body">
                 <p class="debug-help">앱을 쓰다가 충돌하거나 이상하면 이 창을 열어 <strong>복사</strong> 후 채팅에 붙여넣어 주세요. 어떤 동작에서 어떤 오류가 났는지 확인할 수 있어요.</p>
                 <textarea id="debug-output" class="debug-output" readonly rows="16"></textarea>
                 <div class="form-actions">
-                    <button type="button" class="btn-delete" id="btn-debug-clear">로그 비우기</button>
+                    <button type="button" class="btn-delete" id="btn-debug-clear" title="로그 모두 지우기">로그 비우기</button>
                     <div class="form-actions-spacer"></div>
-                    <button type="button" class="btn-secondary" id="btn-debug-download">다운로드</button>
-                    <button type="button" class="btn-primary" id="btn-debug-copy"><svg class="ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg> 복사</button>
+                    <button type="button" class="btn-secondary" id="btn-debug-download" title="로그를 텍스트 파일로 내려받기">다운로드</button>
+                    <button type="button" class="btn-primary" id="btn-debug-copy" title="로그 전체 복사 — 복사 후 채팅에 붙여넣기"><svg class="ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg> 복사</button>
                 </div>
             </div>
         </div>
@@ -710,7 +710,7 @@
         <div class="modal">
             <div class="modal-header">
                 <h2><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/><line x1="10" x2="10.01" y1="16" y2="16"/></svg> 내 데이터</h2>
-                <button class="modal-close" id="close-datainfo">✕</button>
+                <button class="modal-close" id="close-datainfo" title="닫기">✕</button>
             </div>
             <div class="modal-body" id="datainfo-body"></div>
         </div>
