@@ -2927,6 +2927,43 @@ body {
 .desk-mat-tag-input { flex: 1; border: 1.5px solid var(--border); border-radius: 8px; padding: 7px 10px; font-size: 13px; font-family: inherit; }
 .desk-mat-tag-input:focus { outline: none; border-color: var(--accent-mid); }
 .desk-mat-tag-hint { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
+/* 북마크 */
+.desk-bm-wrap { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
+.desk-bm-list { display: flex; flex-direction: column; gap: 6px; }
+.desk-bm-empty { font-size: 13px; color: var(--text-muted); padding: 8px 0; }
+.desk-bm-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: var(--surface); border-radius: 8px; border: 1px solid var(--border); }
+.desk-bm-page { font-size: 13px; font-weight: 600; color: var(--primary); background: none; border: none; cursor: pointer; padding: 2px 6px; border-radius: 5px; transition: background 0.15s; }
+.desk-bm-page:hover { background: var(--primary-light, #e8f0fe); }
+.desk-bm-date { font-size: 12px; color: var(--text-muted); flex: 1; }
+.desk-bm-del { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 12px; padding: 2px 4px; border-radius: 4px; }
+.desk-bm-del:hover { color: var(--danger, #e53935); background: #fee; }
+.desk-bm-input-row { display: flex; gap: 6px; align-items: center; }
+.desk-bm-popup .desk-bm-input-row #desk-bm-add { flex-shrink: 0; width: 36px; height: 36px; padding: 0; border-radius: 8px; font-size: 15px; line-height: 1; }
+.desk-bm-input { flex: 1; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; font-family: inherit; }
+.desk-bm-hint { font-size: 11.5px; color: var(--text-muted); }
+/* 북마크 팝업 */
+.desk-bm-popup { position: fixed; z-index: 9999; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.18); padding: 14px; width: 270px; display: flex; flex-direction: column; gap: 8px; }
+.desk-bm-popup-head { display: flex; justify-content: space-between; align-items: center; font-weight: 600; font-size: 14px; }
+.desk-bm-popup-close { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 14px; padding: 2px 6px; border-radius: 4px; }
+.desk-bm-popup-close:hover { background: var(--surface); }
+.desk-bm-setup-inline { display: flex; gap: 5px; align-items: center; }
+.desk-bm-setup-grid { display: grid; grid-template-columns: auto 1fr; gap: 5px 8px; align-items: center; background: var(--surface); border-radius: 10px; border: 1px solid var(--border); padding: 10px; }
+.desk-bm-setup-label { font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+.desk-bm-setup-input-sm { min-width: 0; padding: 5px 7px; border: 1px solid var(--border); border-radius: 7px; font-size: 12px; font-family: inherit; width: 100%; }
+.desk-bm-goal-chip { font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+.desk-bm-divider { border: none; border-top: 1px solid var(--border); margin: 0; }
+/* 독서 설정 */
+.desk-bm-setup { display: flex; flex-direction: column; gap: 6px; padding: 10px; background: var(--surface); border-radius: 10px; border: 1px solid var(--border); }
+.desk-bm-setup-row { display: flex; align-items: center; gap: 8px; }
+.desk-bm-label { font-size: 12px; color: var(--text-secondary); width: 72px; flex-shrink: 0; }
+.desk-bm-setup-input { flex: 1; padding: 5px 8px; border: 1px solid var(--border); border-radius: 7px; font-size: 13px; font-family: inherit; }
+.desk-bm-setup-save { align-self: flex-end; font-size: 12px; padding: 4px 12px; }
+/* 진도 바 */
+.desk-bm-progress-wrap { padding: 10px; background: var(--surface); border-radius: 10px; border: 1px solid var(--border); display: flex; flex-direction: column; gap: 5px; }
+.desk-bm-progress-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-secondary); }
+.desk-bm-progress-bar { height: 10px; background: var(--border); border-radius: 99px; overflow: hidden; }
+.desk-bm-progress-fill { height: 100%; background: var(--primary); border-radius: 99px; transition: width 0.4s ease; }
+.desk-bm-goal-info { font-size: 12.5px; color: var(--text-secondary); margin-top: 2px; }
 .desk-mat-tag-page { background: var(--accent); color: #fff; border: none; border-radius: 4px; padding: 1px 5px; font-size: 11px; font-weight: 600; cursor: pointer; margin-right: 3px; }
 .desk-mat-tag-page:hover { opacity: 0.85; }
 /* PDF 텍스트 추출 인디케이터 */

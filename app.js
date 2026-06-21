@@ -2095,6 +2095,165 @@ function deskRenderEmpty() {
 }
 
 // 책상에서 다른 화면으로 나갈 때 리소스 정리 — 펼쳐둔 논문(deskTabs)은 유지
+// ── 북마크 팝업 ─────────────────────────────────────────────────────────
+function openDeskBmPopup(anchorEl, item, storeKey) {
+    // 이미 열려있으면 닫기
+    const existing = document.getElementById('desk-bm-popup');
+    if (existing) { existing.remove(); return; }
+
+    const bookmarks = (item.deskBookmarks || []);
+    const totalPages = item.readTotalPages || 0;
+    const goalDate = item.readGoalDate || '';
+    const currentPage = bookmarks.length ? bookmarks[0].page : 0;
+
+    // 진도 바 — 전체 페이지만 있어도 표시 (0%부터)
+    let progressHTML = '';
+    if (totalPages > 0) {
+        const pct = Math.min(100, Math.round(currentPage / totalPages * 100));
+        let goalInfo = '';
+        if (goalDate) {
+            const today = new Date(); today.setHours(0,0,0,0);
+            const goal = new Date(goalDate); goal.setHours(0,0,0,0);
+            const daysLeft = Math.ceil((goal - today) / 86400000);
+            const pagesLeft = Math.max(0, totalPages - currentPage);
+            if (daysLeft > 0 && pagesLeft > 0) {
+                goalInfo = `<span class="desk-bm-goal-chip">📅 ${daysLeft}일 남음 · 하루 <b>${Math.ceil(pagesLeft/daysLeft)}p</b></span>`;
+            } else if (pagesLeft === 0) {
+                goalInfo = `<span class="desk-bm-goal-chip">🎉 완독!</span>`;
+            } else {
+                goalInfo = `<span class="desk-bm-goal-chip" style="color:var(--danger,#e53935)">⚠️ 목표일 지남</span>`;
+            }
+        }
+        progressHTML = `<div class="desk-bm-progress-wrap">
+            <div class="desk-bm-progress-label">
+                <span>p.${currentPage} / ${totalPages} <span style="color:var(--primary);font-weight:600">(${pct}%)</span></span>
+                ${goalInfo}
+            </div>
+            <div class="desk-bm-progress-bar"><div class="desk-bm-progress-fill" style="width:${pct}%"></div></div>
+        </div>`;
+    }
+
+    const bmItems = bookmarks.map((bm, i) => {
+        const d = bm.date ? new Date(bm.date).toLocaleDateString('ko-KR', { month:'numeric', day:'numeric' }) : '';
+        return `<div class="desk-bm-item">
+            <button type="button" class="desk-bm-page" data-page="${bm.page}">p.${bm.page}</button>
+            <span class="desk-bm-date">${d}</span>
+            <button type="button" class="desk-bm-del" data-idx="${i}">✕</button>
+        </div>`;
+    }).join('');
+
+    const popup = document.createElement('div');
+    popup.id = 'desk-bm-popup';
+    popup.className = 'desk-bm-popup';
+    popup.innerHTML = `
+        <div class="desk-bm-popup-head">
+            <span>📌 북마크</span>
+            <button type="button" class="desk-bm-popup-close" id="desk-bm-popup-close">✕</button>
+        </div>
+        ${progressHTML}
+        <div class="desk-bm-setup-grid">
+            <span class="desk-bm-setup-label">전체 페이지</span>
+            <input type="number" class="desk-bm-setup-input-sm" id="desk-bm-total" placeholder="예: 303" min="1" value="${totalPages || ''}">
+            <span class="desk-bm-setup-label">완독예상일</span>
+            <input type="date" class="desk-bm-setup-input-sm" id="desk-bm-goal" value="${goalDate}">
+            <button type="button" class="btn-secondary" id="desk-bm-setup-save" style="grid-column:1/-1;font-size:12px;padding:4px 10px;width:100%">설정 저장</button>
+        </div>
+        <div class="desk-bm-divider"></div>
+        <div class="desk-bm-list">${bmItems || '<div class="desk-bm-empty">아직 북마크 없음</div>'}</div>
+        <div class="desk-bm-input-row">
+            <input type="number" class="desk-bm-input" id="desk-bm-input" placeholder="현재 페이지" min="1">
+            <button type="button" class="btn-primary" id="desk-bm-add">📌</button>
+        </div>
+        <div class="desk-bm-hint">PDF 뷰어 상단 페이지 번호 입력 후 저장</div>`;
+
+    // 앵커 기준 위치
+    const rect = anchorEl.getBoundingClientRect();
+    popup.style.top = (rect.bottom + 6) + 'px';
+    popup.style.left = rect.left + 'px';
+    document.body.appendChild(popup);
+
+    // 바깥 클릭 시 닫기
+    const closePopup = (e) => {
+        if (!popup.contains(e.target) && e.target !== anchorEl) {
+            popup.remove();
+            document.removeEventListener('mousedown', closePopup);
+        }
+    };
+    setTimeout(() => document.addEventListener('mousedown', closePopup), 0);
+
+    popup.querySelector('#desk-bm-popup-close').addEventListener('click', () => {
+        popup.remove();
+        document.removeEventListener('mousedown', closePopup);
+    });
+
+    // 설정 저장
+    popup.querySelector('#desk-bm-setup-save').addEventListener('click', () => {
+        item.readTotalPages = parseInt(popup.querySelector('#desk-bm-total')?.value || '', 10) || 0;
+        item.readGoalDate = popup.querySelector('#desk-bm-goal')?.value || '';
+        dbPut(storeKey, item);
+        const arr = storeKey === STORE_PAPERS ? state.papers : state.materials;
+        const idx = arr.findIndex(x => x.id === item.id);
+        if (idx >= 0) arr[idx] = item;
+        popup.remove();
+        document.removeEventListener('mousedown', closePopup);
+        openDeskBmPopup(anchorEl, item, storeKey);
+        showToast('독서 설정 저장됨', 'success');
+    });
+
+    // 북마크 저장
+    const saveBm = () => {
+        const inp = popup.querySelector('#desk-bm-input');
+        const page = parseInt(inp?.value || '', 10);
+        if (!page || page < 1) { showToast('페이지 번호를 입력하세요', 'warn'); return; }
+        if (!Array.isArray(item.deskBookmarks)) item.deskBookmarks = [];
+        item.deskBookmarks.unshift({ page, date: Date.now() });
+        dbPut(storeKey, item);
+        const arr = storeKey === STORE_PAPERS ? state.papers : state.materials;
+        const idx = arr.findIndex(x => x.id === item.id);
+        if (idx >= 0) arr[idx] = item;
+        popup.remove();
+        document.removeEventListener('mousedown', closePopup);
+        openDeskBmPopup(anchorEl, item, storeKey);
+        showToast(`p.${page} 북마크 저장됨`, 'success');
+    };
+    popup.querySelector('#desk-bm-add').addEventListener('click', saveBm);
+    popup.querySelector('#desk-bm-input').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); saveBm(); } });
+
+    // 페이지 이동 — 새 blob URL 생성으로 강제 재로딩
+    popup.querySelectorAll('.desk-bm-page').forEach(b =>
+        b.addEventListener('click', () => {
+            const page = b.dataset.page;
+            const key = deskActiveId ? 'p_' + deskActiveId : deskMatActiveId ? 'm_' + deskMatActiveId : null;
+            if (!key || !deskFramePool[key]) { showToast('PDF가 열려있지 않아요', 'warn'); return; }
+            const entry = deskFramePool[key];
+            const iframe = entry.el.querySelector('iframe.desk-pdf');
+            if (!iframe) { showToast('PDF 뷰어를 찾을 수 없어요', 'warn'); return; }
+            // 이전 blob URL 해제 후 새로 생성 (fragment만 바꾸면 재로딩 안 됨)
+            if (entry.pdfUrl) URL.revokeObjectURL(entry.pdfUrl);
+            const srcObj = deskActiveId
+                ? state.papers.find(p => p.id === deskActiveId)?.pdfData
+                : state.materials.find(m => m.id === deskMatActiveId)?.fileData;
+            if (!srcObj) { showToast('PDF 데이터를 찾을 수 없어요', 'warn'); return; }
+            const newUrl = URL.createObjectURL(new Blob([srcObj], { type: 'application/pdf' }));
+            entry.pdfUrl = newUrl;
+            deskCtx.pdfUrl = newUrl;
+            iframe.src = newUrl + '#page=' + page;
+        }));
+
+    // 북마크 삭제
+    popup.querySelectorAll('.desk-bm-del').forEach(b =>
+        b.addEventListener('click', () => {
+            item.deskBookmarks.splice(Number(b.dataset.idx), 1);
+            dbPut(storeKey, item);
+            const arr = storeKey === STORE_PAPERS ? state.papers : state.materials;
+            const idx = arr.findIndex(x => x.id === item.id);
+            if (idx >= 0) arr[idx] = item;
+            popup.remove();
+            document.removeEventListener('mousedown', closePopup);
+            openDeskBmPopup(anchorEl, item, storeKey);
+        }));
+}
+
 function deskTeardown() {
     if (!deskCtx) return;
     if (deskCtx.onMove) window.removeEventListener('mousemove', deskCtx.onMove);
@@ -2152,6 +2311,9 @@ function bindDeskLeftToggles(overlay, paper, slot) {
     slot.querySelector('#desk-toggle-link')?.addEventListener('click', () => {
         slot.innerHTML = deskLeftHTML(paper, pdfUrl, false);
         bindDeskLeftToggles(overlay, paper, slot);
+    });
+    slot.querySelector('#desk-bm-btn')?.addEventListener('click', function() {
+        openDeskBmPopup(this, paper, STORE_PAPERS);
     });
 }
 
@@ -2315,6 +2477,7 @@ function deskActivateMat(materialId) {
         el.innerHTML = deskLeftHTMLMaterial(mat, pdfUrl);
         left.appendChild(el);
         deskFramePool[key] = { el, pdfUrl };
+        bindDeskLeftMat(el, mat);
     }
     deskFramePool[key].el.style.display = '';
     deskCtx.pdfUrl = deskFramePool[key].pdfUrl;
@@ -2324,10 +2487,17 @@ function deskActivateMat(materialId) {
     deskRenderTabs();
 }
 
+function bindDeskLeftMat(slot, mat) {
+    slot.querySelector('#desk-bm-btn')?.addEventListener('click', function() {
+        openDeskBmPopup(this, mat, STORE_MATERIALS);
+    });
+}
+
 // 자료 왼쪽 패널 HTML
 function deskLeftHTMLMaterial(mat, pdfUrl) {
     if (pdfUrl) {
         return `<div class="desk-pdf-wrap">
+            <div class="desk-left-toolbar"><button type="button" class="desk-view-toggle" id="desk-bm-btn">📌 북마크</button></div>
             <iframe class="desk-pdf" src="${pdfUrl}" title="첨부파일"></iframe>
         </div>`;
     }
@@ -2360,13 +2530,15 @@ function drivePreviewUrl(link) {
 function deskLeftHTML(paper, pdfUrl, forceText = false) {
     const hasText = !!(paper.fullText?.trim() || paper.abstract?.trim() || paper.methods?.trim() || paper.findings?.trim());
 
+    const bmBtn = `<button type="button" class="desk-view-toggle" id="desk-bm-btn">📌 북마크</button>`;
+
     // 우선순위 1: 로컬 PDF (강제 텍스트 아닐 때)
     if (pdfUrl && !forceText) {
         const textBtn = hasText
             ? `<button type="button" class="desk-view-toggle" id="desk-toggle-text">${icon('note', 13)} 텍스트로 보기</button>`
             : '';
         return `<div class="desk-pdf-wrap">
-            ${textBtn ? `<div class="desk-left-toolbar">${textBtn}</div>` : ''}
+            <div class="desk-left-toolbar">${textBtn}${bmBtn}</div>
             <iframe class="desk-pdf" src="${pdfUrl}" title="PDF"></iframe>
         </div>`;
     }
@@ -2376,7 +2548,7 @@ function deskLeftHTML(paper, pdfUrl, forceText = false) {
         const textBtn = hasText
             ? `<button type="button" class="desk-view-toggle" id="desk-toggle-text">${icon('note', 13)} 텍스트로 보기</button>`
             : '';
-        const toolbar = textBtn ? `<div class="desk-left-toolbar">${textBtn}</div>` : '';
+        const toolbar = `<div class="desk-left-toolbar">${textBtn}${bmBtn}</div>`;
         const preview = drivePreviewUrl(paper.pdfLink);
         if (preview) return `<div class="desk-pdf-wrap">
             ${toolbar}
@@ -2565,6 +2737,69 @@ function deskRightHTML(paper) {
                 ${icon('book-open', 34)}
                 <p>논문을 펼치면 여기서 중요한 문장을<br>복사해 분류할 수 있어요.</p>
             </div>`;
+    // 논문 북마크 패널
+    const pbookmarks = (paper?.deskBookmarks || []);
+    const pbookmarkItems = pbookmarks.map((bm, i) => {
+        const dateStr = bm.date ? new Date(bm.date).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' }) : '';
+        return `<div class="desk-bm-item">
+            <button type="button" class="desk-bm-page" data-page="${bm.page}" title="${bm.page}페이지로 이동">p.${bm.page}</button>
+            <span class="desk-bm-date">${dateStr}</span>
+            <button type="button" class="desk-pbm-del" data-idx="${i}" title="삭제">✕</button>
+        </div>`;
+    }).join('');
+    const pTotalPages = paper?.readTotalPages || 0;
+    const pGoalDate = paper?.readGoalDate || '';
+    const pCurrentPage = pbookmarks.length ? pbookmarks[0].page : 0;
+    let pProgressHTML = '';
+    if (pTotalPages > 0 && pCurrentPage > 0) {
+        const pct = Math.min(100, Math.round(pCurrentPage / pTotalPages * 100));
+        let goalInfo = '';
+        if (pGoalDate) {
+            const today = new Date(); today.setHours(0,0,0,0);
+            const goal = new Date(pGoalDate); goal.setHours(0,0,0,0);
+            const daysLeft = Math.ceil((goal - today) / 86400000);
+            const pagesLeft = Math.max(0, pTotalPages - pCurrentPage);
+            if (daysLeft > 0 && pagesLeft > 0) {
+                const perDay = Math.ceil(pagesLeft / daysLeft);
+                goalInfo = `<div class="desk-bm-goal-info">📅 ${daysLeft}일 남음 &nbsp;·&nbsp; 하루 <b>${perDay}페이지</b> 읽으면 완독</div>`;
+            } else if (pagesLeft === 0) {
+                goalInfo = `<div class="desk-bm-goal-info">🎉 완독!</div>`;
+            } else {
+                goalInfo = `<div class="desk-bm-goal-info" style="color:var(--danger,#e53935)">⚠️ 목표일 지남 — ${pagesLeft}페이지 남음</div>`;
+            }
+        }
+        pProgressHTML = `
+            <div class="desk-bm-progress-wrap">
+                <div class="desk-bm-progress-label">
+                    <span>p.${pCurrentPage} / ${pTotalPages}</span>
+                    <span>${pct}%</span>
+                </div>
+                <div class="desk-bm-progress-bar"><div class="desk-bm-progress-fill" style="width:${pct}%"></div></div>
+                ${goalInfo}
+            </div>`;
+    }
+    const paperBookmarkPanel = paper ? `
+        <div class="desk-bm-wrap">
+            <div class="desk-bm-setup">
+                <div class="desk-bm-setup-row">
+                    <label class="desk-bm-label">전체 페이지</label>
+                    <input type="number" class="desk-bm-setup-input" id="desk-pbm-total" placeholder="예: 48" min="1" value="${pTotalPages || ''}">
+                </div>
+                <div class="desk-bm-setup-row">
+                    <label class="desk-bm-label">완독 목표일</label>
+                    <input type="date" class="desk-bm-setup-input" id="desk-pbm-goal" value="${pGoalDate}">
+                </div>
+                <button type="button" class="btn-secondary desk-bm-setup-save" id="desk-pbm-setup-save">설정 저장</button>
+            </div>
+            ${pProgressHTML}
+            <div class="desk-bm-list" id="desk-pbm-list">${pbookmarkItems || '<div class="desk-bm-empty">아직 북마크 없음</div>'}</div>
+            <div class="desk-bm-input-row">
+                <input type="number" class="desk-bm-input" id="desk-pbm-input" placeholder="현재 페이지 번호" min="1">
+                <button type="button" class="btn-primary" id="desk-pbm-add">📌 저장</button>
+            </div>
+            <div class="desk-bm-hint">크롬 PDF 뷰어 상단의 페이지 번호를 입력하세요</div>
+        </div>` : `<div class="desk-rpanel-empty"><p>논문을 펼치면 북마크를 사용할 수 있어요.</p></div>`;
+
     return `
         <div class="desk-rtabs">
             <button type="button" class="desk-rtab ${t === 'excerpt' ? 'active' : ''}" data-rtab="excerpt">${icon('clipboard', 15)} 복사붙이기 분류</button>
@@ -2575,7 +2810,7 @@ function deskRightHTML(paper) {
 }
 
 // ── 자료 전용 오른쪽 패널 ─────────────────────────────────
-let deskMatRTab = 'memo'; // 'memo' | 'tags'
+let deskMatRTab = 'memo'; // 'memo' | 'tags' (북마크는 팝업으로 이동)
 
 function deskRightHTMLMaterial(mat) {
     const t = deskMatRTab;
@@ -2615,6 +2850,71 @@ function deskRightHTMLMaterial(mat) {
                 <button type="button" class="btn-primary desk-mat-tag-add" id="desk-mat-tag-add">추가</button>
             </div>
             ${hasPdf ? '<div class="desk-mat-tag-hint">페이지 번호를 입력하면 태그 클릭 시 해당 페이지로 이동해요</div>' : ''}
+        </div>`;
+
+    const bookmarks = (mat.deskBookmarks || []);
+    const bookmarkItems = bookmarks.map((bm, i) => {
+        const dateStr = bm.date ? new Date(bm.date).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' }) : '';
+        return `<div class="desk-bm-item">
+            <button type="button" class="desk-bm-page" data-page="${bm.page}" title="${bm.page}페이지로 이동">p.${bm.page}</button>
+            <span class="desk-bm-date">${dateStr}</span>
+            <button type="button" class="desk-bm-del" data-idx="${i}" title="삭제">✕</button>
+        </div>`;
+    }).join('');
+
+    // 진도 계산
+    const totalPages = mat.readTotalPages || 0;
+    const goalDate = mat.readGoalDate || '';
+    const currentPage = bookmarks.length ? bookmarks[0].page : 0;
+    let progressHTML = '';
+    if (totalPages > 0 && currentPage > 0) {
+        const pct = Math.min(100, Math.round(currentPage / totalPages * 100));
+        let goalInfo = '';
+        if (goalDate) {
+            const today = new Date(); today.setHours(0,0,0,0);
+            const goal = new Date(goalDate); goal.setHours(0,0,0,0);
+            const daysLeft = Math.ceil((goal - today) / 86400000);
+            const pagesLeft = Math.max(0, totalPages - currentPage);
+            if (daysLeft > 0 && pagesLeft > 0) {
+                const perDay = Math.ceil(pagesLeft / daysLeft);
+                goalInfo = `<div class="desk-bm-goal-info">📅 ${daysLeft}일 남음 &nbsp;·&nbsp; 하루 <b>${perDay}페이지</b> 읽으면 완독</div>`;
+            } else if (pagesLeft === 0) {
+                goalInfo = `<div class="desk-bm-goal-info">🎉 완독!</div>`;
+            } else {
+                goalInfo = `<div class="desk-bm-goal-info" style="color:var(--danger,#e53935)">⚠️ 목표일 지남 — ${pagesLeft}페이지 남음</div>`;
+            }
+        }
+        progressHTML = `
+            <div class="desk-bm-progress-wrap">
+                <div class="desk-bm-progress-label">
+                    <span>p.${currentPage} / ${totalPages}</span>
+                    <span>${pct}%</span>
+                </div>
+                <div class="desk-bm-progress-bar"><div class="desk-bm-progress-fill" style="width:${pct}%"></div></div>
+                ${goalInfo}
+            </div>`;
+    }
+
+    const bookmarkPanel = `
+        <div class="desk-bm-wrap">
+            <div class="desk-bm-setup">
+                <div class="desk-bm-setup-row">
+                    <label class="desk-bm-label">전체 페이지</label>
+                    <input type="number" class="desk-bm-setup-input" id="desk-bm-total" placeholder="예: 312" min="1" value="${totalPages || ''}">
+                </div>
+                <div class="desk-bm-setup-row">
+                    <label class="desk-bm-label">완독 목표일</label>
+                    <input type="date" class="desk-bm-setup-input" id="desk-bm-goal" value="${goalDate}">
+                </div>
+                <button type="button" class="btn-secondary desk-bm-setup-save" id="desk-bm-setup-save">설정 저장</button>
+            </div>
+            ${progressHTML}
+            <div class="desk-bm-list" id="desk-bm-list">${bookmarkItems || '<div class="desk-bm-empty">아직 북마크 없음</div>'}</div>
+            <div class="desk-bm-input-row">
+                <input type="number" class="desk-bm-input" id="desk-bm-input" placeholder="현재 페이지 번호" min="1">
+                <button type="button" class="btn-primary" id="desk-bm-add">📌 저장</button>
+            </div>
+            <div class="desk-bm-hint">크롬 PDF 뷰어 상단의 페이지 번호를 입력하세요</div>
         </div>`;
 
     return `
@@ -2689,6 +2989,8 @@ function bindDeskRightMaterial(overlay, mat) {
             overlay.querySelector('#desk-right').innerHTML = deskRightHTMLMaterial(mat);
             bindDeskRightMaterial(overlay, mat);
         }));
+
+    // 북마크는 툴바 팝업(openDeskBmPopup)으로 이동
 }
 
 // 하단 "모형 미리보기" — 프로포절 칸·가설·변인을 읽기전용으로 표시(발췌 보낼 때마다 갱신).
@@ -2799,7 +3101,7 @@ function deskExcerptsHTML(paper) {
 }
 
 function bindDeskRight(overlay, paper) {
-    // 우측 탭(복사붙이기 분류 ↔ 발표자료 만들기) 전환 — 논문 없어도 동작
+    // 우측 탭(복사붙이기 분류 ↔ 발표자료 만들기 ↔ 북마크) 전환 — 논문 없어도 동작
     overlay.querySelectorAll('.desk-rtab').forEach(b =>
         b.addEventListener('click', () => deskActivateRTab(overlay, b.dataset.rtab)));
     // 논문 탭 전환 등으로 다시 그려질 때, 발표자료 탭이 켜져 있었으면 내용 채움
@@ -2810,6 +3112,8 @@ function bindDeskRight(overlay, paper) {
     if (catSel) catSel.addEventListener('change', () => { deskAddCat = catSel.value; });
     overlay.querySelector('.desk-add').addEventListener('click', () => deskAddExcerpt(overlay, paper));
     bindDeskExcerpts(overlay, paper);
+
+    // 북마크는 툴바 팝업(openDeskBmPopup)으로 이동
 }
 
 // 발췌 카드 색(왼쪽 띠). 빈 문자열 = 색 없음
