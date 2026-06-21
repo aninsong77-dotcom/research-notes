@@ -368,6 +368,14 @@ function renderCanvas(){
   const H=PAD_T+12*MONTH_H+PAD_T;
   svg.setAttribute('width',W); svg.setAttribute('height',H);
 
+  // 크레파스 필터
+  const defs=el('defs');
+  defs.innerHTML=`<filter id="hand" x="-8%" y="-8%" width="116%" height="116%">
+    <feTurbulence type="fractalNoise" baseFrequency="0.038" numOctaves="3" seed="8" result="n"/>
+    <feDisplacementMap in="SourceGraphic" in2="n" scale="2.8" xChannelSelector="R" yChannelSelector="G"/>
+  </filter>`;
+  svg.appendChild(defs);
+
   // 배경 클릭 (시트 닫기)
   const bg=el('rect',{x:0,y:0,width:W,height:H,fill:'transparent'});
   bg.addEventListener('click',()=>{ closeSheet(); closeDayPanel(); });
@@ -399,12 +407,19 @@ function renderCanvas(){
     const g=el('g');
     g.style.cursor='pointer';
 
-    // 배경 히트 영역
+    // 히트 영역 (필터 없음 — 클릭 감지용)
     g.appendChild(el('circle',{cx,cy,r:RO2+8,fill:'rgba(0,0,0,0)','pointer-events':'all'}));
-    g.appendChild(el('circle',{cx,cy,r:RO2+8,fill:'none',
-      stroke:mc.c,'stroke-width':'1.5',opacity:'0.45','pointer-events':'none'}));
 
-    // ── 바깥 링: 7일 ──
+    // ── 크레파스 필터 서브그룹 (시각 요소만) ──
+    const gv=el('g');
+    gv.setAttribute('filter','url(#hand)');
+
+    // 외곽 테두리
+    gv.appendChild(el('circle',{cx,cy,r:RO2+8,fill:'none',
+      stroke:mc.c,'stroke-width':'2',opacity:'0.55','pointer-events':'none'}));
+
+    // 바깥 링: 7일
+    const textEls=[];
     days.forEach((day,di)=>{
       const dk=dateKey(day);
       const aS=A0+di*2*Math.PI/7, aE=A0+(di+1)*2*Math.PI/7;
@@ -416,25 +431,29 @@ function renderCanvas(){
         const allDone=(loadPlan(dk).tasks||[]).every(t=>t.done);
         if(allDone) fill=CATS[catKey].bg||fill;
       }
-      const path=el('path',{d:annSector(cx,cy,RO1,RO2,aS,aE),fill,'data-date':dk,'data-ring':'outer'});
-      if(isToday){ path.setAttribute('stroke','#1A73E8'); path.setAttribute('stroke-width','2.5'); }
-      if(dk===selDate){ path.setAttribute('stroke','#202124'); path.setAttribute('stroke-width','2.5'); }
-      g.appendChild(path);
+      const path=el('path',{d:annSector(cx,cy,RO1,RO2,aS,aE),fill,
+        stroke:'rgba(255,255,255,0.4)','stroke-width':'1',
+        'data-date':dk,'data-ring':'outer'});
+      if(isToday){ path.setAttribute('stroke','#1A73E8'); path.setAttribute('stroke-width','2'); }
+      if(dk===selDate){ path.setAttribute('stroke','#202124'); path.setAttribute('stroke-width','2'); }
+      gv.appendChild(path);
 
+      // 요일 텍스트는 필터 밖 (선명하게)
       const ma=(aS+aE)/2, lr=RO2+16;
       const lt=el('text',{x:cx+lr*Math.cos(ma),y:cy+lr*Math.sin(ma),
         'text-anchor':'middle','dominant-baseline':'middle',
         fill:isToday?'#1A73E8':'#78909C',
         'font-size':'9','font-weight':'700','pointer-events':'none'});
-      lt.textContent=KR_DAYS[di]; g.appendChild(lt);
+      lt.textContent=KR_DAYS[di];
+      textEls.push(lt);
     });
 
-    // ── 안쪽 링: 24시간 ──
+    // 안쪽 링: 24시간
     const innerDayKey=week.days.some(d=>dateKey(d)===selDate)
       ?selDate
       :(week.days.some(d=>dateKey(d)===todayStr)?todayStr:null);
 
-    g.appendChild(el('circle',{cx,cy,r:(RI1+RI2)/2,fill:'none',
+    gv.appendChild(el('circle',{cx,cy,r:(RI1+RI2)/2,fill:'none',
       stroke:'#E8EAF6','stroke-width':String(RI2-RI1),'pointer-events':'none'}));
 
     if(innerDayKey){
@@ -442,7 +461,7 @@ function renderCanvas(){
         const color=hourColor(innerDayKey,h)||hourColorDone(innerDayKey,h);
         if(!color)continue;
         const aS=A0+h*2*Math.PI/24, aE=A0+(h+1)*2*Math.PI/24;
-        g.appendChild(el('path',{d:annSector(cx,cy,RI1,RI2,aS,aE),fill:color,'data-date':innerDayKey}));
+        gv.appendChild(el('path',{d:annSector(cx,cy,RI1,RI2,aS,aE),fill:color,'data-date':innerDayKey}));
       }
     }
 
@@ -453,14 +472,18 @@ function renderCanvas(){
     const centerD=isSelWeek?new Date(selDate+'T00:00:00'):week.mon;
     const centerDk=isSelWeek?selDate:(week.days.some(d=>dateKey(d)===todayStr)?todayStr:dateKey(week.days[0]));
 
-    g.appendChild(el('circle',{cx,cy,r:RI1-2,fill:centerFill,'data-date':centerDk}));
+    gv.appendChild(el('circle',{cx,cy,r:RI1-2,fill:centerFill,'data-date':centerDk}));
+    g.appendChild(gv);
+
+    // 텍스트 (필터 밖 — 선명하게)
+    textEls.forEach(lt=>g.appendChild(lt));
     const wt=el('text',{x:cx,y:cy,'text-anchor':'middle','dominant-baseline':'middle',
       fill:(isSelWeek||isThisWeek)?'white':'#CFD8DC',
       'font-size':'7.5','font-weight':'800','pointer-events':'none'});
     wt.textContent=`${centerD.getMonth()+1}/${centerD.getDate()}`;
     g.appendChild(wt);
 
-    // 그룹 클릭: 모두 데이 패널로
+    // 그룹 클릭
     g.addEventListener('click',e=>{
       e.stopPropagation();
       const dk=e.target.getAttribute('data-date')||
