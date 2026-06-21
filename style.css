@@ -2661,13 +2661,33 @@ body {
     background-image: radial-gradient(circle, var(--border) 1px, transparent 1px);
     background-size: 24px 24px;
 }
-.mm-canvas { position: relative; }
+#mm-canvas-wrap { position: relative; }
+.mm-canvas {
+    position: absolute; left: 0; top: 0;
+    transform-origin: 0 0;
+}
+.mm-zoom-ctrl {
+    display: flex; align-items: center; gap: 2px;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 2px 4px; flex-shrink: 0;
+}
+.mm-zoom-ctrl button {
+    width: 22px; height: 22px; border: none; background: transparent;
+    cursor: pointer; border-radius: 4px; font-size: 15px; line-height: 1;
+    color: var(--text-secondary); display: flex; align-items: center; justify-content: center;
+    padding: 0;
+}
+.mm-zoom-ctrl button:hover { background: var(--border); }
+#mm-zoom-label {
+    font-size: 11px; color: var(--text-muted); min-width: 34px; text-align: center;
+}
+.mm-bar-sep { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
 .mm-node {
     position: absolute; border: 2.5px solid; border-radius: 8px;
     background: var(--surface);
     display: flex; align-items: center; justify-content: center;
     box-shadow: 0 2px 8px rgba(0,0,0,.10);
-    cursor: pointer; user-select: none;
+    cursor: grab; user-select: none;
     transition: box-shadow .12s;
     overflow: visible;
 }

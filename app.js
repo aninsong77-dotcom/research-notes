@@ -1498,10 +1498,12 @@ const MM_COLORS = ['#4a90e2','#e05454','#27ae60','#e67e22','#8e44ad','#16a085'];
 const MM_COLOR_LABELS = ['파랑','빨강','초록','주황','보라','청록'];
 const MM_NW = 130, MM_NH = 38, MM_HGAP = 72, MM_VGAP = 14;
 
-let _mmTree = null;
-let _mmSel  = null;
-let _mmEdit = false;
-let _mmCont = null;
+let _mmTree        = null;
+let _mmSel         = null;
+let _mmEdit        = false;
+let _mmCont        = null;
+let _mmZoom        = 1;
+let _mmJustDragged = false;
 
 // ── 트리 유틸 ────────────────────────────────────────────────
 function mmFind(node, id) {
@@ -1524,8 +1526,8 @@ function mmRemove(node, id) {
     node.children = (node.children || []).filter(c => c.id !== id);
     node.children.forEach(c => mmRemove(c, id));
 }
-function mmNew(text = '새 노드', side = 'r') {
-    return { id: genId(), text, color: MM_COLORS[0], collapsed: false, side, children: [] };
+function mmNew(text = '새 노드') {
+    return { id: genId(), text, color: MM_COLORS[0], collapsed: false, children: [] };
 }
 function mmCollect(node, parent = null, out = []) {
     if (!node) return out;
@@ -1612,17 +1614,29 @@ function mmDraw(focusId = null) {
     const PAD = 40;
     const topNodes = _mmTree.children || [];
     const hasSel = !!_mmSel;
+    const toolbarHTML = `
+        <button class="btn-primary"   id="mm-add-r"  >${hasSel ? '하위 추가' : '노드 추가'}</button>
+        <button class="btn-secondary" id="mm-add-sib"${hasSel ? '' : ' style="display:none"'}>형제 추가</button>
+        <button class="btn-secondary" id="mm-rename" ${hasSel ? '' : ' style="display:none"'}>이름 변경</button>
+        <button class="btn-secondary" id="mm-del"    ${hasSel ? '' : ' style="display:none"'}>삭제</button>
+        <span class="mm-bar-sep"></span>
+        <div class="mm-zoom-ctrl">
+            <button id="mm-zoom-out" title="축소">−</button>
+            <span   id="mm-zoom-label">${Math.round(_mmZoom * 100)}%</span>
+            <button id="mm-zoom-in"  title="확대">+</button>
+            <button id="mm-zoom-fit" title="전체 보기">⊡</button>
+        </div>
+        <span class="mm-bar-sep"></span>
+        <button class="btn-secondary" id="mm-export">내보내기</button>
+        <button class="btn-secondary" id="mm-import">불러오기</button>
+        <input type="file" id="mm-import-file" accept=".json" style="display:none">
+        <span class="mm-hint"><kbd>Tab</kbd>하위 · <kbd>Enter</kbd>형제 · <kbd>Del</kbd>삭제 · <kbd>F2</kbd>편집 · 드래그 이동 · 휠 확대/축소</span>`;
 
-    // 빈 상태 — 노드가 하나도 없을 때
+    // 빈 상태
     if (topNodes.length === 0) {
         _mmCont.innerHTML = `
             <div class="mm-wrap">
-                <div class="mm-bar">
-                    <button class="btn-primary" id="mm-add-r">노드 추가</button>
-                    <button class="btn-secondary" id="mm-add-sib" style="display:none">형제 추가</button>
-                    <button class="btn-secondary" id="mm-rename" style="display:none">이름 변경</button>
-                    <button class="btn-secondary" id="mm-del" style="display:none">삭제</button>
-                </div>
+                <div class="mm-bar">${toolbarHTML}</div>
                 <div class="mm-area" id="mm-area" tabindex="0"
                      style="display:flex;align-items:center;justify-content:center;min-height:260px">
                     <div style="color:var(--text-muted);text-align:center;line-height:2">
@@ -1634,64 +1648,54 @@ function mmDraw(focusId = null) {
         return;
     }
 
-    // 각 최상위 노드 높이 계산 후 세로로 쌓기
-    topNodes.forEach(n => mmCalcH(n));
-    let curY = PAD;
-    topNodes.forEach(n => {
-        mmPosR(n, PAD, curY + n._h / 2);
-        curY += n._h + MM_VGAP * 2;
-    });
+    // 위치 없는 노드 → 자동 레이아웃으로 초기 위치 배정 후 저장
+    const needsLayout = topNodes.some(n => n.x === undefined);
+    if (needsLayout) {
+        topNodes.forEach(n => mmCalcH(n));
+        let curY = PAD;
+        topNodes.forEach(n => { mmPosR(n, PAD, curY + n._h / 2); curY += n._h + MM_VGAP * 2; });
+        const assignPos = nd => {
+            if (nd.x === undefined) { nd.x = nd._x; nd.y = nd._y; }
+            (nd.children || []).forEach(assignPos);
+        };
+        topNodes.forEach(assignPos);
+        mmSave();
+    }
 
-    const all = topNodes.flatMap(n => mmCollect(n));
-    const maxX = Math.max(...all.map(({n}) => n._x + MM_NW)) + PAD;
-    const maxY = curY + PAD;
+    const all  = topNodes.flatMap(n => mmCollect(n));
+    const maxX = Math.max(...all.map(({n}) => n.x + MM_NW), 400) + PAD * 2;
+    const maxY = Math.max(...all.map(({n}) => n.y + MM_NH), 300) + PAD * 2;
 
-    // SVG 연결선
-    const edges = all.filter(({p}) => p).map(({n, p}) => {
-        const x1 = p._x + MM_NW, y1 = p._y + MM_NH / 2;
-        const x2 = n._x,          y2 = n._y + MM_NH / 2;
-        const mx = (x1 + x2) / 2;
-        return `<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}"
-                     fill="none" stroke="${p.color}" stroke-width="2.5" opacity="0.5"/>`;
-    }).join('');
-
-    // 노드 HTML
     const nodeEls = all.map(({n}) => {
-        const sel    = n.id === _mmSel;
-        const hasCh  = (n.children || []).length > 0;
+        const sel   = n.id === _mmSel;
+        const hasCh = (n.children || []).length > 0;
         const colBtn = hasCh
-            ? `<button class="mm-col-btn" data-id="${n.id}" title="${n.collapsed ? '펼치기' : '접기'}">${n.collapsed ? '▶' : '▼'}</button>`
+            ? `<button class="mm-col-btn" data-id="${n.id}" title="${n.collapsed?'펼치기':'접기'}">${n.collapsed?'▶':'▼'}</button>`
             : '';
         const palette = sel ? `<div class="mm-palette">
-            ${MM_COLORS.map((c, i) =>
-                `<button class="mm-cdot${n.color===c?' active':''}" data-id="${n.id}" data-color="${c}"
-                 style="background:${c}" title="${MM_COLOR_LABELS[i]}"></button>`
-            ).join('')}
+            ${MM_COLORS.map((c,i) => `<button class="mm-cdot${n.color===c?' active':''}" data-id="${n.id}"
+                data-color="${c}" style="background:${c}" title="${MM_COLOR_LABELS[i]}"></button>`).join('')}
         </div>` : '';
-
-        return `<div class="mm-node${sel ? ' mm-sel' : ''}" data-id="${n.id}"
-                    style="left:${n._x}px;top:${n._y}px;width:${MM_NW}px;height:${MM_NH}px;
-                           border-color:${n.color};${sel ? `background:${n.color};` : ''}">
+        return `<div class="mm-node${sel?' mm-sel':''}" data-id="${n.id}"
+                    style="left:${n.x}px;top:${n.y}px;width:${MM_NW}px;height:${MM_NH}px;
+                           border-color:${n.color};${sel?`background:${n.color};`:''}">
             ${colBtn}
-            <span class="mm-ntxt" data-id="${n.id}"
-                  style="${sel ? 'color:#fff;' : ''}">${escHtml(n.text || '(빈 노드)')}</span>
+            <span class="mm-ntxt" data-id="${n.id}" style="${sel?'color:#fff;':''}">${escHtml(n.text||'(빈 노드)')}</span>
             ${palette}
         </div>`;
     }).join('');
 
     _mmCont.innerHTML = `
         <div class="mm-wrap">
-            <div class="mm-bar">
-                <button class="btn-primary"   id="mm-add-r"   title="${hasSel ? '하위 노드 추가 (Tab)' : '새 노드 추가 (Tab)'}">${hasSel ? '하위 추가' : '노드 추가'}</button>
-                <button class="btn-secondary" id="mm-add-sib" title="형제 노드 추가 (Enter)"${hasSel ? '' : ' style="display:none"'}>형제 추가</button>
-                <button class="btn-secondary" id="mm-rename"  title="이름 변경 (F2)"${hasSel ? '' : ' style="display:none"'}>이름 변경</button>
-                <button class="btn-secondary" id="mm-del"     title="삭제 (Delete)"${hasSel ? '' : ' style="display:none"'}>삭제</button>
-                <span class="mm-hint"><kbd>Tab</kbd>하위 · <kbd>Enter</kbd>형제 · <kbd>Del</kbd>삭제 · <kbd>F2</kbd>/더블클릭 편집</span>
-            </div>
+            <div class="mm-bar">${toolbarHTML}</div>
             <div class="mm-area" id="mm-area" tabindex="0">
-                <div class="mm-canvas" id="mm-canvas" style="min-width:${maxX}px;min-height:${maxY}px">
-                    <svg style="position:absolute;left:0;top:0;width:${maxX}px;height:${maxY}px;pointer-events:none">${edges}</svg>
-                    ${nodeEls}
+                <div id="mm-canvas-wrap" style="width:${maxX*_mmZoom}px;height:${maxY*_mmZoom}px">
+                    <div class="mm-canvas" id="mm-canvas"
+                         data-nw="${maxX}" data-nh="${maxY}"
+                         style="width:${maxX}px;height:${maxY}px;transform:scale(${_mmZoom});transform-origin:0 0">
+                        <svg id="mm-svg" style="position:absolute;left:0;top:0;width:${maxX}px;height:${maxY}px;pointer-events:none">${mmBuildEdges(all)}</svg>
+                        ${nodeEls}
+                    </div>
                 </div>
             </div>
         </div>`;
@@ -1699,8 +1703,16 @@ function mmDraw(focusId = null) {
     tmmBind(_mmCont);
 
     if (focusId) {
-        _mmCont.querySelector(`.mm-node[data-id="${focusId}"]`)
-            ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        const areaEl = _mmCont.querySelector('#mm-area');
+        const el = _mmCont.querySelector(`.mm-node[data-id="${focusId}"]`);
+        if (areaEl && el) {
+            const nx = parseFloat(el.style.left) * _mmZoom;
+            const ny = parseFloat(el.style.top)  * _mmZoom;
+            setTimeout(() => {
+                areaEl.scrollLeft = Math.max(0, nx - areaEl.clientWidth  / 2 + MM_NW * _mmZoom / 2);
+                areaEl.scrollTop  = Math.max(0, ny - areaEl.clientHeight / 2 + MM_NH * _mmZoom / 2);
+            }, 0);
+        }
     }
 }
 
@@ -1708,14 +1720,67 @@ function mmDraw(focusId = null) {
 function tmmBind(container) {
     const area   = container.querySelector('#mm-area');
     const canvas = container.querySelector('#mm-canvas');
-    area.focus();
+    if (area) area.focus();
 
+    // ── 드래그로 노드 이동 ──────────────────────────────────────
     if (canvas) {
+        canvas.addEventListener('mousedown', e => {
+            if (_mmEdit) return;
+            const nodeEl = e.target.closest('.mm-node');
+            if (!nodeEl || e.target.closest('button')) return;
+            const id = nodeEl.dataset.id;
+            const n  = mmFind(_mmTree, id);
+            if (!n) return;
+
+            const startMX = e.clientX, startMY = e.clientY;
+            const origX = n.x, origY = n.y;
+            let hasMoved = false;
+            e.preventDefault();
+
+            const onMove = mv => {
+                const dx = (mv.clientX - startMX) / _mmZoom;
+                const dy = (mv.clientY - startMY) / _mmZoom;
+                if (!hasMoved && Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+                hasMoved = true;
+                n.x = Math.max(0, origX + dx);
+                n.y = Math.max(0, origY + dy);
+                nodeEl.style.left = n.x + 'px';
+                nodeEl.style.top  = n.y + 'px';
+                const svg = canvas.querySelector('#mm-svg');
+                if (svg) svg.innerHTML = mmBuildEdges((_mmTree.children||[]).flatMap(t => mmCollect(t)));
+                const nw = parseFloat(canvas.dataset.nw)||800, nh = parseFloat(canvas.dataset.nh)||600;
+                const newW = Math.max(nw, n.x+MM_NW+60), newH = Math.max(nh, n.y+MM_NH+60);
+                if (newW !== nw || newH !== nh) {
+                    canvas.dataset.nw = newW; canvas.dataset.nh = newH;
+                    canvas.style.width = newW+'px'; canvas.style.height = newH+'px';
+                    const svgEl = canvas.querySelector('#mm-svg');
+                    if (svgEl) { svgEl.style.width = newW+'px'; svgEl.style.height = newH+'px'; }
+                    const wrap = container.querySelector('#mm-canvas-wrap');
+                    if (wrap) { wrap.style.width=(newW*_mmZoom)+'px'; wrap.style.height=(newH*_mmZoom)+'px'; }
+                }
+            };
+            const onUp = () => {
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup',  onUp);
+                canvas.style.cursor = '';
+                if (hasMoved) {
+                    _mmJustDragged = true;
+                    mmSave(); mmDraw(_mmSel);
+                    setTimeout(() => { _mmJustDragged = false; }, 100);
+                } else {
+                    _mmSel = id; mmDraw(id);
+                }
+            };
+            canvas.style.cursor = 'grabbing';
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup',  onUp);
+        });
+
         canvas.addEventListener('click', e => {
+            if (_mmJustDragged) return;
             const colBtn = e.target.closest('.mm-col-btn');
             const cdot   = e.target.closest('.mm-cdot');
             const node   = e.target.closest('.mm-node');
-
             if (colBtn) {
                 const n = mmFind(_mmTree, colBtn.dataset.id);
                 if (n) { n.collapsed = !n.collapsed; mmSave(); mmDraw(_mmSel); }
@@ -1726,67 +1791,84 @@ function tmmBind(container) {
                 if (n) { n.color = cdot.dataset.color; mmSave(); mmDraw(_mmSel); }
                 e.stopPropagation(); return;
             }
-            if (node) { _mmSel = node.dataset.id; mmDraw(_mmSel); return; }
-            _mmSel = null; mmDraw();
+            if (node && !e.target.closest('button')) { _mmSel = node.dataset.id; mmDraw(_mmSel); return; }
+            if (!node) { _mmSel = null; mmDraw(); }
         });
 
-        // 더블클릭 → 인라인 편집
         canvas.addEventListener('dblclick', e => {
+            if (_mmJustDragged) return;
             const node = e.target.closest('.mm-node');
             if (!node) return;
             mmDoEdit(node.dataset.id);
         });
     }
 
-    // 키보드 단축키
-    area.addEventListener('keydown', e => {
-        if (_mmEdit) return;
-        const selNode = _mmSel ? mmFind(_mmTree, _mmSel) : null;
+    // ── 휠 확대/축소 ─────────────────────────────────────────────
+    if (area) {
+        area.addEventListener('wheel', e => {
+            e.preventDefault();
+            const factor  = e.deltaY < 0 ? 1.1 : 0.9;
+            const newZoom = Math.max(0.3, Math.min(3, _mmZoom * factor));
+            const aRect   = area.getBoundingClientRect();
+            const mx = e.clientX - aRect.left, my = e.clientY - aRect.top;
+            const cpx = (area.scrollLeft + mx) / _mmZoom;
+            const cpy = (area.scrollTop  + my) / _mmZoom;
+            _mmZoom = newZoom;
+            mmApplyZoom(container);
+            area.scrollLeft = cpx * _mmZoom - mx;
+            area.scrollTop  = cpy * _mmZoom - my;
+        }, { passive: false });
 
-        if (e.key === 'Tab') {
-            e.preventDefault();
-            const parent = selNode || _mmTree;
-            const child  = mmNew('새 노드');
-            child.color  = selNode ? selNode.color : MM_COLORS[(_mmTree.children.length) % MM_COLORS.length];
-            parent.collapsed = false;
-            (parent.children = parent.children || []).push(child);
-            _mmSel = child.id; mmSave(); mmDraw(child.id);
-            setTimeout(() => mmDoEdit(child.id), 80);
-        }
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            if (!_mmSel) return;
-            const par = mmParent(_mmTree, _mmSel);
-            if (!par) {
-                // 최상위 노드 → root에 형제 추가
-                const idx = _mmTree.children.findIndex(c => c.id === _mmSel);
-                const sib = mmNew('새 노드'); sib.color = selNode?.color || MM_COLORS[_mmTree.children.length % MM_COLORS.length];
-                _mmTree.children.splice(idx + 1, 0, sib);
+        // ── 키보드 단축키 ──────────────────────────────────────
+        area.addEventListener('keydown', e => {
+            if (_mmEdit) return;
+            const selNode = _mmSel ? mmFind(_mmTree, _mmSel) : null;
+
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                const parent   = selNode || _mmTree;
+                const siblings = parent.children || [];
+                const child    = mmNew('새 노드');
+                child.color = selNode ? selNode.color : MM_COLORS[_mmTree.children.length % MM_COLORS.length];
+                child.x = (selNode?.x ?? 40) + MM_NW + MM_HGAP;
+                child.y = siblings.length ? siblings[siblings.length-1].y + MM_NH + MM_VGAP*2 : (selNode?.y ?? 40);
+                parent.collapsed = false;
+                (parent.children = parent.children || []).push(child);
+                _mmSel = child.id; mmSave(); mmDraw(child.id);
+                setTimeout(() => mmDoEdit(child.id), 80);
+            }
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if (!_mmSel) return;
+                const par = mmParent(_mmTree, _mmSel) || _mmTree;
+                const idx = par.children.findIndex(c => c.id === _mmSel);
+                const sib = mmNew('새 노드');
+                sib.color = selNode?.color || MM_COLORS[0];
+                sib.x = selNode?.x ?? 40;
+                sib.y = (selNode?.y ?? 40) + MM_NH + MM_VGAP * 2;
+                par.children.splice(idx + 1, 0, sib);
                 _mmSel = sib.id; mmSave(); mmDraw(sib.id);
                 setTimeout(() => mmDoEdit(sib.id), 80);
-                return;
             }
-            const idx = par.children.findIndex(c => c.id === _mmSel);
-            const sib = mmNew('새 노드'); sib.color = selNode?.color || MM_COLORS[0];
-            par.children.splice(idx + 1, 0, sib);
-            _mmSel = sib.id; mmSave(); mmDraw(sib.id);
-            setTimeout(() => mmDoEdit(sib.id), 80);
-        }
-        if ((e.key === 'Delete' || e.key === 'Backspace') && _mmSel) {
-            const par = mmParent(_mmTree, _mmSel);
-            mmRemove(_mmTree, _mmSel);
-            _mmSel = par && par.id !== 'root' ? par.id : null;
-            mmSave(); mmDraw(_mmSel);
-        }
-        if (e.key === 'F2' && _mmSel) { setTimeout(() => mmDoEdit(_mmSel), 30); }
-    });
+            if ((e.key === 'Delete' || e.key === 'Backspace') && _mmSel) {
+                const par = mmParent(_mmTree, _mmSel);
+                mmRemove(_mmTree, _mmSel);
+                _mmSel = par && par.id !== 'root' ? par.id : null;
+                mmSave(); mmDraw(_mmSel);
+            }
+            if (e.key === 'F2' && _mmSel) setTimeout(() => mmDoEdit(_mmSel), 30);
+        });
+    }
 
-    // 툴바 버튼
+    // ── 툴바: 노드 추가/수정/삭제 ──────────────────────────────
     container.querySelector('#mm-add-r')?.addEventListener('click', () => {
-        const selNode = _mmSel ? mmFind(_mmTree, _mmSel) : null;
-        const parent  = selNode || _mmTree;
-        const child   = mmNew('새 노드');
-        child.color   = selNode ? selNode.color : MM_COLORS[(_mmTree.children.length) % MM_COLORS.length];
+        const selNode  = _mmSel ? mmFind(_mmTree, _mmSel) : null;
+        const parent   = selNode || _mmTree;
+        const siblings = parent.children || [];
+        const child    = mmNew('새 노드');
+        child.color = selNode ? selNode.color : MM_COLORS[_mmTree.children.length % MM_COLORS.length];
+        child.x = (selNode?.x ?? 40) + MM_NW + MM_HGAP;
+        child.y = siblings.length ? siblings[siblings.length-1].y + MM_NH + MM_VGAP*2 : (selNode?.y ?? 40);
         parent.collapsed = false;
         (parent.children = parent.children || []).push(child);
         _mmSel = child.id; mmSave(); mmDraw(child.id);
@@ -1797,7 +1879,10 @@ function tmmBind(container) {
         const selNode = mmFind(_mmTree, _mmSel);
         const par     = mmParent(_mmTree, _mmSel) || _mmTree;
         const idx     = par.children.findIndex(c => c.id === _mmSel);
-        const sib     = mmNew('새 노드'); sib.color = selNode?.color || MM_COLORS[0];
+        const sib     = mmNew('새 노드');
+        sib.color = selNode?.color || MM_COLORS[0];
+        sib.x = selNode?.x ?? 40;
+        sib.y = (selNode?.y ?? 40) + MM_NH + MM_VGAP * 2;
         par.children.splice(idx + 1, 0, sib);
         _mmSel = sib.id; mmSave(); mmDraw(sib.id);
         setTimeout(() => mmDoEdit(sib.id), 80);
@@ -1811,6 +1896,56 @@ function tmmBind(container) {
         mmRemove(_mmTree, _mmSel);
         _mmSel = par && par.id !== 'root' ? par.id : null;
         mmSave(); mmDraw(_mmSel);
+    });
+
+    // ── 툴바: 줌 ────────────────────────────────────────────────
+    container.querySelector('#mm-zoom-in')?.addEventListener('click', () => {
+        _mmZoom = Math.min(3, _mmZoom * 1.2); mmApplyZoom(container);
+    });
+    container.querySelector('#mm-zoom-out')?.addEventListener('click', () => {
+        _mmZoom = Math.max(0.3, _mmZoom / 1.2); mmApplyZoom(container);
+    });
+    container.querySelector('#mm-zoom-fit')?.addEventListener('click', () => {
+        const areaEl = container.querySelector('#mm-area');
+        const cvs    = container.querySelector('#mm-canvas');
+        if (areaEl && cvs) {
+            const nw = parseFloat(cvs.dataset.nw)||800, nh = parseFloat(cvs.dataset.nh)||600;
+            _mmZoom = Math.max(0.3, Math.min(1.5, Math.min(areaEl.clientWidth/nw, areaEl.clientHeight/nh) * 0.9));
+        }
+        mmApplyZoom(container);
+        if (area) { area.scrollLeft = 0; area.scrollTop = 0; }
+    });
+
+    // ── 툴바: 내보내기/불러오기 ─────────────────────────────────
+    container.querySelector('#mm-export')?.addEventListener('click', () => {
+        const proj = state.projects.find(p => p.id === state.currentProjectId);
+        const name = proj?.name || '마인드맵';
+        const data = JSON.stringify({ type: 'mindmap', version: 1, tree: _mmTree }, null, 2);
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([data], { type: 'application/json' }));
+        const date = new Date().toLocaleDateString('ko-KR').replace(/\. /g,'-').replace('.','');
+        a.download = `${name}_마인드맵_${date}.json`;
+        a.click();
+        showToast('마인드맵을 내보냈습니다');
+    });
+    container.querySelector('#mm-import')?.addEventListener('click', () => {
+        container.querySelector('#mm-import-file')?.click();
+    });
+    container.querySelector('#mm-import-file')?.addEventListener('change', e => {
+        const file = e.target.files[0]; if (!file) return;
+        const reader = new FileReader();
+        reader.onload = ev => {
+            try {
+                const data = JSON.parse(ev.target.result);
+                if (data.type !== 'mindmap' || !data.tree) throw new Error('마인드맵 파일이 아닙니다');
+                if (!confirm('현재 마인드맵을 불러온 파일로 교체할까요?')) return;
+                _mmTree = data.tree;
+                mmSave(); mmDraw();
+                showToast('불러오기 완료');
+            } catch (err) { showToast('파일 오류: ' + err.message, 'error'); }
+        };
+        reader.readAsText(file);
+        e.target.value = '';
     });
 }
 
@@ -1842,6 +1977,30 @@ function mmDoEdit(id) {
     });
 }
 function mmStartEdit(id) { mmDoEdit(id); }
+
+function mmBuildEdges(all) {
+    return all.filter(({p}) => p).map(({n, p}) => {
+        const x1 = p.x + MM_NW, y1 = p.y + MM_NH / 2;
+        const x2 = n.x,          y2 = n.y + MM_NH / 2;
+        const mx = (x1 + x2) / 2;
+        return `<path fill="none" stroke="${p.color}" stroke-width="2.5" opacity="0.5"
+                     d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}"/>`;
+    }).join('');
+}
+
+function mmApplyZoom(container) {
+    const c = container || _mmCont;
+    const cvs  = c?.querySelector('#mm-canvas');
+    const wrap = c?.querySelector('#mm-canvas-wrap');
+    const lbl  = c?.querySelector('#mm-zoom-label');
+    if (cvs)  cvs.style.transform = `scale(${_mmZoom})`;
+    if (wrap && cvs) {
+        const nw = parseFloat(cvs.dataset.nw)||800, nh = parseFloat(cvs.dataset.nh)||600;
+        wrap.style.width  = (nw * _mmZoom) + 'px';
+        wrap.style.height = (nh * _mmZoom) + 'px';
+    }
+    if (lbl) lbl.textContent = Math.round(_mmZoom * 100) + '%';
+}
 
 // 사이드바 클릭과 동일하게 화면 전환(홈 카드·로고에서 호출)
 function goToView(view) {
