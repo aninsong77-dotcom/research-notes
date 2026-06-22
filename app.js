@@ -4435,10 +4435,9 @@ async function buildBackupJson(skipBinary = false) {
 
 // ── 내보내기(다운로드) ─────────────────────────────────────
 async function exportData() {
-    // 내보내기도 PDF 바이너리 제외 — 파일 크기 초과 방지 (PDF는 앱 내에서 별도 보관)
-    const json = await buildBackupJson(true);
+    const json = await buildBackupJson(false);
     download(json, `연구노트_백업_${new Date().toISOString().slice(0, 10)}.json`, 'application/json');
-    showToast('데이터를 내보냈습니다 (PDF 제외)', 'success');
+    showToast('데이터를 내보냈습니다', 'success');
 }
 
 // ── 폴더 백업: 지정 폴더의 같은 파일에 최신본 덮어쓰기 ──────
