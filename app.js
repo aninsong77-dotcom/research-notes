@@ -4409,23 +4409,25 @@ function parseCrossRef(item) {
     return { title, authors, year, source, abstract };
 }
 
-// ── 백업 JSON 생성(내보내기·폴더백업 공용) ─────────────────
-async function buildBackupJson() {
+// ── 백업 JSON 생성 ──────────────────────────────────────────
+// skipBinary=true: 폴더 자동백업용 — PDF/첨부파일 바이너리 제외 (문자열 크기 초과 방지)
+// skipBinary=false: 내보내기 다운로드용 — 전체 포함
+async function buildBackupJson(skipBinary = false) {
     const papers = await dbGetAll(STORE_PAPERS);
     pushDebug('info', `백업생성 — 논문${papers.length}편 / PDF있음:${papers.filter(p=>p.pdfData).length}편 / fullText있음:${papers.filter(p=>p.fullText).length}편`);
     const exportable = papers.map(p => ({
         ...p,
-        pdfData: p.pdfData ? bufToB64(p.pdfData) : null,
-        _pdfEncoded: !!p.pdfData,
+        pdfData: (!skipBinary && p.pdfData) ? bufToB64(p.pdfData) : null,
+        _pdfEncoded: !!p.pdfData,   // PDF 존재 여부 플래그는 항상 유지
     }));
     const materials = await dbGetAll(STORE_MATERIALS);
     const exportableMat = materials.map(m => ({
         ...m,
-        fileData: m.fileData ? bufToB64(m.fileData) : null,
+        fileData: (!skipBinary && m.fileData) ? bufToB64(m.fileData) : null,
         _fileEncoded: !!m.fileData,
     }));
     const notes = await dbGetAll(STORE_NOTES);
-    const proposals = await dbGetAll(STORE_PROPOSALS);   // 모형스케치북 미니 프로포절(첨부파일 없음 → 그대로)
+    const proposals = await dbGetAll(STORE_PROPOSALS);
     return JSON.stringify(
         { version: 3, exportedAt: Date.now(), papers: exportable, materials: exportableMat, notes, proposals },
         null, 2);
@@ -4465,7 +4467,8 @@ async function ensureBackupPermission(canPrompt) {
 
 // 실제 파일 쓰기(같은 파일명에 덮어쓰기)
 async function writeBackupFile() {
-    const json = await buildBackupJson();
+    // 폴더 자동백업: PDF 바이너리 제외 (파일 크기 초과 방지)
+    const json = await buildBackupJson(true);
     const fh = await backupDirHandle.getFileHandle(BACKUP_FILENAME, { create: true });
     const w = await fh.createWritable();
     await w.write(json);
