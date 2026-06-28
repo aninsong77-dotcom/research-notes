@@ -3403,9 +3403,12 @@ function deskRightHTMLMaterial(mat) {
             ? `<button type="button" class="desk-mat-memo-page" data-page="${m.page}" title="${m.page}페이지로 이동">p.${m.page}</button>`
             : '';
         return `<div class="desk-mat-memo-item">
-            <span class="desk-ex-label cat-${m.label}">${escHtml(label)}</span>
-            ${pageBtn}<span class="desk-mat-memo-text">${escHtml(m.text)}</span>
-            <button type="button" class="desk-mat-memo-del" data-idx="${i}" title="삭제">✕</button>
+            <div class="desk-memo-item-header">
+                <span class="desk-ex-label cat-${m.label}">${escHtml(label)}</span>
+                ${pageBtn}
+                <button type="button" class="desk-mat-memo-del" data-idx="${i}" title="삭제">✕</button>
+            </div>
+            <div class="desk-mat-memo-text">${escHtml(m.text)}</div>
         </div>`;
     }).join('');
 
@@ -3734,10 +3737,12 @@ function deskExcerptsHTML(paper) {
             ? `<button type="button" class="desk-mat-memo-page" data-page="${e.page}" title="${e.page}페이지로 이동">p.${e.page}</button>`
             : '';
         return `<div class="desk-mat-memo-item">
-            <span class="desk-ex-label cat-${e.cat}">${escHtml(label)}</span>
-            ${pageBtn}
-            <span class="desk-mat-memo-text">${escHtml(e.text)}</span>
-            <button type="button" class="desk-ex-del" data-eid="${e.id}" title="삭제">✕</button>
+            <div class="desk-memo-item-header">
+                <span class="desk-ex-label cat-${e.cat}">${escHtml(label)}</span>
+                ${pageBtn}
+                <button type="button" class="desk-ex-del" data-eid="${e.id}" title="삭제">✕</button>
+            </div>
+            <div class="desk-mat-memo-text">${escHtml(e.text)}</div>
         </div>`;
     }).join('');
 }
@@ -4711,33 +4716,43 @@ async function importData(file) {
         for (const p of papers) {
             const dup = existingPapers.find(e => e.id === p.id);
             if (dup) {
-                // 이미 있으면 현재 프로젝트로 재배정만 해서 보이게(데이터 보존)
-                if (dup.projectId !== state.currentProjectId) {
-                    dup.projectId = state.currentProjectId;
-                    await dbPut(STORE_PAPERS, dup);
+                let changed = false;
+                // PDF 없는데 백업에 있으면 채워넣기
+                if (!dup.pdfData && p._pdfEncoded && p.pdfData) {
+                    dup.pdfData = b64ToBuf(p.pdfData);
+                    dup.pdfFilename = p.pdfFilename || dup.pdfFilename;
+                    changed = true;
                 }
+                if (!dup.fullText && p.fullText) { dup.fullText = p.fullText; changed = true; }
+                if (dup.projectId !== state.currentProjectId) { dup.projectId = state.currentProjectId; changed = true; }
+                if (changed) await dbPut(STORE_PAPERS, dup);
                 continue;
             }
             const paper = { ...p };
             if (p._pdfEncoded && p.pdfData) paper.pdfData = b64ToBuf(p.pdfData);
             delete paper._pdfEncoded;
-            paper.projectId = state.currentProjectId;   // 현재 프로젝트로 배정해 바로 보이게
+            paper.projectId = state.currentProjectId;
             await dbPut(STORE_PAPERS, paper);
         }
         const existingMat = await dbGetAll(STORE_MATERIALS);
         for (const m of materials) {
             const dup = existingMat.find(e => e.id === m.id);
             if (dup) {
-                if (dup.projectId !== state.currentProjectId) {
-                    dup.projectId = state.currentProjectId;
-                    await dbPut(STORE_MATERIALS, dup);
+                let changed = false;
+                // 파일 없는데 백업에 있으면 채워넣기
+                if (!dup.fileData && m._fileEncoded && m.fileData) {
+                    dup.fileData = b64ToBuf(m.fileData);
+                    dup.fileName = m.fileName || dup.fileName;
+                    changed = true;
                 }
+                if (dup.projectId !== state.currentProjectId) { dup.projectId = state.currentProjectId; changed = true; }
+                if (changed) await dbPut(STORE_MATERIALS, dup);
                 continue;
             }
             const mat = { ...m };
             if (m._fileEncoded && m.fileData) mat.fileData = b64ToBuf(m.fileData);
             delete mat._fileEncoded;
-            mat.projectId = state.currentProjectId;      // 현재 프로젝트로 배정해 바로 보이게
+            mat.projectId = state.currentProjectId;
             await dbPut(STORE_MATERIALS, mat);
         }
         const existingNotes = await dbGetAll(STORE_NOTES);
