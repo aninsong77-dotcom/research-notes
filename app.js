@@ -216,6 +216,9 @@ const ICON_PATHS = {
     'microscope': '<path d="M6 18h8"/><path d="M3 22h18"/><path d="M14 22a7 7 0 1 0 0-14h-1"/><path d="M9 14h2"/><path d="M9 12a2 2 0 0 1-2-2V6h6v4a2 2 0 0 1-2 2Z"/><path d="M12 6V3a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v3"/>',
     'cloud':      '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>',
     'cloud-off':  '<path d="m2 2 20 20"/><path d="M5.78 5.78A7 7 0 0 0 9 19h8.5a4.5 4.5 0 0 0 1.3-.19"/><path d="M21.53 16.5A4.5 4.5 0 0 0 17.5 10h-1.79A7 7 0 0 0 10 5.07"/>',
+    'chevron-down': '<path d="m6 9 6 6 6-6"/>',
+    'chevron-up':   '<path d="m18 15-6-6-6 6"/>',
+    'x':            '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
 };
 function icon(name, size = 16) {
     const p = ICON_PATHS[name];
@@ -539,10 +542,14 @@ function renderContent() {
     if (state.view !== 'sketch') {
         if (state.view !== 'desk') {
             container.style.padding  = '24px';
-            container.style.overflow = 'auto';
+            // 메모 화면은 페이지 자체가 늘어나지 않고, 보관함·캔버스가 화면 높이를 채운 채
+            // 각자 안에서만 스크롤되도록 flex 세로 레이아웃 + overflow hidden 사용
+            container.style.overflow = state.view === 'notes' ? 'hidden' : 'auto';
         }
         S = null; // 마인드맵 상태 초기화
     }
+    container.style.display = state.view === 'notes' ? 'flex' : '';
+    container.style.flexDirection = state.view === 'notes' ? 'column' : '';
 
     if (q) {
         if (state.view === 'materials') renderMaterialSearch(q, container);
@@ -1334,7 +1341,7 @@ function renderHome(container) {
             </button>
             <button type="button" class="home-card" data-go="notes">
                 <div class="home-card-head">${icon('lightbulb')} 아이디어 메모 <span class="home-badge">${state.notes.length}</span></div>
-                <div class="home-card-body">${homeListHTML(homeRecent(state.notes, n => (n.title||'').trim() || (n.content||'').trim().slice(0,40)), '아직 메모가 없어요')}</div>
+                <div class="home-card-body">${homeListHTML(homeRecent(state.notes, n => (n.title||'').trim() || (n.type === 'todo' ? `☑ 할일 ${(n.items||[]).length}개` : (n.content||'').trim().slice(0,40))), '아직 메모가 없어요')}</div>
                 <div class="home-card-foot">아이디어 열기 →</div>
             </button>
             <button type="button" class="home-card" data-go="papers">
@@ -2012,9 +2019,10 @@ function goToView(view) {
     renderContent();
 }
 
-// ── 아이디어 저장소(메모) ──────────────────────────────────
+// ── 아이디어 저장소(메모 · 할일) ──────────────────────────────
 function noteMatchesQuery(n, q) {
-    return [n.title, n.content].some(f => f && String(f).toLowerCase().includes(q));
+    const items = (n.items || []).map(it => it.text).join(' ');
+    return [n.title, n.content, items].some(f => f && String(f).toLowerCase().includes(q));
 }
 
 const NOTE_COLORS = [
@@ -2026,15 +2034,43 @@ const NOTE_COLORS = [
     { key: 'purple', bg: '#ede9fe',  bd: '#c4b5fd' },
 ];
 
+// 메모·할일에서 자주 쓰는 이모지 — 드롭다운 패널에서 클릭하면 커서 위치에 삽입
+const QUICK_EMOJI = ['📌', '⭐', '✅', '🔥', '💡', '⚠️'];
+function emojiPickerHTML() {
+    return `
+        <div class="emoji-picker">
+            <button type="button" class="emoji-picker-btn" title="이모지 삽입">🙂</button>
+            <div class="emoji-picker-panel">${
+                QUICK_EMOJI.map(e => `<button type="button" class="note-emoji-btn" data-emoji="${e}" title="입력창에 삽입">${e}</button>`).join('')
+            }</div>
+        </div>`;
+}
+// 이모지 팝업 바깥을 클릭하면 닫힘 (렌더링과 무관하게 한 번만 등록)
+document.addEventListener('click', e => {
+    if (!e.target.closest('.emoji-picker')) {
+        document.querySelectorAll('.emoji-picker-panel.open').forEach(p => p.classList.remove('open'));
+    }
+});
+
+// 보관함(접힌 메모) 정렬: 'recent'(최근 수정순, 기본) | 'oldest'(오래된순)
+function getDockSortMode() {
+    return localStorage.getItem('notesDockSort') === 'oldest' ? 'oldest' : 'recent';
+}
+function setDockSortMode(mode) {
+    localStorage.setItem('notesDockSort', mode);
+}
+
 function renderNotes(container, q = '') {
-    let notes = [...state.notes].sort(
-        (a, b) => (b.updatedAt || b.addedAt || 0) - (a.updatedAt || a.addedAt || 0));
+    let notes = [...state.notes];
     if (q) notes = notes.filter(n => noteMatchesQuery(n, q));
 
     const header = `
         <div class="section-header">
             <span class="section-title">아이디어 메모 ${q ? `검색 결과 ${notes.length}개` : `${state.notes.length}개`}</span>
-            <button class="btn-secondary" id="btn-add-note">+ 메모 추가</button>
+            <div class="notes-add-btns">
+                <button class="btn-secondary" id="btn-add-note">+ 메모 추가</button>
+                <button class="btn-secondary" id="btn-add-todo">${icon('check', 14)} + 할일 추가</button>
+            </div>
         </div>`;
 
     if (notes.length === 0) {
@@ -2042,53 +2078,183 @@ function renderNotes(container, q = '') {
             <div class="empty-state">
                 <div class="empty-icon">${icon('lightbulb', 44)}</div>
                 <h3>${q ? '검색 결과가 없습니다' : '저장된 메모가 없습니다'}</h3>
-                ${q ? '' : '<p>떠오르는 생각·아이디어를<br><strong>+ 메모 추가</strong>로 자유롭게 적어보세요</p>'}
+                ${q ? '' : '<p>떠오르는 생각·아이디어는 <strong>+ 메모 추가</strong>로,<br>할 일 목록은 <strong>+ 할일 추가</strong>로 만들어보세요</p>'}
             </div>`;
     } else {
-        container.innerHTML = header + `<div class="notes-grid">${notes.map(noteCardHTML).join('')}</div>`;
+        container.innerHTML = header + boardHTML(notes);
     }
     bindNotes(container);
 }
 
-function noteCardHTML(n) {
-    const when = n.updatedAt || n.addedAt;
-    const date = when ? new Date(when).toLocaleDateString('ko-KR') : '';
-    const c = NOTE_COLORS.find(c => c.key === (n.color || 'white')) || NOTE_COLORS[0];
-    const dots = NOTE_COLORS.map(nc =>
+// 보관함(접힌 메모) + 캔버스(펼쳐진 메모, 자유 위치) — 유일한 배치 방식
+function boardHTML(notes) {
+    const dockSort = getDockSortMode();
+    const collapsedNotes = notes.filter(n => n.collapsed).sort((a, b) => {
+        const av = a.updatedAt || a.addedAt || 0, bv = b.updatedAt || b.addedAt || 0;
+        return dockSort === 'recent' ? bv - av : av - bv;
+    });
+    const expandedNotes = notes.filter(n => !n.collapsed).sort((a, b) => (a.addedAt || 0) - (b.addedAt || 0));
+    return `
+        <div class="notes-board">
+            <div class="notes-dock">
+                <div class="notes-dock-head">
+                    <span class="notes-dock-title">보관함 ${collapsedNotes.length}</span>
+                    <div class="notes-sort-toggle notes-sort-toggle-sm">
+                        <button type="button" class="notes-sort-btn${dockSort === 'recent' ? ' active' : ''}" data-docksort="recent">최근순</button>
+                        <button type="button" class="notes-sort-btn${dockSort === 'oldest' ? ' active' : ''}" data-docksort="oldest">오래된순</button>
+                    </div>
+                </div>
+                <div class="notes-dock-list">${
+                    collapsedNotes.length
+                        ? collapsedNotes.map(dockItemHTML).join('')
+                        : '<div class="dock-empty">접으면 여기<br>쌓여요</div>'
+                }</div>
+            </div>
+            <div class="notes-canvas">${
+                expandedNotes.length
+                    ? expandedNotes.map((n, i) => noteCardHTML(n, i)).join('')
+                    : '<div class="canvas-empty">보관함 항목을 클릭하거나<br>이 안으로 드래그하면 펼쳐져요</div>'
+            }</div>
+        </div>`;
+}
+
+function dockItemHTML(n) {
+    const label = (n.title || '').trim() || (n.type === 'todo' ? '할일' : '메모');
+    const c = NOTE_COLORS.find(nc => nc.key === (n.color || 'white')) || NOTE_COLORS[0];
+    return `
+        <div class="dock-item" draggable="true" data-id="${n.id}" title="클릭하거나 드래그해서 캔버스에 펼치기 — ${escHtml(label)}" style="background:${c.bg};border-color:${c.bd}">
+            ${icon(n.type === 'todo' ? 'check' : 'note', 16)}
+            <span class="dock-label">${escHtml(label.slice(0, 6))}</span>
+        </div>`;
+}
+
+function noteCardHTML(n, boardIdx = 0) {
+    return n.type === 'todo' ? todoCardHTML(n, boardIdx) : memoCardHTML(n, boardIdx);
+}
+
+function noteCdotsHTML(n) {
+    return NOTE_COLORS.map(nc =>
         `<button class="note-cdot${nc.key === (n.color || 'white') ? ' active' : ''}"
                  data-color="${nc.key}" title="${nc.key}"
                  style="background:${nc.bg};border-color:${nc.bd}"></button>`
     ).join('');
+}
+
+// 캔버스 안에서의 위치 스타일 — 저장된 좌표가 없으면 겹치지 않게 계단식 기본 배치
+function boardPositionStyle(n, boardIdx) {
+    const x = n.x ?? (20 + (boardIdx % 4) * 300);
+    const y = n.y ?? (20 + Math.floor(boardIdx / 4) * 260);
+    return `position:absolute;left:${x}px;top:${y}px;width:280px;z-index:${n.zIndex || 1};`;
+}
+
+// 현재 캔버스에서 가장 앞에 오는 z-index보다 하나 큰 값 — 방금 만진 메모를 맨 앞으로
+function nextZIndex() {
+    return Math.max(0, ...state.notes.map(n => n.zIndex || 0)) + 1;
+}
+
+// 순서 변경 손잡이 — 캔버스 안 이동·보관함으로 되돌리기용
+function dragHandleHTML() {
+    return `<span class="card-drag-handle" draggable="true" title="드래그해서 옮기기 (보관함 위로 놓으면 다시 접힘)">⠿</span>`;
+}
+
+// 접기/펼치기 버튼 (메모·할일 공통)
+function collapseBtnHTML(collapsed) {
+    return `<button type="button" class="note-collapse-btn" title="${collapsed ? '펼치기' : '접기'}">${icon(collapsed ? 'chevron-down' : 'chevron-up', 16)}</button>`;
+}
+
+function memoCardHTML(n, boardIdx) {
+    const when = n.updatedAt || n.addedAt;
+    const date = when ? new Date(when).toLocaleDateString('ko-KR') : '';
+    const c = NOTE_COLORS.find(c => c.key === (n.color || 'white')) || NOTE_COLORS[0];
+    const collapsed = !!n.collapsed;
     return `
-        <div class="note-card" data-id="${n.id}" style="background:${c.bg};border-color:${c.bd}">
-            <input class="note-title" placeholder="제목(선택)" value="${escHtml(n.title || '')}">
-            <textarea class="note-body" placeholder="메모를 입력하세요...">${escHtml(n.content || '')}</textarea>
+        <div class="note-card" data-id="${n.id}" data-type="memo" style="${boardPositionStyle(n, boardIdx)}background:${c.bg};border-color:${c.bd}">
+            <div class="note-head">
+                ${dragHandleHTML()}
+                ${collapseBtnHTML(collapsed)}
+                <input class="note-title" placeholder="제목(선택)" value="${escHtml(n.title || '')}">
+            </div>
+            <div class="note-content">
+                <div class="note-tools-row">${emojiPickerHTML()}</div>
+                <textarea class="note-body" placeholder="메모를 입력하세요...">${escHtml(n.content || '')}</textarea>
+            </div>
             <div class="note-foot">
-                <div class="note-cdots">${dots}</div>
+                <div class="note-cdots">${noteCdotsHTML(n)}</div>
                 <span class="note-date">${date}</span>
                 <button class="note-del" title="메모 삭제">삭제</button>
             </div>
         </div>`;
 }
 
+function todoCardHTML(n, boardIdx) {
+    const when = n.updatedAt || n.addedAt;
+    const date = when ? new Date(when).toLocaleDateString('ko-KR') : '';
+    const c = NOTE_COLORS.find(c => c.key === (n.color || 'white')) || NOTE_COLORS[0];
+    const items = n.items || [];
+    const doneCount = items.filter(it => it.done).length;
+    const collapsed = !!n.collapsed;
+    const itemsHTML = items.map(it => `
+        <div class="todo-item${it.done ? ' done' : ''}" data-item-id="${it.id}">
+            <input type="checkbox" class="todo-check"${it.done ? ' checked' : ''}>
+            <span class="todo-text">${escHtml(it.text)}</span>
+            <button type="button" class="todo-item-del" title="항목 삭제">${icon('x', 12)}</button>
+        </div>`).join('') || `<div class="todo-empty">아직 할일이 없어요</div>`;
+    return `
+        <div class="note-card todo-card" data-id="${n.id}" data-type="todo" style="${boardPositionStyle(n, boardIdx)}background:${c.bg};border-color:${c.bd}">
+            <div class="note-head">
+                ${dragHandleHTML()}
+                ${collapseBtnHTML(collapsed)}
+                <input class="note-title todo-title" placeholder="할일 제목(선택)" value="${escHtml(n.title || '')}">
+                <span class="todo-count">${doneCount}/${items.length}</span>
+            </div>
+            <div class="note-content">
+                <div class="todo-items">${itemsHTML}</div>
+                <div class="todo-add-row">
+                    ${emojiPickerHTML()}
+                    <input type="text" class="todo-add-input" placeholder="할일을 입력하고 Enter">
+                    <button type="button" class="btn-secondary todo-add-btn">추가</button>
+                </div>
+                <button type="button" class="todo-cleanup-btn" ${doneCount ? '' : 'disabled'}>완료한 항목 ${doneCount}개 정리</button>
+            </div>
+            <div class="note-foot">
+                <div class="note-cdots">${noteCdotsHTML(n)}</div>
+                <span class="note-date">${date}</span>
+                <button class="note-del" title="할일 삭제">삭제</button>
+            </div>
+        </div>`;
+}
+
+// 텍스트 입력창(textarea/input)의 커서 위치에 이모지 삽입
+function insertAtCursor(el, text) {
+    const start = el.selectionStart ?? el.value.length;
+    const end = el.selectionEnd ?? el.value.length;
+    el.value = el.value.slice(0, start) + text + el.value.slice(end);
+    el.focus();
+    el.selectionStart = el.selectionEnd = start + text.length;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
 function bindNotes(container) {
     const addBtn = document.getElementById('btn-add-note');
-    if (addBtn) addBtn.onclick = addNote;
+    if (addBtn) addBtn.onclick = () => addNote('memo');
+    const addTodoBtn = document.getElementById('btn-add-todo');
+    if (addTodoBtn) addTodoBtn.onclick = () => addNote('todo');
+
+    // 보관함(접힌 메모) 정렬 토글
+    container.querySelectorAll('.notes-sort-btn[data-docksort]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const mode = btn.dataset.docksort;
+            if (mode === getDockSortMode()) return;
+            setDockSortMode(mode);
+            renderNotes(container, (state.searchQuery || '').trim().toLowerCase());
+        });
+    });
 
     container.querySelectorAll('.note-card').forEach(card => {
         const id = card.dataset.id;
-        const titleEl = card.querySelector('.note-title');
-        const bodyEl = card.querySelector('.note-body');
-        let saveTimer;
-        const queueSave = () => {
-            clearTimeout(saveTimer);
-            saveTimer = setTimeout(() => saveNote(id, titleEl.value, bodyEl.value), 600);
-        };
-        titleEl.addEventListener('input', queueSave);
-        bodyEl.addEventListener('input', queueSave);
-        card.querySelector('.note-del').addEventListener('click', () => deleteNote(id));
+        const isTodo = card.dataset.type === 'todo';
 
-        // 색상 선택
+        // 색상 선택 (메모·할일 공통)
         card.querySelectorAll('.note-cdot').forEach(dot => {
             dot.addEventListener('click', () => {
                 const colorKey = dot.dataset.color;
@@ -2101,19 +2267,180 @@ function bindNotes(container) {
                 if (note) { note.color = colorKey; note.updatedAt = Date.now(); dbPut(STORE_NOTES, note); }
             });
         });
+        card.querySelector('.note-del').addEventListener('click', () => deleteNote(id));
+
+        // 접기/펼치기 (메모·할일 공통)
+        card.querySelector('.note-collapse-btn')?.addEventListener('click', () => toggleNoteCollapse(id));
+
+        // 이모지 드롭다운 열기/닫기
+        card.querySelectorAll('.emoji-picker-btn').forEach(btn => {
+            const panel = btn.nextElementSibling;
+            btn.addEventListener('click', () => {
+                const willOpen = !panel.classList.contains('open');
+                document.querySelectorAll('.emoji-picker-panel.open').forEach(p => p.classList.remove('open'));
+                panel.classList.toggle('open', willOpen);
+            });
+        });
+
+        // 이모지 버튼 → 이 카드에서 가장 최근 포커스된(또는 기본) 입력창에 삽입
+        const emojiTarget = card.querySelector(isTodo ? '.todo-add-input' : '.note-body');
+        let lastFocused = emojiTarget;
+        card.querySelectorAll('.note-title, .note-body, .todo-add-input').forEach(el => {
+            el.addEventListener('focus', () => { lastFocused = el; });
+        });
+        card.querySelectorAll('.note-emoji-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                insertAtCursor(lastFocused || emojiTarget, btn.dataset.emoji);
+                btn.closest('.emoji-picker-panel')?.classList.remove('open');
+            });
+        });
+
+        if (!isTodo) {
+            const titleEl = card.querySelector('.note-title');
+            const bodyEl = card.querySelector('.note-body');
+            let saveTimer;
+            const queueSave = () => {
+                clearTimeout(saveTimer);
+                saveTimer = setTimeout(() => saveNote(id, titleEl.value, bodyEl.value), 600);
+            };
+            titleEl.addEventListener('input', queueSave);
+            bodyEl.addEventListener('input', queueSave);
+            return;
+        }
+
+        // ── 할일 카드 전용 바인딩 ──
+        const titleEl = card.querySelector('.todo-title');
+        let titleTimer;
+        titleEl.addEventListener('input', () => {
+            clearTimeout(titleTimer);
+            titleTimer = setTimeout(() => saveTodoTitle(id, titleEl.value), 600);
+        });
+
+        const addInput = card.querySelector('.todo-add-input');
+        const addItem = () => {
+            const text = addInput.value.trim();
+            if (!text) return;
+            addInput.value = '';
+            addTodoItem(id, text);
+        };
+        card.querySelector('.todo-add-btn').addEventListener('click', addItem);
+        addInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addItem(); } });
+
+        const cleanupBtn = card.querySelector('.todo-cleanup-btn');
+        if (cleanupBtn) cleanupBtn.addEventListener('click', () => cleanupTodoItems(id));
+
+        card.querySelectorAll('.todo-item').forEach(row => {
+            const itemId = row.dataset.itemId;
+            row.querySelector('.todo-check').addEventListener('change', e => toggleTodoItem(id, itemId, e.target.checked));
+            row.querySelector('.todo-item-del').addEventListener('click', () => deleteTodoItem(id, itemId));
+        });
     });
+
+    bindBoardDrag(container);
 }
 
-async function addNote() {
-    const note = {
-        id: genId(), projectId: state.currentProjectId,
-        title: '', content: '', addedAt: Date.now(), updatedAt: Date.now(),
-    };
+// ── 보관함 ↔ 캔버스 드래그 앤 드롭 + 클릭으로 가운데에 펼치기 ──
+function bindBoardDrag(container) {
+    const canvas = container.querySelector('.notes-canvas');
+    const dock = container.querySelector('.notes-dock');
+    if (!canvas) return;
+    let draggedId = null;
+
+    container.querySelectorAll('.dock-item').forEach(item => {
+        item.addEventListener('dragstart', e => {
+            draggedId = item.dataset.id;
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', draggedId);
+        });
+        // 클릭(드래그 없이)하면 캔버스 가운데로 맨 앞에 펼치기 — 이미 가운데에 있던 메모와는
+        // 살짝 어긋나게 겹쳐서 새로 편 게 뭔지 한눈에 보이게. 이후엔 손잡이로 자유롭게 옮기면 됨
+        item.addEventListener('click', () => {
+            const rect = canvas.getBoundingClientRect();
+            const cardW = 280, cardH = 160;
+            const alreadyOnCanvas = canvas.querySelectorAll('.note-card').length;
+            const jitter = (alreadyOnCanvas % 6) * 24;
+            const x = Math.max(0, Math.round(canvas.scrollLeft + rect.width / 2 - cardW / 2 + jitter));
+            const y = Math.max(0, Math.round(canvas.scrollTop + rect.height / 2 - cardH / 2 + jitter));
+            placeNoteOnBoard(item.dataset.id, x, y);
+        });
+    });
+    container.querySelectorAll('.card-drag-handle[draggable="true"]').forEach(handle => {
+        handle.addEventListener('dragstart', e => {
+            draggedId = handle.closest('.note-card')?.dataset.id || null;
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', draggedId || '');
+            // 잡는 순간 바로 맨 앞으로 — 옮기는 동안 다른 카드에 가려 안 보이지 않게
+            if (draggedId) {
+                bringNoteToFront(draggedId);
+                const card = handle.closest('.note-card');
+                const note = state.notes.find(n => n.id === draggedId);
+                if (card && note) card.style.zIndex = String(note.zIndex);
+            }
+        });
+    });
+    // 캔버스 위 카드를 그냥 클릭(입력창 제외)해도 맨 앞으로 — 겹쳐 있을 때 찾기 쉽게
+    canvas.querySelectorAll('.note-card').forEach(card => {
+        card.addEventListener('mousedown', e => {
+            if (e.target.closest('input, textarea, button')) return;
+            bringNoteToFront(card.dataset.id);
+            const note = state.notes.find(n => n.id === card.dataset.id);
+            if (note) card.style.zIndex = String(note.zIndex);
+        });
+    });
+
+    canvas.addEventListener('dragover', e => e.preventDefault());
+    canvas.addEventListener('drop', e => {
+        e.preventDefault();
+        if (!draggedId) return;
+        const rect = canvas.getBoundingClientRect();
+        const x = Math.max(0, Math.round(e.clientX - rect.left - 140 + canvas.scrollLeft));
+        const y = Math.max(0, Math.round(e.clientY - rect.top - 20 + canvas.scrollTop));
+        placeNoteOnBoard(draggedId, x, y);
+        draggedId = null;
+    });
+
+    if (dock) {
+        dock.addEventListener('dragover', e => e.preventDefault());
+        dock.addEventListener('drop', e => {
+            e.preventDefault();
+            if (!draggedId) return;
+            toggleNoteCollapse(draggedId, true);
+            draggedId = null;
+        });
+    }
+}
+
+async function placeNoteOnBoard(id, x, y) {
+    const note = state.notes.find(n => n.id === id);
+    if (!note) return;
+    note.collapsed = false;
+    note.x = x;
+    note.y = y;
+    note.zIndex = nextZIndex();
+    note.updatedAt = Date.now();
+    await dbPut(STORE_NOTES, note);
+    renderNotes(document.getElementById('content'), (state.searchQuery || '').trim().toLowerCase());
+}
+
+// 카드를 옮기지 않고 맨 앞으로만 가져오기(클릭·드래그 시작 시 즉시 반응용)
+async function bringNoteToFront(id) {
+    const note = state.notes.find(n => n.id === id);
+    if (!note) return null;
+    note.zIndex = nextZIndex();
+    await dbPut(STORE_NOTES, note);
+    return note.zIndex;
+}
+
+async function addNote(type = 'memo') {
+    const note = type === 'todo'
+        ? { id: genId(), projectId: state.currentProjectId, type: 'todo', title: '', items: [], collapsed: false, addedAt: Date.now(), updatedAt: Date.now() }
+        : { id: genId(), projectId: state.currentProjectId, type: 'memo', title: '', content: '', addedAt: Date.now(), updatedAt: Date.now() };
     await dbPut(STORE_NOTES, note);
     state.notes.push(note);
     document.getElementById('notes-count').textContent = state.notes.length;
     renderNotes(document.getElementById('content'));
-    document.querySelector(`.note-card[data-id="${note.id}"] .note-body`)?.focus();
+    const focusSel = type === 'todo' ? '.todo-add-input' : '.note-body';
+    document.querySelector(`.note-card[data-id="${note.id}"] ${focusSel}`)?.focus();
 }
 
 async function saveNote(id, title, content) {
@@ -2125,8 +2452,64 @@ async function saveNote(id, title, content) {
     await dbPut(STORE_NOTES, note);
 }
 
+async function saveTodoTitle(id, title) {
+    const note = state.notes.find(n => n.id === id);
+    if (!note) return;
+    note.title = title;
+    note.updatedAt = Date.now();
+    await dbPut(STORE_NOTES, note);
+}
+
+async function addTodoItem(id, text) {
+    const note = state.notes.find(n => n.id === id);
+    if (!note) return;
+    if (!note.items) note.items = [];
+    note.items.push({ id: genId(), text, done: false });
+    note.updatedAt = Date.now();
+    await dbPut(STORE_NOTES, note);
+    renderNotes(document.getElementById('content'), (state.searchQuery || '').trim().toLowerCase());
+    document.querySelector(`.note-card[data-id="${id}"] .todo-add-input`)?.focus();
+}
+
+async function toggleTodoItem(id, itemId, done) {
+    const note = state.notes.find(n => n.id === id);
+    const item = note?.items?.find(it => it.id === itemId);
+    if (!note || !item) return;
+    item.done = done;
+    note.updatedAt = Date.now();
+    await dbPut(STORE_NOTES, note);
+    renderNotes(document.getElementById('content'), (state.searchQuery || '').trim().toLowerCase());
+}
+
+async function deleteTodoItem(id, itemId) {
+    const note = state.notes.find(n => n.id === id);
+    if (!note) return;
+    note.items = (note.items || []).filter(it => it.id !== itemId);
+    note.updatedAt = Date.now();
+    await dbPut(STORE_NOTES, note);
+    renderNotes(document.getElementById('content'), (state.searchQuery || '').trim().toLowerCase());
+}
+
+async function cleanupTodoItems(id) {
+    const note = state.notes.find(n => n.id === id);
+    if (!note) return;
+    note.items = (note.items || []).filter(it => !it.done);
+    note.updatedAt = Date.now();
+    await dbPut(STORE_NOTES, note);
+    renderNotes(document.getElementById('content'), (state.searchQuery || '').trim().toLowerCase());
+}
+
+async function toggleNoteCollapse(id, forceCollapsed) {
+    const note = state.notes.find(n => n.id === id);
+    if (!note) return;
+    note.collapsed = typeof forceCollapsed === 'boolean' ? forceCollapsed : !note.collapsed;
+    await dbPut(STORE_NOTES, note);
+    renderNotes(document.getElementById('content'), (state.searchQuery || '').trim().toLowerCase());
+}
+
 async function deleteNote(id) {
-    if (!confirm('이 메모를 삭제할까요?')) return;
+    const note = state.notes.find(n => n.id === id);
+    if (!confirm(note?.type === 'todo' ? '이 할일을 삭제할까요?' : '이 메모를 삭제할까요?')) return;
     await dbDelete(STORE_NOTES, id);
     state.notes = state.notes.filter(n => n.id !== id);
     document.getElementById('notes-count').textContent = state.notes.length;

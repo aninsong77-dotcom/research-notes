@@ -553,6 +553,7 @@ body {
 /* ── 빈 상태 ─────────────────────────────────────────────── */
 .empty-state {
     display: flex;
+    flex: 1;
     flex-direction: column;
     align-items: center;
     justify-content: center;
@@ -570,6 +571,7 @@ body {
     align-items: center;
     justify-content: space-between;
     margin-bottom: 16px;
+    flex-shrink: 0;
 }
 .section-title { font-size: 15px; font-weight: 700; color: var(--text-primary); }
 
@@ -2633,12 +2635,6 @@ body {
 .sm-btn-riss:hover::after { opacity: 1; }
 
 /* ── 아이디어 저장소(메모) ────────────────────────────────── */
-.notes-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-    gap: 14px;
-    align-items: start;
-}
 /* ─── 마인드맵 캔버스 ──────────────────────────────────────── */
 .mm-wrap { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 .mm-bar {
@@ -2748,6 +2744,9 @@ body {
     padding: 14px;
     box-shadow: var(--shadow-sm);
 }
+/* 카드 상단 줄: 손잡이 + 접기버튼 + 제목 (메모·할일 공통) */
+.note-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.note-tools-row { display: flex; justify-content: flex-end; margin: 2px 0 6px; }
 .note-title {
     border: none;
     background: transparent;
@@ -2756,9 +2755,30 @@ body {
     color: var(--text-primary);
     font-family: inherit;
     padding: 2px 0;
-    margin-bottom: 6px;
     outline: none;
+    flex: 1;
+    min-width: 0;
 }
+.note-collapse-btn {
+    border: none; background: transparent; cursor: pointer;
+    color: var(--text-muted); padding: 2px; border-radius: 6px;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.note-collapse-btn:hover { background: rgba(0,0,0,.06); color: var(--text-primary); }
+.note-content { display: flex; flex-direction: column; }
+
+/* 순서 변경 손잡이 — '자유 배치' 모드의 캔버스 카드에만 렌더링됨 */
+.card-drag-handle {
+    display: inline-flex;
+    flex-shrink: 0;
+    cursor: grab;
+    color: var(--text-muted);
+    font-size: 15px;
+    line-height: 1;
+    padding: 0 2px;
+    user-select: none;
+}
+.card-drag-handle:active { cursor: grabbing; }
 .note-body {
     border: none;
     background: transparent;
@@ -2798,6 +2818,151 @@ body {
     font-family: inherit;
 }
 .note-del:hover { background: rgba(220,53,69,.1); color: var(--danger); }
+
+.notes-add-btns { display: flex; gap: 8px; }
+
+/* ── 보관함(접힌 메모) + 캔버스(자유 배치) ───────────────────── */
+/* 평소엔 화면 높이에 꽉 차고, 메모가 많아지면 보관함·캔버스가 각자 안에서만 스크롤됨 */
+.notes-board { display: flex; gap: 16px; align-items: stretch; flex: 1; min-height: 0; }
+.notes-dock {
+    flex: 0 0 100px;
+    display: flex; flex-direction: column; gap: 8px;
+    padding: 10px 8px;
+    border-radius: 14px;
+    border: 1.5px dashed var(--border);
+    background: rgba(0,0,0,.02);
+    overflow: hidden;
+}
+.notes-dock-head { display: flex; flex-direction: column; gap: 6px; align-items: stretch; flex-shrink: 0; }
+.notes-dock-title { font-size: 11.5px; font-weight: 700; color: var(--text-secondary); padding: 0 2px; }
+.notes-dock-list {
+    display: flex; flex-direction: column; gap: 8px;
+    flex: 1; min-height: 0; overflow-y: auto;
+}
+.dock-empty, .canvas-empty {
+    font-size: 11.5px; line-height: 1.5; color: var(--text-muted);
+    text-align: center; padding: 10px 4px;
+}
+.canvas-empty { padding-top: 40px; }
+.dock-item {
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    padding: 8px 4px; border-radius: 10px; cursor: grab;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+.dock-item:hover { filter: brightness(0.96); }
+.dock-item:active { cursor: grabbing; }
+.dock-label {
+    font-size: 10px; max-width: 66px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.notes-canvas {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    border-radius: 14px;
+    border: 1.5px dashed var(--border);
+    background-color: rgba(0,0,0,.015);
+    background-image: radial-gradient(circle, rgba(0,0,0,.06) 1px, transparent 1px);
+    background-size: 22px 22px;
+    overflow: auto;
+}
+
+.notes-sort-toggle {
+    display: flex; border: 1px solid var(--border);
+    border-radius: 20px; overflow: hidden;
+}
+.notes-sort-toggle-sm .notes-sort-btn { padding: 4px 6px; font-size: 10.5px; flex: 1; text-align: center; }
+.notes-sort-btn {
+    border: none; background: var(--surface); color: var(--text-secondary);
+    font-size: 12.5px; font-family: inherit; padding: 6px 13px; cursor: pointer;
+    transition: background .12s, color .12s;
+}
+.notes-sort-btn:hover { background: var(--accent-light); }
+.notes-sort-btn.active { background: var(--accent); color: #fff; }
+
+/* 이모지 드롭다운 (메모·할일 공통) */
+.emoji-picker { position: relative; display: inline-flex; }
+.emoji-picker-btn {
+    border: 1px solid rgba(0,0,0,.08);
+    background: rgba(0,0,0,.03);
+    border-radius: 6px;
+    font-size: 14px;
+    line-height: 1;
+    padding: 4px 7px;
+    cursor: pointer;
+    transition: background .12s;
+}
+.emoji-picker-btn:hover { background: rgba(0,0,0,.08); }
+.emoji-picker-panel {
+    display: none;
+    position: absolute; top: calc(100% + 4px); right: 0;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px; gap: 4px; flex-wrap: wrap;
+    width: 128px; box-shadow: 0 6px 18px rgba(0,0,0,.16);
+    z-index: 20;
+}
+.emoji-picker-panel.open { display: flex; }
+.note-emoji-btn {
+    border: 1px solid rgba(0,0,0,.08);
+    background: rgba(0,0,0,.03);
+    border-radius: 6px;
+    font-size: 14px;
+    line-height: 1;
+    padding: 4px 6px;
+    cursor: pointer;
+    transition: background .12s, transform .1s;
+}
+.note-emoji-btn:hover { background: rgba(0,0,0,.08); transform: scale(1.1); }
+
+/* ── 할일 카드 ──────────────────────────────────────────── */
+.todo-title { min-width: 0; }
+.todo-count {
+    font-size: 11.5px; color: var(--text-muted);
+    background: rgba(0,0,0,.05); border-radius: 10px;
+    padding: 2px 8px; flex-shrink: 0;
+}
+
+.todo-items {
+    display: flex; flex-direction: column; gap: 2px;
+    max-height: 320px; overflow-y: auto; margin-bottom: 8px;
+}
+.todo-empty { font-size: 12.5px; color: var(--text-muted); padding: 6px 2px; }
+.todo-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 4px; border-radius: 6px;
+}
+.todo-item:hover { background: rgba(0,0,0,.04); }
+.todo-check { width: 16px; height: 16px; flex-shrink: 0; cursor: pointer; accent-color: var(--accent); }
+.todo-text { flex: 1; font-size: 13px; color: var(--text-secondary); word-break: break-word; }
+.todo-item.done .todo-text { text-decoration: line-through; color: var(--text-muted); }
+.todo-item-del {
+    border: none; background: transparent; color: var(--text-muted);
+    cursor: pointer; padding: 2px; border-radius: 5px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; transition: opacity .12s;
+}
+.todo-item:hover .todo-item-del { opacity: 1; }
+.todo-item-del:hover { background: rgba(220,53,69,.1); color: var(--danger); }
+.todo-add-row { display: flex; gap: 6px; margin-bottom: 8px; }
+.todo-add-input {
+    flex: 1; border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px 8px; font-size: 13px; font-family: inherit;
+    background: var(--surface); outline: none;
+}
+.todo-add-input:focus { border-color: var(--accent); }
+.todo-add-btn { padding: 6px 12px; font-size: 12.5px; }
+.todo-cleanup-btn {
+    align-self: flex-start;
+    border: 1px solid rgba(0,0,0,.1);
+    background: rgba(0,0,0,.03);
+    color: var(--text-secondary);
+    font-size: 12px; font-family: inherit;
+    padding: 4px 10px; border-radius: 6px; cursor: pointer;
+}
+.todo-cleanup-btn:hover:not(:disabled) { background: rgba(0,0,0,.08); }
+.todo-cleanup-btn:disabled { opacity: .45; cursor: default; }
 
 /* ── 저작권 표시 ──────────────────────────────────────────── */
 .copyright {
