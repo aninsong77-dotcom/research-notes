@@ -541,9 +541,10 @@ function renderContent() {
     // 모형스케치북·책상 뷰가 아닐 때 스타일 복원(둘은 각자 꽉 찬 레이아웃 사용)
     if (state.view !== 'sketch') {
         if (state.view !== 'desk') {
-            container.style.padding  = '24px';
-            // 메모 화면은 페이지 자체가 늘어나지 않고, 보관함·캔버스가 화면 높이를 채운 채
+            // 메모 화면은 작업 공간을 최대한 넓게 쓰도록 여백을 줄이고,
+            // 페이지 자체가 늘어나지 않고 보관함·캔버스가 화면 높이를 채운 채
             // 각자 안에서만 스크롤되도록 flex 세로 레이아웃 + overflow hidden 사용
+            container.style.padding  = state.view === 'notes' ? '12px' : '24px';
             container.style.overflow = state.view === 'notes' ? 'hidden' : 'auto';
         }
         S = null; // 마인드맵 상태 초기화
@@ -2065,7 +2066,7 @@ function renderNotes(container, q = '') {
     if (q) notes = notes.filter(n => noteMatchesQuery(n, q));
 
     const header = `
-        <div class="section-header">
+        <div class="section-header" style="margin-bottom:8px">
             <span class="section-title">아이디어 메모 ${q ? `검색 결과 ${notes.length}개` : `${state.notes.length}개`}</span>
             <div class="notes-add-btns">
                 <button class="btn-secondary" id="btn-add-note">+ 메모 추가</button>

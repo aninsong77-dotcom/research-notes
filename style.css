@@ -2819,15 +2819,16 @@ body {
 }
 .note-del:hover { background: rgba(220,53,69,.1); color: var(--danger); }
 
-.notes-add-btns { display: flex; gap: 8px; }
+.notes-add-btns { display: flex; gap: 6px; }
+.notes-add-btns .btn-secondary { padding: 5px 11px; font-size: 12px; }
 
 /* ── 보관함(접힌 메모) + 캔버스(자유 배치) ───────────────────── */
 /* 평소엔 화면 높이에 꽉 차고, 메모가 많아지면 보관함·캔버스가 각자 안에서만 스크롤됨 */
-.notes-board { display: flex; gap: 16px; align-items: stretch; flex: 1; min-height: 0; }
+.notes-board { display: flex; gap: 10px; align-items: stretch; flex: 1; min-height: 0; }
 .notes-dock {
-    flex: 0 0 100px;
+    flex: 0 0 76px;
     display: flex; flex-direction: column; gap: 8px;
-    padding: 10px 8px;
+    padding: 8px 6px;
     border-radius: 14px;
     border: 1.5px dashed var(--border);
     background: rgba(0,0,0,.02);
