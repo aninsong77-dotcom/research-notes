@@ -7,6 +7,9 @@
 CLAUDE.md
 작업기록.md
 
+# 수정 전 백업본(로컬 전용)
+app_backup_*.js
+
 # OS / 편집기 부산물
 Thumbs.db
 desktop.ini
