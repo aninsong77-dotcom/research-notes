@@ -424,35 +424,318 @@
     }
 
     // ── APA 형식 ────────────────────────────────────────────
-    function formatAPA(p) {
-        const authors = p.authors || '저자 미상';
-        const year = p.year ? `(${p.year})` : '(연도 미상)';
-        const title = p.title || '제목 없음';
-        const source = p.source || '';
-        const volume = p.volume || '';
-        const issue = p.issue ? `(${p.issue})` : '';
-        const pages = p.pages || '';
-        const doi = p.doi ? `https://doi.org/${p.doi.replace(/^https?:\/\/doi\.org\//i,'')}` : '';
+    // ── APA 7판 ────────────────────────────────────────────
+    // ⚠️ app.js에도 같은 로직이 있다(이 창은 단독 실행이라 일부러 복사본을 둔다).
+    //    한쪽을 고치면 다른 쪽도 같이 고칠 것.
+    const isKoreanName = s => /[가-힣]/.test(s);
 
-        let ref = `${authors} ${year}. ${title}.`;
-        if (source) {
-            ref += ` ${source}`;
-            if (volume) ref += `, ${volume}${issue}`;
-            if (pages) ref += `, ${pages}`;
-            ref += '.';
+    function splitAuthors(raw) {
+        let s = String(raw || '').trim();
+        if (!s) return [];
+        s = s.replace(/\s+and\s+/gi, ' & ');
+        if (s.includes(';')) return s.split(';').map(x => x.trim()).filter(Boolean);
+
+        // 한국어 이름 — 쉼표·가운뎃점으로 나누되, "반두라, A." 처럼 이니셜만 있는 조각은
+        // 앞 이름에 도로 붙인다(외국 저자를 한글로 옮겨 적은 경우).
+        if (isKoreanName(s)) {
+            const ko = s.split(/[,·&]+/).map(x => x.trim()).filter(Boolean);
+            const merged = [];
+            for (let i = 0; i < ko.length; i++) {
+                const next = ko[i + 1];
+                if (next && /^(?:[A-Za-z]\.?\s*){1,3}$/.test(next)) { merged.push(`${ko[i]}, ${next}`); i++; }
+                else merged.push(ko[i]);
+            }
+            return merged;
         }
-        if (doi) ref += ` ${doi}`;
-        return ref;
+
+        // 영문: 쉼표로 자른 뒤, "이니셜만 있는 조각"은 앞 조각(성)에 도로 붙인다
+        const parts = s.split(/[,&]/).map(x => x.trim()).filter(Boolean);
+        const out = [];
+        for (let i = 0; i < parts.length; i++) {
+            const next = parts[i + 1];
+            if (next && /^(?:[A-Z]\.?\s*){1,3}$/.test(next)) {
+                out.push(`${parts[i]}, ${next}`);
+                i++;
+            } else {
+                out.push(parts[i]);
+            }
+        }
+        return out;
     }
 
-    function formatInText(p) {
-        if (!p.authors) return p.year ? `(${p.year})` : '';
-        const list = p.authors.split(/[,·&]/).map(a => a.trim()).filter(Boolean);
-        const first = list[0];
-        let name = first;
-        if (list.length === 2) name = `${list[0]}, ${list[1]}`;
-        else if (list.length >= 3) name = `${first} 외`;
-        return p.year ? `(${name}, ${p.year})` : `(${name})`;
+    function apaAuthorName(name) {
+        const n = String(name || '').trim().replace(/\s+/g, ' ');
+        if (!n) return '';
+        if (isKoreanName(n)) return n;
+        const initials = arr => arr.map(w => w.replace(/[^A-Za-z]/g, '').charAt(0))
+            .filter(Boolean).map(c => c.toUpperCase() + '.').join(' ');
+        if (n.includes(',')) {
+            const [last, rest = ''] = n.split(',').map(x => x.trim());
+            const given = rest.split(/\s+/).filter(Boolean);
+            return given.length ? `${last}, ${initials(given)}` : last;
+        }
+        const words = n.split(' ').filter(Boolean);
+        if (words.length === 1) return words[0];
+        const last = words.pop();
+        return `${last}, ${initials(words)}`;
+    }
+
+    function apaAuthorList(raw) {
+        const people = splitAuthors(raw).map(apaAuthorName).filter(Boolean);
+        if (!people.length) return '';
+        const korean = isKoreanName(people[0]);
+        if (people.length === 1) return people[0];
+        let list = people, ellipsis = false;
+        if (people.length > 20) { list = people.slice(0, 19).concat([people[people.length - 1]]); ellipsis = true; }
+        const head = list.slice(0, -1).join(', ');
+        const tail = list[list.length - 1];
+        if (ellipsis) return `${head}, ... ${tail}`;
+        return korean ? `${head}, ${tail}` : `${head}, & ${tail}`;
+    }
+
+    function apaItemType(paper) {
+        if (paper.itemType) return paper.itemType;
+        const hint = `${paper.analysis?.paperType || ''} ${paper.source || ''}`;
+        if (/학위논문|석사|박사|dissertation|thesis/i.test(hint)) return 'thesis';
+        return 'journal';
+    }
+
+    function apaEditors(raw) {
+        const people = splitAuthors(raw);
+        if (!people.length) return '';
+        const korean = isKoreanName(people[0]);
+        if (korean) return `${people.join(', ')} (편)`;
+        // 편저자는 이름이 성 앞에 온다: "J. Smith"
+        const flip = n => {
+            const a = apaAuthorName(n);
+            const [last, init = ''] = a.split(',').map(x => x.trim());
+            return init ? `${init} ${last}` : last;
+        };
+        const list = people.map(flip);
+        const joined = list.length === 1 ? list[0]
+            : `${list.slice(0, -1).join(', ')}${list.length > 2 ? ',' : ''} & ${list[list.length - 1]}`;
+        return `${joined} (${list.length > 1 ? 'Eds.' : 'Ed.'})`;
+    }
+
+    let _apaSuffix = {};
+
+    function apaYearSuffixes(papers) {
+        const groups = {};
+        (papers || []).forEach(p => {
+            if (!p.year) return;
+            const first = splitAuthors(p.authors)[0] || '';
+            const key = `${apaAuthorName(first)}|${p.year}`;
+            (groups[key] = groups[key] || []).push(p);
+        });
+        const out = {};
+        Object.values(groups).forEach(list => {
+            if (list.length < 2) return;
+            // 제목 순으로 정렬해 a, b, c … (APA 규칙)
+            list.slice().sort((a, b) => String(a.title || '').localeCompare(String(b.title || ''), 'ko'))
+                .forEach((p, i) => { out[p.id] = String.fromCharCode(97 + i); });
+        });
+        return out;
+    }
+
+    const APA_PROPER = new Set([
+        'korea','korean','china','chinese','japan','japanese','taiwan','vietnam',
+        'america','american','europe','european','asia','asian','africa','african',
+        'australia','australian','britain','british','england','english','france','french',
+        'germany','german','spain','spanish','italy','italian','russia','russian',
+        'india','indian','canada','canadian','mexico','brazil','netherlands','sweden','norway','finland',
+        'seoul','busan','tokyo','beijing','shanghai','london','paris','berlin','york','washington',
+        'january','february','march','april','may','june','july',
+        'august','september','october','november','december',
+        'monday','tuesday','wednesday','thursday','friday','saturday','sunday',
+        'covid','covid-19','hiv','aids','oecd','unesco','who','un',
+        'facebook','instagram','twitter','youtube','google','tiktok','kakaotalk',
+        'christian','christianity','buddhist','buddhism','muslim','islam','confucian',
+    ]);
+
+    function toSentenceCase(str) {
+        const s = String(str || '').trim();
+        if (!s || /[가-힣]/.test(s)) return s;   // 한글 제목은 그대로
+
+        let capNext = true;
+        return s.split(/(\s+)/).map(tok => {
+            if (/^\s+$/.test(tok)) return tok;
+
+            const bare = tok.replace(/[^A-Za-z0-9-]/g, '');
+            const letters = tok.replace(/[^A-Za-z]/g, '');
+            const isAcronym = letters.length > 1 && letters === letters.toUpperCase();  // APA, PTSD
+            const isMixed   = /[a-z][A-Z]/.test(tok);                                    // iPhone
+            const isProper  = APA_PROPER.has(bare.toLowerCase());                        // Korea
+
+            let out;
+            if (isAcronym || isMixed) out = tok;
+            else if (isProper)        out = tok.charAt(0).toUpperCase() + tok.slice(1).toLowerCase();
+            else if (capNext)         out = tok.charAt(0).toUpperCase() + tok.slice(1).toLowerCase();
+            else                      out = tok.toLowerCase();
+
+            capNext = /[:.?!]$/.test(tok);   // 콜론·마침표 뒤는 다시 대문자
+            return out;
+        }).join('');
+    }
+
+    function formatAPAParts(paper, suffix) {
+        const sfx = suffix || _apaSuffix[paper.id] || '';
+        const authors   = apaAuthorList(paper.authors) || '저자 미상';
+        const year      = paper.year ? `(${paper.year}${sfx})` : `(연도 미상)`;
+        // APA: 논문·책·학위논문 제목은 문장식. 저장값은 안 바꾸고 여기서만 변환한다.
+        const title     = toSentenceCase((paper.title || '제목 없음').trim().replace(/\.$/, ''));
+        const source    = (paper.source || '').trim();
+        const volume    = (paper.volume || '').trim();
+        const issue     = (paper.issue || '').trim();
+        const pages     = (paper.pages || '').trim().replace(/[-–—~]/g, '–');   // APA는 en dash
+        const publisher = (paper.publisher || '').trim();
+        const bookTitle = toSentenceCase((paper.bookTitle || '').trim());
+        const edition   = (paper.edition || '').trim();
+        const url       = (paper.url || '').trim();
+        const translator= (paper.translator || '').trim();
+        const origYear  = (paper.originalYear || '').trim();
+        const doiRaw    = (paper.doi || '').trim();
+        const doi = doiRaw ? `https://doi.org/${doiRaw.replace(/^https?:\/\/doi\.org\//i, '')}` : '';
+
+        const type   = apaItemType(paper);
+        const korean = /[가-힣]/.test(`${authors}${title}`);
+        const IT = t => `<i style="font-style:italic">${t}</i>`;   // 기울임
+        const E  = escHtml;
+
+        let text = `${authors} ${year}. `;
+        let html = `${E(authors)} ${E(year)}. `;
+
+        if (type === 'thesis') {
+            // 저자 (연도). 제목(기울임) [석사학위논문, 기관].
+            const hint = `${paper.analysis?.paperType || ''} ${source}`;
+            const degree = /박사|doctor/i.test(hint) ? '박사학위논문' : '석사학위논문';
+            // "○○대학교 대학원 석사학위논문"이 통째로 들어있으면 학위 표기는 떼고 기관만 남긴다
+            const inst = source.replace(/\s*(석사|박사)?\s*학위\s*논문\s*/g, '').trim();
+            text += `${title} [${degree}${inst ? `, ${inst}` : ''}].`;
+            html += `${IT(E(title))} [${degree}${inst ? `, ${E(inst)}` : ''}].`;
+
+        } else if (type === 'book') {
+            // 저자 (연도). 제목(기울임) (판). 출판사.
+            text += `${title}`;
+            html += `${IT(E(title))}`;
+            if (edition) { text += ` (${edition})`; html += ` (${E(edition)})`; }
+            text += '.'; html += '.';
+            if (publisher) { text += ` ${publisher}.`; html += ` ${E(publisher)}.`; }
+
+        } else if (type === 'chapter') {
+            // 저자 (연도). 장 제목. 편저자 (편), 책제목(기울임) (판, pp. 쪽). 출판사.
+            const eds = apaEditors(paper.editors);
+            const inWord = korean ? '' : 'In ';
+            text += `${title}. `;
+            html += `${E(title)}. `;
+            if (eds) { text += `${inWord}${eds}, `; html += `${inWord}${E(eds)}, `; }
+            text += `${bookTitle || source}`;
+            html += `${IT(E(bookTitle || source))}`;
+            const paren = [edition, pages ? `pp. ${pages}` : ''].filter(Boolean).join(', ');
+            if (paren) { text += ` (${paren})`; html += ` (${E(paren)})`; }
+            text += '.'; html += '.';
+            if (publisher) { text += ` ${publisher}.`; html += ` ${E(publisher)}.`; }
+
+        } else if (type === 'translation') {
+            // APA 7 번역서: 원저자 (번역출판연도). 제목(기울임) (역자 역). 출판사. (원저 원년 출판)
+            // 본문 인용은 (원저자, 원년/번역년) — formatInText 가 처리한다.
+            text += `${title}`;
+            html += `${IT(E(title))}`;
+            if (edition) { text += ` (${edition})`; html += ` (${E(edition)})`; }
+            if (translator) {
+                const t = korean ? `${translator} 역` : `${translator}, Trans.`;
+                text += ` (${t})`; html += ` (${E(t)})`;
+            }
+            text += '.'; html += '.';
+            if (publisher) { text += ` ${publisher}.`; html += ` ${E(publisher)}.`; }
+            if (origYear) {
+                const o = korean ? `(원저 ${origYear} 출판)` : `(Original work published ${origYear})`;
+                text += ` ${o}`; html += ` ${E(o)}`;
+            }
+
+        } else if (type === 'web') {
+            // 저자/기관 (연도). 제목(기울임). 발행처. URL
+            text += `${title}.`;
+            html += `${IT(E(title))}.`;
+            if (publisher) { text += ` ${publisher}.`; html += ` ${E(publisher)}.`; }
+
+        } else {
+            // 학술지 논문: 저자 (연도). 제목. 학술지명(기울임), 권(기울임)(호), 쪽.
+            text += `${title}.`;
+            html += `${E(title)}.`;
+            if (source) {
+                text += ` ${source}`;
+                html += ` ${IT(E(source))}`;
+                if (volume) {
+                    text += `, ${volume}${issue ? `(${issue})` : ''}`;
+                    html += `, ${IT(E(volume))}${issue ? `(${E(issue)})` : ''}`;
+                }
+                if (pages) { text += `, ${pages}`; html += `, ${E(pages)}`; }
+                text += '.'; html += '.';
+            }
+        }
+
+        // DOI가 있으면 DOI를, 없으면 URL을 끝에 붙인다 (APA 7: 둘 다 쓰지 않는다)
+        const tail = doi || url;
+        if (tail) { text += ` ${tail}`; html += ` ${E(tail)}`; }
+        return { text, html };
+    }
+
+    const formatAPA = p => formatAPAParts(p).text;
+
+    // 기울임까지 살려서 복사 (한글·워드에 붙여넣으면 서식 유지)
+    // app.js 의 copyRich 와 같은 로직 (이 창은 단독 실행이라 복사본을 둔다)
+    async function copyRich(html, text) {
+        try {
+            const holder = document.createElement('div');
+            holder.setAttribute('contenteditable', 'true');
+            holder.innerHTML = html;
+            holder.style.cssText = 'position:fixed;left:-9999px;top:0;white-space:pre-wrap;opacity:0';
+            document.body.appendChild(holder);
+            const sel = window.getSelection();
+            const range = document.createRange();
+            range.selectNodeContents(holder);
+            sel.removeAllRanges();
+            sel.addRange(range);
+            const ok = document.execCommand('copy');
+            sel.removeAllRanges();
+            holder.remove();
+            if (ok) return true;
+        } catch {}
+        try {
+            if (navigator.clipboard?.write && window.ClipboardItem) {
+                await navigator.clipboard.write([new ClipboardItem({
+                    'text/html':  new Blob([html], { type: 'text/html' }),
+                    'text/plain': new Blob([text], { type: 'text/plain' }),
+                })]);
+                return true;
+            }
+        } catch {}
+        return copyToClipboard(text);
+    }
+
+    function formatInText(paper) {
+        if (!paper.authors) return paper.year ? `(${paper.year})` : '';
+        const people = splitAuthors(paper.authors);
+        if (!people.length) return paper.year ? `(${paper.year})` : '';
+
+        const korean = isKoreanName(people[0]);
+        // 본문 인용은 성(姓)만 쓴다
+        // 본문 인용은 성(姓)만. "반두라, A." 처럼 외국 저자를 한글로 옮긴 경우도 쉼표 앞만 쓴다.
+        const surname = p => apaAuthorName(p).split(',')[0].trim();
+        // 번역서는 APA 7 규칙상 (원저자, 원출판연도/번역출판연도) 로 쓴다
+        const _oy = (paper.originalYear || '').trim();
+        const _base = apaItemType(paper) === 'translation' && _oy && paper.year
+            ? `${_oy}/${paper.year}` : (paper.year || '');
+        const year = _base ? `${_base}${_apaSuffix[paper.id] || ''}` : '';
+
+        let name;
+        if (people.length === 1)      name = surname(people[0]);
+        else if (people.length === 2) name = korean ? `${surname(people[0])}, ${surname(people[1])}`
+                                                    : `${surname(people[0])} & ${surname(people[1])}`;
+        else                          name = korean ? `${surname(people[0])} 외`
+                                                    : `${surname(people[0])} et al.`;
+
+        return year ? `(${name}, ${year})` : `(${name})`;
     }
 
     // ── 토스트 ────────────────────────────────────────────
@@ -476,35 +759,41 @@
     }
 
     function render() {
-        const selectedCount = papers.filter(p => p.inQuickCite).length;
+        _apaSuffix = apaYearSuffixes(papers);
+        // 참고문헌 화면과 같은 목록을 보여준다.
+        // 예전엔 inQuickCite(별표) 체크한 것만 보여서, 체크를 안 하면 창이 비어 있었다.
+        const selectedCount = papers.filter(p => p.inReferences).length;
 
-        // 메인 앱에서 '빠른 인용' 체크한 논문만 표시
-        const list = getFiltered().filter(p => p.inQuickCite).sort((a, b) => {
+        const list = getFiltered().sort((a, b) => {
             const na = (a.authors||'').split(/[,·]/)[0].trim();
             const nb = (b.authors||'').split(/[,·]/)[0].trim();
             return na.localeCompare(nb, 'ko');
         });
 
         const countBar = document.getElementById('count-bar');
-        countBar.innerHTML = `⭐ 빠른 인용 <strong>${selectedCount}편</strong> / 전체 ${papers.length}편${searchQuery ? ` · 검색 ${list.length}편` : ''}`;
+        countBar.innerHTML = `전체 <strong>${papers.length}편</strong>${selectedCount ? ` · 참고문헌 선택 ${selectedCount}편` : ''}${searchQuery ? ` · 검색 ${list.length}편` : ''}`;
 
         // 참고문헌 전체 복사 버튼 (현재 표시된 선택 논문 기준)
         document.getElementById('btn-copy-all-refs').onclick = async () => {
-            const text = list.map(formatAPA).join('\n\n');
-            if (!text) { showToast('표시된 논문이 없습니다', 'error'); return; }
-            const ok = await copyToClipboard(text);
-            showToast(ok ? `${list.length}편 복사됨 — 한글/워드에 붙여넣기 하세요` : '복사 실패', ok ? 'success' : 'error');
+            if (!list.length) { showToast('표시된 논문이 없습니다', 'error'); return; }
+            const parts = list.map(formatAPAParts);
+            const text = parts.map(x => x.text).join('\n\n');
+            // 기울임을 살리려면 HTML도 함께 실어야 한다 (내어쓰기까지 적용)
+            const html = `<div>${parts.map(x =>
+                `<p style="margin:0 0 10px;text-indent:-2em;padding-left:2em">${x.html}</p>`).join('')}</div>`;
+            const ok = await copyRich(html, text);
+            showToast(ok ? `${list.length}편 복사됨 — 한글에 「골라 붙이기 → HTML 형식」` : '복사 실패', ok ? 'success' : 'error');
         };
 
         const panel = document.getElementById('cite-list-area');
 
         if (list.length === 0) {
-            if (selectedCount === 0) {
+            if (!searchQuery) {
                 panel.innerHTML = `
                     <div class="empty">
-                        <div class="empty-icon">⭐</div>
-                        <h3>선택한 논문이 없습니다</h3>
-                        <p>메인 앱 논문 목록에서<br><b>‘빠른 인용’ 체크박스</b>를 선택하면<br>여기에 표시됩니다</p>
+                        <div class="empty-icon">📚</div>
+                        <h3>저장된 논문이 없습니다</h3>
+                        <p>메인 앱에서 논문을 추가하면<br>여기에 바로 나타납니다</p>
                     </div>`;
             } else {
                 panel.innerHTML = `
@@ -547,8 +836,9 @@
             btn.addEventListener('click', async () => {
                 const p = papers.find(x => x.id === btn.dataset.id);
                 if (!p) return;
-                const ok = await copyToClipboard(formatAPA(p));
-                showToast(ok ? 'APA 참고문헌 복사됨' : '복사 실패', ok ? 'success' : 'error');
+                const { text, html } = formatAPAParts(p);
+                const ok = await copyRich(html, text);
+                showToast(ok ? 'APA 참고문헌 복사됨 (기울임 포함)' : '복사 실패', ok ? 'success' : 'error');
             });
         });
     }

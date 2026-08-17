@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=20260817c">
 </head>
 <body>
 
@@ -236,9 +236,10 @@
                                 <div class="file-upload">
                                     <input type="file" id="f-pdf" accept=".pdf" style="display:none">
                                     <button type="button" class="btn-file" id="btn-pick-pdf" title="PDF 파일 선택 (이 기기에만 저장)"><svg class="ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg> PDF 선택</button>
+                                    <button type="button" class="btn-file btn-file-folder" id="btn-link-folder" title="논문 폴더에서 고르기 — 파일을 복사하지 않아 용량을 안 씁니다">📁 폴더에서 연결</button>
                                     <span id="pdf-filename">선택된 파일 없음</span>
                                 </div>
-                                <small style="color:var(--text-muted)">여러 기기에서 보려면 구글 드라이브에 올리고 아래 PDF 링크란을 사용하세요.</small>
+                                <small style="color:var(--text-muted)"><b>폴더에서 연결</b>을 쓰면 PDF가 복사되지 않고 내 폴더에서 바로 읽습니다 (용량 절약 · 권장).<br>여러 기기에서 보려면 구글 드라이브에 올리고 아래 PDF 링크란을 사용하세요.</small>
                             </div>
                             <div class="form-group full">
                                 <label>원문 텍스트 <small style="color:var(--text-muted)">— 전문을 그대로 붙여넣기 (AI가 섹션을 자동 감지해 요약)</small></label>
@@ -257,6 +258,17 @@
 
                     <div class="form-grid">
                         <div class="form-group full">
+                            <label>자료 유형 <small style="color:var(--text-muted)">— APA 형식이 이 유형에 따라 달라집니다</small></label>
+                            <select id="f-itemtype">
+                                <option value="journal">학술지 논문</option>
+                                <option value="thesis">학위논문</option>
+                                <option value="book">단행본(책)</option>
+                                <option value="chapter">책의 한 장(챕터)</option>
+                                <option value="translation">번역서</option>
+                                <option value="web">웹자료·보고서</option>
+                            </select>
+                        </div>
+                        <div class="form-group full">
                             <label>제목 <span class="required">*</span></label>
                             <input type="text" id="f-title" required placeholder="논문 제목">
                         </div>
@@ -269,8 +281,36 @@
                             <input type="text" id="f-year" placeholder="2025">
                         </div>
                         <div class="form-group full">
-                            <label>학술지명</label>
+                            <label id="lbl-source">학술지명</label>
                             <input type="text" id="f-source" placeholder="한국심리학회지: 문화 및 사회문제">
+                        </div>
+                        <div class="form-group full apa-x apa-chapter">
+                            <label>책 제목 <small style="color:var(--text-muted)">— 이 장이 실린 책</small></label>
+                            <input type="text" id="f-booktitle" placeholder="사회심리학의 이해">
+                        </div>
+                        <div class="form-group full apa-x apa-chapter">
+                            <label>편저자 <small style="color:var(--text-muted)">— 책을 엮은 사람</small></label>
+                            <input type="text" id="f-editors" placeholder="김철수, 이영희">
+                        </div>
+                        <div class="form-group apa-x apa-book apa-chapter apa-web apa-translation">
+                            <label>출판사 / 발행기관</label>
+                            <input type="text" id="f-publisher" placeholder="학지사 / 보건복지부">
+                        </div>
+                        <div class="form-group apa-x apa-book apa-chapter apa-translation">
+                            <label>판(edition) <small style="color:var(--text-muted)">— 초판이면 비움</small></label>
+                            <input type="text" id="f-edition" placeholder="2판">
+                        </div>
+                        <div class="form-group apa-x apa-translation">
+                            <label>역자 <small style="color:var(--text-muted)">— 옮긴 사람</small></label>
+                            <input type="text" id="f-translator" placeholder="김의철">
+                        </div>
+                        <div class="form-group apa-x apa-translation">
+                            <label>원저 출판연도 <small style="color:var(--text-muted)">— 원서가 나온 해</small></label>
+                            <input type="text" id="f-origyear" placeholder="1997" maxlength="4">
+                        </div>
+                        <div class="form-group full apa-x apa-web apa-thesis">
+                            <label>주소(URL)</label>
+                            <input type="url" id="f-url" placeholder="https://...">
                         </div>
                         <div class="form-group">
                             <label>권(Volume)</label>
@@ -737,8 +777,8 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
 
-    <script src="mindmap.js?v=20260816a"></script>
-    <script src="app.js?v=20260816a"></script>
-    <script src="auth.js?v=20260816a"></script>
+    <script src="mindmap.js?v=20260817c"></script>
+    <script src="app.js?v=20260817c"></script>
+    <script src="auth.js?v=20260817c"></script>
 </body>
 </html>

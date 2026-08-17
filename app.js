@@ -324,6 +324,7 @@ async function loadData() {
     state.materials = allMat.filter(m => m.projectId === state.currentProjectId);
     const allNotes = await dbGetAll(STORE_NOTES);
     state.notes = allNotes.filter(n => n.projectId === state.currentProjectId);
+    _apaSuffix = apaYearSuffixes(state.papers);   // 같은 저자·같은 해 → 2020a/2020b
     _mmTree = null; // 프로젝트 전환 시 마인드맵 캐시 초기화
     state.proposal = await loadProposal(state.currentProjectId);
     // 백업 폴더가 있고 PDF 없는 논문이 있으면 자동 복원 시도
@@ -1113,6 +1114,7 @@ function paperMatchesQuery(paper, q) {
 
 // ── 참고문헌 뷰 ────────────────────────────────────────────
 function renderReferences(container) {
+    _apaSuffix = apaYearSuffixes(state.papers);   // 목록을 그릴 때마다 a/b 를 다시 계산
     if (state.papers.length === 0) {
         container.innerHTML = `
             <div class="empty-state">
@@ -1154,7 +1156,7 @@ function renderReferences(container) {
                         <input type="checkbox" class="ref-checkbox" data-id="${p.id}"
                             ${p.inReferences ? 'checked' : ''}>
                     </label>
-                    <div class="ref-text">${escHtml(formatAPA(p))}</div>
+                    <div class="ref-text">${formatAPAParts(p).html}</div>
                     <div class="ref-item-actions">
                         <button class="btn-ref-copy" data-id="${p.id}">복사</button>
                         <button class="btn-ref-intext" data-id="${p.id}">(저자, 연도)</button>
@@ -1204,10 +1206,15 @@ function renderReferences(container) {
     };
 
     document.getElementById('btn-copy-all-refs').addEventListener('click', async () => {
-        const text = getSelectedText();
-        if (!text) { showToast('선택된 논문이 없습니다. 포함할 논문을 체크하세요.', 'error'); return; }
-        const ok = await copyToClipboard(text);
-        showToast(ok ? `${selectedCount}편의 참고문헌이 복사됐습니다. 한글/워드에 붙여넣기 하세요.` : '복사 실패', ok ? 'success' : 'error');
+        const picked = sorted.filter(p => p.inReferences);
+        if (!picked.length) { showToast('선택된 논문이 없습니다. 포함할 논문을 체크하세요.', 'error'); return; }
+        const parts = picked.map(formatAPAParts);
+        const text = parts.map(p => p.text).join('\n\n');
+        // 기울임을 살리려면 HTML도 같이 실어야 한다. 내어쓰기(hanging indent)까지 적용.
+        const html = `<div>${parts.map(p =>
+            `<p style="margin:0 0 10px;text-indent:-2em;padding-left:2em">${p.html}</p>`).join('')}</div>`;
+        const ok = await copyRich(html, text);
+        showToast(ok ? `${picked.length}편 복사됐습니다 — 한글/워드에 붙여넣으면 기울임까지 들어갑니다.` : '복사 실패', ok ? 'success' : 'error');
     });
 
     document.getElementById('btn-export-refs').addEventListener('click', () => {
@@ -1221,8 +1228,9 @@ function renderReferences(container) {
         btn.addEventListener('click', async () => {
             const paper = state.papers.find(p => p.id === btn.dataset.id);
             if (!paper) return;
-            const ok = await copyToClipboard(formatAPA(paper));
-            showToast(ok ? '복사됐습니다' : '복사 실패', ok ? 'success' : 'error');
+            const { text, html } = formatAPAParts(paper);
+            const ok = await copyRich(html, text);
+            showToast(ok ? '복사됐습니다 (기울임 포함)' : '복사 실패', ok ? 'success' : 'error');
         });
     });
 
@@ -1237,45 +1245,399 @@ function renderReferences(container) {
     });
 }
 
-// ── APA 7판 참고문헌 형식 생성 ─────────────────────────────
-function formatAPA(paper) {
-    const authors = paper.authors || '저자 미상';
-    const year = paper.year ? `(${paper.year})` : '(연도 미상)';
-    const title = paper.title || '제목 없음';
-    const source = paper.source || '';
-    const volume = paper.volume || '';
-    const issue = paper.issue ? `(${paper.issue})` : '';
-    const pages = paper.pages || '';
-    const doi = paper.doi ? `https://doi.org/${paper.doi.replace(/^https?:\/\/doi\.org\//i, '')}` : '';
+// ══════════════════════════════════════════════════════════════
+// APA 7판 참고문헌 — 저자 이름 정리 + 이탤릭(기울임)
+// 예전엔 입력한 글자를 그대로 이어붙이기만 해서 영문 논문 형식이 틀렸다.
+//   before: John Smith, Mary Jones (2020). Title. Journal, 12(3), 45-67.
+//   after : Smith, J., & Jones, M. (2020). Title. Journal, 12(3), 45-67.  (학술지명·권 기울임)
+// ══════════════════════════════════════════════════════════════
 
-    let ref = `${authors} ${year}. ${title}.`;
+const isKoreanName = s => /[가-힣]/.test(s);
 
-    if (source) {
-        ref += ` ${source}`;
-        if (volume) ref += `, ${volume}${issue}`;
-        if (pages) ref += `, ${pages}`;
-        ref += '.';
+// 저자 문자열을 사람 단위로 쪼갠다.
+// "Smith, J., Jones, M." 와 "John Smith, Mary Jones" 를 둘 다 다룬다.
+function splitAuthors(raw) {
+    let s = String(raw || '').trim();
+    if (!s) return [];
+    s = s.replace(/\s+and\s+/gi, ' & ');
+    if (s.includes(';')) return s.split(';').map(x => x.trim()).filter(Boolean);
+
+    // 한국어 이름 — 쉼표·가운뎃점으로 나누되, "반두라, A." 처럼 이니셜만 있는 조각은
+    // 앞 이름에 도로 붙인다(외국 저자를 한글로 옮겨 적은 경우).
+    if (isKoreanName(s)) {
+        const ko = s.split(/[,·&]+/).map(x => x.trim()).filter(Boolean);
+        const merged = [];
+        for (let i = 0; i < ko.length; i++) {
+            const next = ko[i + 1];
+            if (next && /^(?:[A-Za-z]\.?\s*){1,3}$/.test(next)) { merged.push(`${ko[i]}, ${next}`); i++; }
+            else merged.push(ko[i]);
+        }
+        return merged;
     }
 
-    if (doi) ref += ` ${doi}`;
+    // 영문: 쉼표로 자른 뒤, "이니셜만 있는 조각"은 앞 조각(성)에 도로 붙인다
+    const parts = s.split(/[,&]/).map(x => x.trim()).filter(Boolean);
+    const out = [];
+    for (let i = 0; i < parts.length; i++) {
+        const next = parts[i + 1];
+        if (next && /^(?:[A-Z]\.?\s*){1,3}$/.test(next)) {
+            out.push(`${parts[i]}, ${next}`);
+            i++;
+        } else {
+            out.push(parts[i]);
+        }
+    }
+    return out;
+}
 
-    return ref;
+// 한 사람을 APA 형식(Last, F. M.)으로 바꾼다. 한국어 이름은 그대로 둔다.
+function apaAuthorName(name) {
+    const n = String(name || '').trim().replace(/\s+/g, ' ');
+    if (!n) return '';
+    if (isKoreanName(n)) return n;
+
+    const initials = arr => arr.map(w => w.replace(/[^A-Za-z]/g, '').charAt(0))
+        .filter(Boolean).map(c => c.toUpperCase() + '.').join(' ');
+
+    if (n.includes(',')) {
+        // 이미 "Smith, J. M." 또는 "Smith, John" 형태
+        const [last, rest = ''] = n.split(',').map(x => x.trim());
+        const given = rest.split(/\s+/).filter(Boolean);
+        return given.length ? `${last}, ${initials(given)}` : last;
+    }
+    // "John Michael Smith" → "Smith, J. M."
+    const words = n.split(' ').filter(Boolean);
+    if (words.length === 1) return words[0];
+    const last = words.pop();
+    return `${last}, ${initials(words)}`;
+}
+
+// 저자 목록을 APA 인원수 규칙에 맞춰 잇는다
+function apaAuthorList(raw) {
+    const people = splitAuthors(raw).map(apaAuthorName).filter(Boolean);
+    if (!people.length) return '';
+    const korean = isKoreanName(people[0]);
+    if (people.length === 1) return people[0];
+
+    // 21명 이상: 앞 19명 … 마지막 1명 (APA 7)
+    let list = people;
+    let ellipsis = false;
+    if (people.length > 20) {
+        list = people.slice(0, 19).concat([people[people.length - 1]]);
+        ellipsis = true;
+    }
+    const head = list.slice(0, -1).join(', ');
+    const tail = list[list.length - 1];
+    if (ellipsis) return `${head}, ... ${tail}`;
+    // 한국어는 & 대신 쉼표로 잇는 것이 일반적
+    return korean ? `${head}, ${tail}` : `${head}, & ${tail}`;
+}
+
+// APA: 같은 저자가 같은 해에 낸 문헌이 둘 이상이면 연도 뒤에 a·b·c 를 붙인다.
+// 본문 인용 (홍길동, 2020a) 과 참고문헌이 같은 글자를 써야 하므로 목록 전체를 보고 한 번에 정한다.
+// 반환: { 논문id: 'a' | 'b' … }  — 겹치지 않는 문헌은 아예 들어가지 않는다.
+let _apaSuffix = {};   // 논문id → 'a'|'b'… (loadData·참고문헌 그릴 때 갱신)
+
+function apaYearSuffixes(papers) {
+    const groups = {};
+    (papers || []).forEach(p => {
+        if (!p.year) return;
+        const first = splitAuthors(p.authors)[0] || '';
+        const key = `${apaAuthorName(first)}|${p.year}`;
+        (groups[key] = groups[key] || []).push(p);
+    });
+    const out = {};
+    Object.values(groups).forEach(list => {
+        if (list.length < 2) return;
+        // 제목 순으로 정렬해 a, b, c … (APA 규칙)
+        list.slice().sort((a, b) => String(a.title || '').localeCompare(String(b.title || ''), 'ko'))
+            .forEach((p, i) => { out[p.id] = String.fromCharCode(97 + i); });
+    });
+    return out;
+}
+
+// 자료 유형에 따라 폼에서 필요한 칸만 보여준다. (.apa-x = 기본 숨김, .apa-<유형> = 그 유형에서 표시)
+const APA_SOURCE_LABEL = {
+    journal: '학술지명',
+    thesis:  '수여 기관 <small style="color:var(--text-muted)">— 예: 단국대학교 대학원</small>',
+    book:    '총서명 <small style="color:var(--text-muted)">— 없으면 비움</small>',
+    chapter: '총서명 <small style="color:var(--text-muted)">— 없으면 비움</small>',
+    web:     '사이트명 <small style="color:var(--text-muted)">— 없으면 비움</small>',
+    translation: '총서명 <small style="color:var(--text-muted)">— 없으면 비움</small>',
+};
+function applyItemTypeUI(type) {
+    document.querySelectorAll('.apa-x').forEach(el => {
+        el.style.display = el.classList.contains('apa-' + type) ? '' : 'none';
+    });
+    const lbl = document.getElementById('lbl-source');
+    if (lbl) lbl.innerHTML = APA_SOURCE_LABEL[type] || '학술지명';
+    // 학술지 전용 칸(권·호)은 학술지·챕터에서만 의미가 있다
+    ['f-volume', 'f-issue'].forEach(id => {
+        const g = document.getElementById(id)?.closest('.form-group');
+        if (g) g.style.display = (type === 'journal') ? '' : 'none';
+    });
+}
+
+// 자료 유형 판별 — 옛 논문에는 itemType이 없으므로 내용으로 추정한다.
+function apaItemType(paper) {
+    if (paper.itemType) return paper.itemType;
+    const hint = `${paper.analysis?.paperType || ''} ${paper.source || ''}`;
+    if (/학위논문|석사|박사|dissertation|thesis/i.test(hint)) return 'thesis';
+    return 'journal';
+}
+
+// 영문 제목을 APA 문장식(첫 글자만 대문자)으로 바꾼다.
+// APA 7: 논문·단행본·학위논문 "제목"은 문장식, 학술지명은 단어마다 대문자(그대로 둔다).
+// 저장된 제목은 건드리지 않고 참고문헌을 만들 때만 이 함수를 통과시킨다
+// → 원본이 보존되므로 규칙이 틀리면 규칙만 고치면 전체가 바로잡힌다.
+//
+// 보존 규칙: ① 전부 대문자인 낱말(APA·PTSD) ② 대문자가 섞인 낱말(iPhone)
+//           ③ 아래 고유명사 목록 ④ 콜론·마침표·물음표 뒤 첫 낱말
+// 사람 이름(Bandura 등)은 기계가 알 수 없다 → 그때는 제목 칸을 직접 고치면 된다.
+const APA_PROPER = new Set([
+    'korea','korean','china','chinese','japan','japanese','taiwan','vietnam',
+    'america','american','europe','european','asia','asian','africa','african',
+    'australia','australian','britain','british','england','english','france','french',
+    'germany','german','spain','spanish','italy','italian','russia','russian',
+    'india','indian','canada','canadian','mexico','brazil','netherlands','sweden','norway','finland',
+    'seoul','busan','tokyo','beijing','shanghai','london','paris','berlin','york','washington',
+    'january','february','march','april','may','june','july',
+    'august','september','october','november','december',
+    'monday','tuesday','wednesday','thursday','friday','saturday','sunday',
+    'covid','covid-19','hiv','aids','oecd','unesco','who','un',
+    'facebook','instagram','twitter','youtube','google','tiktok','kakaotalk',
+    'christian','christianity','buddhist','buddhism','muslim','islam','confucian',
+]);
+
+function toSentenceCase(str) {
+    const s = String(str || '').trim();
+    if (!s || /[가-힣]/.test(s)) return s;   // 한글 제목은 그대로
+
+    let capNext = true;
+    return s.split(/(\s+)/).map(tok => {
+        if (/^\s+$/.test(tok)) return tok;
+
+        const bare = tok.replace(/[^A-Za-z0-9-]/g, '');
+        const letters = tok.replace(/[^A-Za-z]/g, '');
+        const isAcronym = letters.length > 1 && letters === letters.toUpperCase();  // APA, PTSD
+        const isMixed   = /[a-z][A-Z]/.test(tok);                                    // iPhone
+        const isProper  = APA_PROPER.has(bare.toLowerCase());                        // Korea
+
+        let out;
+        if (isAcronym || isMixed) out = tok;
+        else if (isProper)        out = tok.charAt(0).toUpperCase() + tok.slice(1).toLowerCase();
+        else if (capNext)         out = tok.charAt(0).toUpperCase() + tok.slice(1).toLowerCase();
+        else                      out = tok.toLowerCase();
+
+        capNext = /[:.?!]$/.test(tok);   // 콜론·마침표 뒤는 다시 대문자
+        return out;
+    }).join('');
+}
+
+// 편저자 표기 — 영문 "A. Kim & B. Lee (Eds.)", 국문 "김철수, 이영희 (편)"
+function apaEditors(raw) {
+    const people = splitAuthors(raw);
+    if (!people.length) return '';
+    const korean = isKoreanName(people[0]);
+    if (korean) return `${people.join(', ')} (편)`;
+    // 편저자는 이름이 성 앞에 온다: "J. Smith"
+    const flip = n => {
+        const a = apaAuthorName(n);
+        const [last, init = ''] = a.split(',').map(x => x.trim());
+        return init ? `${init} ${last}` : last;
+    };
+    const list = people.map(flip);
+    const joined = list.length === 1 ? list[0]
+        : `${list.slice(0, -1).join(', ')}${list.length > 2 ? ',' : ''} & ${list[list.length - 1]}`;
+    return `${joined} (${list.length > 1 ? 'Eds.' : 'Ed.'})`;
+}
+
+// 참고문헌 한 줄을 만든다. { text, html } 둘 다 반환 —
+// html 쪽에만 <i>가 들어가고, 이걸 클립보드에 같이 실어야 한글·워드에서 기울임이 살아난다.
+function formatAPAParts(paper, suffix) {
+    const sfx = suffix || _apaSuffix[paper.id] || '';
+    const authors   = apaAuthorList(paper.authors) || '저자 미상';
+    const year      = paper.year ? `(${paper.year}${sfx})` : `(연도 미상)`;
+    // APA: 논문·책·학위논문 제목은 문장식. 저장값은 안 바꾸고 여기서만 변환한다.
+    const title     = toSentenceCase((paper.title || '제목 없음').trim().replace(/\.$/, ''));
+    const source    = (paper.source || '').trim();
+    const volume    = (paper.volume || '').trim();
+    const issue     = (paper.issue || '').trim();
+    const pages     = (paper.pages || '').trim().replace(/[-–—~]/g, '–');   // APA는 en dash
+    const publisher = (paper.publisher || '').trim();
+    const bookTitle = toSentenceCase((paper.bookTitle || '').trim());
+    const edition   = (paper.edition || '').trim();
+    const url       = (paper.url || '').trim();
+    const translator= (paper.translator || '').trim();
+    const origYear  = (paper.originalYear || '').trim();
+    const doiRaw    = (paper.doi || '').trim();
+    const doi = doiRaw ? `https://doi.org/${doiRaw.replace(/^https?:\/\/doi\.org\//i, '')}` : '';
+
+    const type   = apaItemType(paper);
+    const korean = /[가-힣]/.test(`${authors}${title}`);
+    const IT = t => `<i style="font-style:italic">${t}</i>`;   // 기울임
+    const E  = escHtml;
+
+    let text = `${authors} ${year}. `;
+    let html = `${E(authors)} ${E(year)}. `;
+
+    if (type === 'thesis') {
+        // 저자 (연도). 제목(기울임) [석사학위논문, 기관].
+        const hint = `${paper.analysis?.paperType || ''} ${source}`;
+        const degree = /박사|doctor/i.test(hint) ? '박사학위논문' : '석사학위논문';
+        // "○○대학교 대학원 석사학위논문"이 통째로 들어있으면 학위 표기는 떼고 기관만 남긴다
+        const inst = source.replace(/\s*(석사|박사)?\s*학위\s*논문\s*/g, '').trim();
+        text += `${title} [${degree}${inst ? `, ${inst}` : ''}].`;
+        html += `${IT(E(title))} [${degree}${inst ? `, ${E(inst)}` : ''}].`;
+
+    } else if (type === 'book') {
+        // 저자 (연도). 제목(기울임) (판). 출판사.
+        text += `${title}`;
+        html += `${IT(E(title))}`;
+        if (edition) { text += ` (${edition})`; html += ` (${E(edition)})`; }
+        text += '.'; html += '.';
+        if (publisher) { text += ` ${publisher}.`; html += ` ${E(publisher)}.`; }
+
+    } else if (type === 'chapter') {
+        // 저자 (연도). 장 제목. 편저자 (편), 책제목(기울임) (판, pp. 쪽). 출판사.
+        const eds = apaEditors(paper.editors);
+        const inWord = korean ? '' : 'In ';
+        text += `${title}. `;
+        html += `${E(title)}. `;
+        if (eds) { text += `${inWord}${eds}, `; html += `${inWord}${E(eds)}, `; }
+        text += `${bookTitle || source}`;
+        html += `${IT(E(bookTitle || source))}`;
+        const paren = [edition, pages ? `pp. ${pages}` : ''].filter(Boolean).join(', ');
+        if (paren) { text += ` (${paren})`; html += ` (${E(paren)})`; }
+        text += '.'; html += '.';
+        if (publisher) { text += ` ${publisher}.`; html += ` ${E(publisher)}.`; }
+
+    } else if (type === 'translation') {
+        // APA 7 번역서: 원저자 (번역출판연도). 제목(기울임) (역자 역). 출판사. (원저 원년 출판)
+        // 본문 인용은 (원저자, 원년/번역년) — formatInText 가 처리한다.
+        text += `${title}`;
+        html += `${IT(E(title))}`;
+        if (edition) { text += ` (${edition})`; html += ` (${E(edition)})`; }
+        if (translator) {
+            const t = korean ? `${translator} 역` : `${translator}, Trans.`;
+            text += ` (${t})`; html += ` (${E(t)})`;
+        }
+        text += '.'; html += '.';
+        if (publisher) { text += ` ${publisher}.`; html += ` ${E(publisher)}.`; }
+        if (origYear) {
+            const o = korean ? `(원저 ${origYear} 출판)` : `(Original work published ${origYear})`;
+            text += ` ${o}`; html += ` ${E(o)}`;
+        }
+
+    } else if (type === 'web') {
+        // 저자/기관 (연도). 제목(기울임). 발행처. URL
+        text += `${title}.`;
+        html += `${IT(E(title))}.`;
+        if (publisher) { text += ` ${publisher}.`; html += ` ${E(publisher)}.`; }
+
+    } else {
+        // 학술지 논문: 저자 (연도). 제목. 학술지명(기울임), 권(기울임)(호), 쪽.
+        text += `${title}.`;
+        html += `${E(title)}.`;
+        if (source) {
+            text += ` ${source}`;
+            html += ` ${IT(E(source))}`;
+            if (volume) {
+                text += `, ${volume}${issue ? `(${issue})` : ''}`;
+                html += `, ${IT(E(volume))}${issue ? `(${E(issue)})` : ''}`;
+            }
+            if (pages) { text += `, ${pages}`; html += `, ${E(pages)}`; }
+            text += '.'; html += '.';
+        }
+    }
+
+    // DOI가 있으면 DOI를, 없으면 URL을 끝에 붙인다 (APA 7: 둘 다 쓰지 않는다)
+    const tail = doi || url;
+    if (tail) { text += ` ${tail}`; html += ` ${E(tail)}`; }
+    return { text, html };
+}
+
+// 서식(기울임)까지 살려서 복사한다. 실패하면 글자만이라도 복사.
+// 서식(기울임)까지 살려서 복사한다.
+// ① 화면에 안 보이는 영역에 HTML을 그려 선택 → execCommand('copy')
+//    구식이지만 file:// 에서도 확실히 동작하고, 클립보드에 HTML과 글자를 함께 싣는다.
+// ② 실패하면 최신 방식(ClipboardItem) → ③ 그것도 안 되면 글자만.
+async function copyRich(html, text) {
+    // ① 선택 영역 복사 (가장 호환성이 좋음 — 클릭 핸들러 안에서 바로 호출해야 함)
+    try {
+        const holder = document.createElement('div');
+        holder.setAttribute('contenteditable', 'true');
+        holder.innerHTML = html;
+        // 화면 밖으로 밀되 display:none·opacity:0 은 쓰지 않는다(선택이 안 잡힐 수 있음)
+        holder.style.cssText = 'position:fixed;left:-9999px;top:0;white-space:pre-wrap';
+        document.body.appendChild(holder);
+
+        const sel = window.getSelection();
+        const saved = sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
+        const range = document.createRange();
+        range.selectNodeContents(holder);
+        sel.removeAllRanges();
+        sel.addRange(range);
+
+        const ok = document.execCommand('copy');
+        sel.removeAllRanges();
+        if (saved) sel.addRange(saved);
+        holder.remove();
+        if (ok) { pushDebug('info', '서식 복사 성공 (방식: 선택영역)'); return true; }
+        pushDebug('warn', '서식 복사(execCommand) 거부됨 — 다음 방식 시도');
+    } catch (err) {
+        pushDebug('warn', `서식 복사(execCommand) 실패: ${err.message}`);
+    }
+
+    // ② 최신 클립보드 방식
+    try {
+        if (navigator.clipboard?.write && window.ClipboardItem) {
+            await navigator.clipboard.write([new ClipboardItem({
+                'text/html':  new Blob([html], { type: 'text/html' }),
+                'text/plain': new Blob([text], { type: 'text/plain' }),
+            })]);
+            pushDebug('info', '서식 복사 성공 (방식: ClipboardItem)');
+            return true;
+        }
+    } catch (err) {
+        pushDebug('warn', `서식 복사(ClipboardItem) 실패: ${err.message}`);
+    }
+
+    // ③ 글자만이라도
+    pushDebug('warn', '서식 복사 모두 실패 — 글자만 복사합니다');
+    return copyToClipboard(text);
+}
+
+// ── APA 7판 참고문헌 형식 생성 (글자만 — 목록 표시·파일 저장용) ────
+function formatAPA(paper) {
+    return formatAPAParts(paper).text;
 }
 
 // ── 본문 인용 형식 생성 ────────────────────────────────────
+// ── 본문 인용 (APA 7) ──────────────────────────────────────
+// 영문: (Smith, 2020) · (Smith & Jones, 2020) · (Smith et al., 2020)
+// 국문: (홍길동, 2020) · (홍길동, 김철수, 2020) · (홍길동 외, 2020)
 function formatInText(paper) {
     if (!paper.authors) return paper.year ? `(${paper.year})` : '';
+    const people = splitAuthors(paper.authors);
+    if (!people.length) return paper.year ? `(${paper.year})` : '';
 
-    const firstAuthor = paper.authors.split(/[,·&]/)[0].trim();
-    const authorList = paper.authors.split(/[,·]/).map(a => a.trim()).filter(Boolean);
-    const year = paper.year || '';
+    const korean = isKoreanName(people[0]);
+    // 본문 인용은 성(姓)만 쓴다
+    // 본문 인용은 성(姓)만. "반두라, A." 처럼 외국 저자를 한글로 옮긴 경우도 쉼표 앞만 쓴다.
+    const surname = p => apaAuthorName(p).split(',')[0].trim();
+    // 번역서는 APA 7 규칙상 (원저자, 원출판연도/번역출판연도) 로 쓴다
+    const _oy = (paper.originalYear || '').trim();
+    const _base = apaItemType(paper) === 'translation' && _oy && paper.year
+        ? `${_oy}/${paper.year}` : (paper.year || '');
+    const year = _base ? `${_base}${_apaSuffix[paper.id] || ''}` : '';
 
-    let name = firstAuthor;
-    if (authorList.length === 2) {
-        name = `${authorList[0].trim()}, ${authorList[1].trim()}`;
-    } else if (authorList.length >= 3) {
-        name = `${firstAuthor} 외`;
-    }
+    let name;
+    if (people.length === 1)      name = surname(people[0]);
+    else if (people.length === 2) name = korean ? `${surname(people[0])}, ${surname(people[1])}`
+                                                : `${surname(people[0])} & ${surname(people[1])}`;
+    else                          name = korean ? `${surname(people[0])} 외`
+                                                : `${surname(people[0])} et al.`;
 
     return year ? `(${name}, ${year})` : `(${name})`;
 }
@@ -2811,7 +3173,7 @@ function renderViewExtras(paper) {
         </div>
         <div class="ve-apa">
             <div class="ve-apa-label">APA 참고문헌</div>
-            <div class="ve-apa-text">${escHtml(apaRef) || '<span class="muted">서지정보를 입력하면 생성됩니다</span>'}</div>
+            <div class="ve-apa-text">${apaRef ? formatAPAParts(paper).html : '<span class="muted">서지정보를 입력하면 생성됩니다</span>'}</div>
         </div>
         ${related.length ? `
         <div class="ve-related">
@@ -2830,8 +3192,9 @@ function renderViewExtras(paper) {
         showToast(ok ? `${inText} 복사됐습니다` : '복사 실패', ok ? 'success' : 'error');
     };
     box.querySelector('#ve-apa').onclick = async () => {
-        const ok = await copyToClipboard(apaRef);
-        showToast(ok ? 'APA 참고문헌이 복사됐습니다' : '복사 실패', ok ? 'success' : 'error');
+        const { text, html } = formatAPAParts(paper);
+        const ok = await copyRich(html, text);
+        showToast(ok ? 'APA 참고문헌이 복사됐습니다 (기울임 포함)' : '복사 실패', ok ? 'success' : 'error');
     };
     box.querySelectorAll('.ve-related-item').forEach(el => {
         el.onclick = () => openForm(el.dataset.id, 'view');
@@ -3179,6 +3542,13 @@ function deskTeardown() {
     if (deskCtx.onMove) window.removeEventListener('mousemove', deskCtx.onMove);
     if (deskCtx.onUp)   window.removeEventListener('mouseup', deskCtx.onUp);
     Object.values(deskFramePool).forEach(({pdfUrl}) => { if (pdfUrl) URL.revokeObjectURL(pdfUrl); });
+    // 필기모드 뒷정리 — 쪽 감시자 해제 + pdf.js가 쥐고 있던 메모리 반환
+    Object.values(deskFramePool).forEach(({el}) => {
+        const s = deskPenState.get(el);
+        if (!s) return;
+        if (s.io) { s.io.disconnect(); s.io = null; }
+        if (s.pdf) { try { s.pdf.destroy(); } catch (_) {} s.pdf = null; }
+    });
     deskFramePool = {};
     deskCtx = null;
 }
@@ -3236,6 +3606,15 @@ function bindDeskLeftToggles(overlay, paper, slot) {
     slot.querySelector('#desk-bm-btn')?.addEventListener('click', function() {
         openDeskBmPopup(this, paper, STORE_PAPERS);
     });
+    // 액자 → 필기모드 되돌리기
+    slot.querySelector('#desk-pen-on')?.addEventListener('click', () => {
+        deskPenView = 'pen';
+        localStorage.setItem('deskPenView', 'pen');
+        slot.innerHTML = deskLeftHTML(paper, pdfUrl, false);
+        bindDeskLeftToggles(overlay, paper, slot);
+    });
+    // 필기모드 화면이면 PDF를 직접 그린다
+    if (slot.querySelector('#desk-pen-scroll')) bindDeskPen(overlay, paper, slot);
 }
 
 // 상단 탭 줄 렌더 + 바인딩 (논문 + 자료 통합)
@@ -3420,6 +3799,10 @@ function deskNavToPage(page) {
     const key = deskActiveId ? 'p_' + deskActiveId : deskMatActiveId ? 'm_' + deskMatActiveId : null;
     if (!key || !deskFramePool[key]) { showToast('PDF가 열려있지 않아요', 'warn'); return; }
     const entry = deskFramePool[key];
+    // 필기모드면 스크롤로 이동 — 확대율·현재 위치를 잃지 않는다(액자는 통째로 다시 로드됨)
+    if (entry.el.querySelector('#desk-pen-scroll')) {
+        if (deskPenGoto(entry.el, +page)) return;
+    }
     const iframe = entry.el.querySelector('iframe.desk-pdf');
     if (!iframe) { showToast('PDF 뷰어를 찾을 수 없어요', 'warn'); return; }
     if (entry.pdfUrl) URL.revokeObjectURL(entry.pdfUrl);
@@ -3468,7 +3851,399 @@ function drivePreviewUrl(link) {
     return null;
 }
 
+// ══════════════════════════════════════════════════════════════
+// 필기모드 — PDF를 iframe(액자)이 아니라 앱이 직접 그린다.
+// 액자 안은 앱이 들여다볼 수 없어서 드래그·형광펜·현재쪽 인식이 전부 불가능했다.
+// 직접 그리면: 드래그 → 그 자리에서 형광펜 + 발췌 저장, 쪽번호 자동, 확대율 유지 이동.
+// 로컬에 첨부된 PDF(paper.pdfData)에서만 동작. 드라이브 링크는 액자 방식 유지(CORS).
+// ══════════════════════════════════════════════════════════════
+
+// 'pen' = 필기모드, 'frame' = 예전 액자(크롬 기본 뷰어). 사용자가 언제든 전환.
+let deskPenView = localStorage.getItem('deskPenView') || 'pen';
+// slot(논문 화면) 하나당 렌더 상태 — { pdf, scale, page, token }
+const deskPenState = new WeakMap();
+
+// pdf.js는 index.html에서 비동기(import)로 실린다. 새로고침 직후엔 아직 없을 수 있어
+// 여기서 window.pdfjsLib를 조건에 넣으면 조용히 액자 모드로 빠져 형광펜이 사라져 보인다.
+// → 조건은 "로컬 PDF가 있는가"만 보고, 실제 로드는 deskRenderPen에서 기다린다.
+function deskCanPen(paper) {
+    return !!(paper && (paper.pdfData || paper.pdfFolderFile));
+}
+
+// pdf.js가 실릴 때까지 잠깐 기다린다 (최대 ms)
+async function deskWaitPdfjs(ms = 10000) {
+    const t0 = Date.now();
+    while (!window.pdfjsLib) {
+        if (Date.now() - t0 > ms) return false;
+        await new Promise(r => setTimeout(r, 100));
+    }
+    return true;
+}
+
+function deskPenHTML(paper, hasText) {
+    const textBtn = hasText
+        ? `<button type="button" class="desk-view-toggle" id="desk-toggle-text">${icon('note', 13)} 텍스트로 보기</button>`
+        : '';
+    return `<div class="desk-pen-wrap">
+        <div class="desk-left-toolbar desk-pen-toolbar">
+            <button type="button" class="desk-view-toggle" id="desk-pen-prev" title="이전 쪽">◀</button>
+            <button type="button" class="desk-view-toggle" id="desk-pen-next" title="다음 쪽">▶</button>
+            <span class="desk-pen-pageind"><b id="desk-pen-cur">–</b> / <span id="desk-pen-total">–</span> 쪽</span>
+            <button type="button" class="desk-view-toggle" id="desk-pen-zoomout" title="축소">－</button>
+            <span class="desk-pen-zoom" id="desk-pen-zoomval">100%</span>
+            <button type="button" class="desk-view-toggle" id="desk-pen-zoomin" title="확대">＋</button>
+            ${textBtn}
+            <button type="button" class="desk-view-toggle" id="desk-bm-btn">📌 북마크</button>
+            <button type="button" class="desk-view-toggle" id="desk-pen-off" title="예전 방식(크롬 기본 뷰어)으로 보기">액자로</button>
+        </div>
+        <div class="desk-pen-scroll" id="desk-pen-scroll">
+            <div class="desk-pen-loading">PDF를 여는 중…</div>
+        </div>
+        <div class="desk-pen-pop" id="desk-pen-pop" hidden></div>
+    </div>`;
+}
+
+// 형광펜 팝업 내용 — 색 4개 + 색 없이 저장
+function deskPenPopHTML() {
+    const pens = EX_COLORS.filter(Boolean).map(c =>
+        `<button type="button" class="desk-pen-pick" data-color="${c}" style="background:${c}" title="이 색으로 형광펜 + 발췌"></button>`).join('');
+    return `${pens}<span class="desk-pen-sep"></span>
+        <button type="button" class="desk-pen-pick" data-color="" title="색 없이 발췌만 저장">발췌 저장</button>`;
+}
+
+// PDF 전체를 캔버스+글자층으로 그린다. scale 변경 시 다시 호출.
+async function deskRenderPen(slot, paper, overlay) {
+    const scroll = slot.querySelector('#desk-pen-scroll');
+    if (!scroll) return;
+    let st = deskPenState.get(slot);
+    if (!st) { st = { pdf: null, scale: 1.15, page: 1, token: 0 }; deskPenState.set(slot, st); }
+    const myToken = ++st.token;   // 렌더 도중 확대/탭전환 시 옛 렌더 폐기
+
+    try {
+        if (!st.pdf) {
+            if (!window.pdfjsLib && !(await deskWaitPdfjs())) {
+                throw new Error('pdf.js가 아직 실리지 않았어요 (인터넷 연결 확인)');
+            }
+            if (myToken !== st.token) return;
+            // 첨부본이 있으면 그걸, 없으면 폴더에서 읽어온다(복사 저장 없음)
+            const src = await getPaperPdfBuf(paper);
+            if (!src) throw new Error('PDF를 찾을 수 없어요 — 폴더 연결이 끊겼거나 파일 이름이 바뀌었을 수 있어요');
+            if (myToken !== st.token) return;
+            // ArrayBuffer — pdf.js가 소유권을 가져가 비우는 것을 막으려고 복사본을 넘긴다
+            st.pdf = await window.pdfjsLib.getDocument({ data: src.slice(0) }).promise;
+        }
+        if (myToken !== st.token) return;
+        const totalEl = slot.querySelector('#desk-pen-total');
+        if (totalEl) totalEl.textContent = st.pdf.numPages;
+        scroll.innerHTML = '';
+        if (st.io) { st.io.disconnect(); st.io = null; }
+
+        // ── 1) 빈 종이(자리)만 먼저 깔아 스크롤 길이를 확정한다 ──────────
+        // 논문 PDF는 쪽 크기가 대부분 같으므로 1쪽 크기를 기준으로 잡고,
+        // 실제로 그릴 때 쪽마다 크기가 다르면 그때 바로잡는다.
+        const first = await st.pdf.getPage(1);
+        if (myToken !== st.token) return;
+        const baseVp = first.getViewport({ scale: st.scale });
+        const frag0 = document.createDocumentFragment();
+        for (let n = 1; n <= st.pdf.numPages; n++) {
+            const pageEl = document.createElement('div');
+            pageEl.className = 'desk-pen-page';
+            pageEl.dataset.page = n;
+            pageEl.dataset.done = '0';
+            pageEl.style.width = baseVp.width + 'px';
+            pageEl.style.height = baseVp.height + 'px';
+            frag0.appendChild(pageEl);
+        }
+        scroll.appendChild(frag0);
+
+        // ── 2) 화면에 보이는(가까워진) 쪽만 실제로 그린다 ────────────────
+        // 예전엔 24쪽짜리를 열자마자 24쪽 전부 그려서 한참 멈췄다.
+        st.io = new IntersectionObserver(entries => {
+            entries.forEach(en => {
+                if (!en.isIntersecting) return;
+                deskRenderPenPage(st, en.target, paper, myToken);
+            });
+        }, { root: scroll, rootMargin: '400px 0px' });   // 조금 미리 그려둔다
+        scroll.querySelectorAll('.desk-pen-page').forEach(el => st.io.observe(el));
+        deskPenSyncPage(slot);
+        // 형광펜이 안 보일 때 원인을 가리기 위한 기록 —
+        // "저장된 형광펜 0개"면 저장이 안 된 것, "N개"인데 화면에 없으면 그리기가 문제.
+        const hlCount = (paper.excerpts || []).filter(e => e.hl && Array.isArray(e.hl.rects) && e.hl.rects.length).length;
+        pushDebug('info', `필기모드 렌더 완료 — ${st.pdf.numPages}쪽 / 저장된 형광펜 ${hlCount}개`);
+    } catch (err) {
+        pushDebug('error', '필기모드 PDF 렌더 실패: ' + (err?.message || err));
+        scroll.innerHTML = `<div class="desk-pen-loading">이 PDF는 필기모드로 열 수 없어요.<br>위 「액자로」 버튼을 눌러 예전 방식으로 보세요.</div>`;
+    }
+}
+
+// 한 쪽을 실제로 그린다 (그림 + 형광펜 + 글자층). 이미 그린 쪽은 건너뛴다.
+async function deskRenderPenPage(st, pageEl, paper, myToken) {
+    if (!pageEl || pageEl.dataset.done !== '0') return;
+    pageEl.dataset.done = '1';   // 중복 렌더 방지 — 먼저 세워둔다
+    const n = +pageEl.dataset.page;
+    try {
+        const page = await st.pdf.getPage(n);
+        if (myToken !== st.token) return;
+        const viewport = page.getViewport({ scale: st.scale });
+        // 1쪽 기준으로 깔아둔 자리와 실제 크기가 다르면 바로잡는다
+        pageEl.style.width = viewport.width + 'px';
+        pageEl.style.height = viewport.height + 'px';
+
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.floor(viewport.width);
+        canvas.height = Math.floor(viewport.height);
+        pageEl.appendChild(canvas);
+
+        const hlLayer = document.createElement('div');
+        hlLayer.className = 'desk-pen-hl-layer';
+        pageEl.appendChild(hlLayer);
+
+        const textLayer = document.createElement('div');
+        textLayer.className = 'desk-pen-text-layer';
+        pageEl.appendChild(textLayer);
+
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+        if (myToken !== st.token) return;
+
+        // 글자층 — 캔버스 위에 투명한 글자를 얹어 드래그로 선택할 수 있게 한다.
+        // pdf.js 버전별 renderTextLayer API 차이를 피하려고 직접 배치한다.
+        const tc = await page.getTextContent();
+        if (myToken !== st.token) return;
+        const frag = document.createDocumentFragment();
+        const spans = [];
+        for (const item of tc.items) {
+            if (!item.str) continue;
+            const tx = window.pdfjsLib.Util.transform(viewport.transform, item.transform);
+            const fs = Math.hypot(tx[2], tx[3]);
+            if (!fs) continue;
+            const s = document.createElement('span');
+            s.textContent = item.str;
+            s.style.left = tx[4] + 'px';
+            s.style.top = (tx[5] - fs) + 'px';
+            s.style.fontSize = fs + 'px';
+            s.style.fontFamily = item.fontName || 'sans-serif';
+            frag.appendChild(s);
+            if (item.width) spans.push([s, item.width * st.scale]);
+        }
+        textLayer.appendChild(frag);
+
+        // 실제 그려진 폭에 맞춰 가로로 늘려/줄여 선택 영역이 글자와 겹치게 맞춘다.
+        // ⚠️ 읽기(getBoundingClientRect)와 쓰기(style)를 번갈아 하면 글자 수만큼
+        //    화면 재계산이 일어나 매우 느려진다 → 전부 읽은 뒤에 전부 쓴다.
+        const widths = spans.map(([s]) => s.getBoundingClientRect().width);
+        spans.forEach(([s, want], i) => {
+            const got = widths[i];
+            if (got > 0) s.style.transform = `scaleX(${want / got})`;
+        });
+
+        deskDrawHighlights(pageEl, paper, n);
+    } catch (err) {
+        pageEl.dataset.done = '0';   // 실패했으면 다시 시도할 수 있게 되돌린다
+        pushDebug('warn', `필기모드 ${n}쪽 렌더 실패: ${err?.message || err}`);
+    }
+}
+
+// 저장된 형광펜 자국을 해당 쪽에 다시 그린다 (비율 좌표 → 픽셀)
+function deskDrawHighlights(pageEl, paper, pageNum) {
+    const layer = pageEl.querySelector('.desk-pen-hl-layer');
+    if (!layer) return;
+    layer.innerHTML = '';
+    (paper.excerpts || []).forEach(e => {
+        if (!e.hl || e.hl.page !== pageNum || !Array.isArray(e.hl.rects)) return;
+        e.hl.rects.forEach(r => {
+            const d = document.createElement('div');
+            d.className = 'desk-pen-hl';
+            d.style.left = (r.x * 100) + '%';
+            d.style.top = (r.y * 100) + '%';
+            d.style.width = (r.w * 100) + '%';
+            d.style.height = (r.h * 100) + '%';
+            d.style.background = e.color || '#fcd34d';
+            d.dataset.eid = e.id;
+            d.title = '이 발췌로 이동';
+            layer.appendChild(d);
+        });
+    });
+}
+
+// 지금 화면 맨 위에 보이는 쪽을 현재 쪽으로 잡는다
+function deskPenSyncPage(slot) {
+    const scroll = slot.querySelector('#desk-pen-scroll');
+    const st = deskPenState.get(slot);
+    if (!scroll || !st) return;
+    const top = scroll.getBoundingClientRect().top;
+    // 화면 위쪽 경계를 아직 지나지 않은 첫 쪽 = 지금 보고 있는 쪽
+    let cur = 1;
+    for (const p of scroll.querySelectorAll('.desk-pen-page')) {
+        if (p.getBoundingClientRect().bottom > top + 40) { cur = +p.dataset.page; break; }
+    }
+    st.page = cur;
+    const el = slot.querySelector('#desk-pen-cur');
+    if (el) el.textContent = cur;
+}
+
+function deskPenGoto(slot, n) {
+    const scroll = slot.querySelector('#desk-pen-scroll');
+    const target = scroll?.querySelector(`.desk-pen-page[data-page="${n}"]`);
+    if (!target) return false;
+    scroll.scrollTo({ top: target.offsetTop - 8, behavior: 'smooth' });
+    return true;
+}
+
+function deskPenSetScale(slot, paper, overlay, delta) {
+    const st = deskPenState.get(slot);
+    if (!st) return;
+    st.scale = Math.min(3, Math.max(0.5, +(st.scale + delta).toFixed(2)));
+    const z = slot.querySelector('#desk-pen-zoomval');
+    if (z) z.textContent = Math.round(st.scale / 1.15 * 100) + '%';
+    deskRenderPen(slot, paper, overlay);
+}
+
+// 드래그한 글을 형광펜 + 발췌로 저장
+function deskPenSaveSelection(slot, paper, overlay, color) {
+    const sel = window.getSelection();
+    const text = (sel?.toString() || '').trim();
+    if (!text) return;
+    const range = sel.getRangeAt(0);
+    // 선택 영역이 걸쳐 있는 쪽 찾기
+    let node = range.startContainer;
+    if (node.nodeType === 3) node = node.parentElement;
+    const pageEl = node?.closest?.('.desk-pen-page');
+    const pageNum = pageEl ? +pageEl.dataset.page : (deskPenState.get(slot)?.page || 0);
+
+    // 형광펜 좌표 — 쪽 크기 대비 비율로 저장(확대율이 달라도 같은 자리에 그려짐)
+    let rects = [];
+    if (pageEl) {
+        const pb = pageEl.getBoundingClientRect();
+        rects = Array.from(range.getClientRects())
+            .filter(r => r.width > 1 && r.height > 1)
+            .map(r => ({
+                x: (r.left - pb.left) / pb.width,
+                y: (r.top - pb.top) / pb.height,
+                w: r.width / pb.width,
+                h: r.height / pb.height,
+            }));
+    }
+
+    if (!Array.isArray(paper.excerpts)) paper.excerpts = [];
+    const ex = {
+        id: genId(), cat: deskAddCat, text, page: pageNum,
+        color: color || '', createdAt: Date.now(),
+    };
+    if (color && rects.length) ex.hl = { page: pageNum, rects };
+    paper.excerpts.unshift(ex);
+    dbPut(STORE_PAPERS, paper);
+    const idx = state.papers.findIndex(p => p.id === paper.id);
+    if (idx >= 0) state.papers[idx] = paper;
+
+    if (pageEl) deskDrawHighlights(pageEl, paper, pageNum);
+    deskRenderExcerpts(overlay, paper);
+    sel.removeAllRanges();
+    slot.querySelector('#desk-pen-pop')?.setAttribute('hidden', '');
+    showToast(`p.${pageNum} 발췌 저장 — 「${CAT_LABEL[deskAddCat] || deskAddCat}」`, 'success');
+}
+
+function bindDeskPen(overlay, paper, slot) {
+    const scroll = slot.querySelector('#desk-pen-scroll');
+    const pop = slot.querySelector('#desk-pen-pop');
+    if (!scroll || !pop) return;
+    pop.innerHTML = deskPenPopHTML();
+
+    deskRenderPen(slot, paper, overlay);
+
+    scroll.addEventListener('scroll', () => deskPenSyncPage(slot), { passive: true });
+
+    // 드래그가 끝나면 선택 위치 바로 위에 형광펜 팝업을 띄운다
+    scroll.addEventListener('mouseup', () => {
+        setTimeout(() => {
+            const sel = window.getSelection();
+            const text = (sel?.toString() || '').trim();
+            if (!text) { pop.hidden = true; return; }
+            const r = sel.getRangeAt(0).getBoundingClientRect();
+            const wrapBox = slot.querySelector('.desk-pen-wrap').getBoundingClientRect();
+            pop.hidden = false;
+            const x = r.left - wrapBox.left + r.width / 2 - pop.offsetWidth / 2;
+            pop.style.left = Math.max(6, Math.min(x, wrapBox.width - pop.offsetWidth - 6)) + 'px';
+            pop.style.top = Math.max(4, r.top - wrapBox.top - pop.offsetHeight - 8) + 'px';
+        }, 0);
+    });
+    // 팝업 자체를 누를 땐 선택이 풀리지 않게
+    pop.addEventListener('mousedown', e => e.preventDefault());
+    pop.querySelectorAll('.desk-pen-pick').forEach(b =>
+        b.addEventListener('click', () => deskPenSaveSelection(slot, paper, overlay, b.dataset.color)));
+
+    // 형광펜 자국을 누르면 오른쪽 발췌 카드로 안내.
+    // 맨 위 글자층이 화면을 덮고 있어 클릭이 형광펜에 닿지 않으므로,
+    // 누른 지점이 어느 형광펜 안인지 좌표로 직접 찾는다.
+    scroll.addEventListener('click', e => {
+        // 글을 드래그한 직후의 클릭은 무시(형광펜 팝업 쪽 동작을 방해하지 않게)
+        if ((window.getSelection()?.toString() || '').trim()) return;
+        const pageEl = e.target.closest('.desk-pen-page');
+        if (!pageEl) return;
+        let eid = null;
+        for (const d of pageEl.querySelectorAll('.desk-pen-hl')) {
+            const r = d.getBoundingClientRect();
+            if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
+                eid = d.dataset.eid; break;
+            }
+        }
+        if (!eid) return;
+        const card = overlay.querySelector(`.desk-mat-memo-text[data-eid="${eid}"]`)?.closest('.desk-mat-memo-item');
+        if (card) {
+            card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            card.classList.add('desk-ex-flash');
+            setTimeout(() => card.classList.remove('desk-ex-flash'), 1200);
+        }
+    });
+
+    // 형광펜 위에 마우스를 올리면 손가락 커서로 바꿔 "누를 수 있음"을 알린다.
+    // 마우스는 초당 수십 번 움직이므로 화면 갱신 주기(rAF)당 한 번만 계산한다.
+    let moveQueued = false;
+    scroll.addEventListener('mousemove', e => {
+        if (moveQueued) return;
+        const pageEl = e.target.closest('.desk-pen-page');
+        if (!pageEl) return;
+        const hls = pageEl.querySelectorAll('.desk-pen-hl');
+        if (!hls.length) { pageEl.classList.remove('desk-pen-over-hl'); return; }
+        moveQueued = true;
+        const { clientX, clientY } = e;
+        requestAnimationFrame(() => {
+            moveQueued = false;
+            let on = false;
+            for (const d of hls) {
+                const r = d.getBoundingClientRect();
+                if (clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom) { on = true; break; }
+            }
+            pageEl.classList.toggle('desk-pen-over-hl', on);
+        });
+    });
+
+    const st = () => deskPenState.get(slot);
+    slot.querySelector('#desk-pen-prev')?.addEventListener('click', () => deskPenGoto(slot, Math.max(1, (st()?.page || 1) - 1)));
+    slot.querySelector('#desk-pen-next')?.addEventListener('click', () => deskPenGoto(slot, (st()?.page || 1) + 1));
+    slot.querySelector('#desk-pen-zoomin')?.addEventListener('click', () => deskPenSetScale(slot, paper, overlay, 0.15));
+    slot.querySelector('#desk-pen-zoomout')?.addEventListener('click', () => deskPenSetScale(slot, paper, overlay, -0.15));
+    slot.querySelector('#desk-pen-off')?.addEventListener('click', () => {
+        // 액자(크롬 기본 뷰어)는 브라우저에 복사된 파일이 있어야 띄울 수 있다.
+        // 폴더 연결본은 사본이 없으므로 필기모드로만 볼 수 있다.
+        if (!paper.pdfData) {
+            showToast('폴더에서 연결한 PDF는 필기모드로만 볼 수 있어요 (사본을 안 만들기 때문)', 'info');
+            return;
+        }
+        deskPenView = 'frame';
+        localStorage.setItem('deskPenView', 'frame');
+        const pdfUrl = deskFramePool['p_' + paper.id]?.pdfUrl || null;
+        slot.innerHTML = deskLeftHTML(paper, pdfUrl, false);
+        bindDeskLeftToggles(overlay, paper, slot);
+        showToast('예전 방식(액자)으로 바꿨어요. 툴바의 「필기모드」로 되돌릴 수 있어요.', 'info');
+    });
+}
+
 function deskLeftHTML(paper, pdfUrl, forceText = false, startPage = 0) {
+    // 필기모드 — 로컬 PDF + pdf.js 준비됨 + 사용자가 켜둔 상태일 때
+    if (!forceText && deskPenView === 'pen' && deskCanPen(paper)) {
+        const hasTextForPen = !!(paper.fullText?.trim() || paper.abstract?.trim() || paper.methods?.trim() || paper.findings?.trim());
+        return deskPenHTML(paper, hasTextForPen);
+    }
     const hasText = !!(paper.fullText?.trim() || paper.abstract?.trim() || paper.methods?.trim() || paper.findings?.trim());
 
     const bmBtn = `<button type="button" class="desk-view-toggle" id="desk-bm-btn">📌 북마크</button>`;
@@ -3479,8 +4254,12 @@ function deskLeftHTML(paper, pdfUrl, forceText = false, startPage = 0) {
             ? `<button type="button" class="desk-view-toggle" id="desk-toggle-text">${icon('note', 13)} 텍스트로 보기</button>`
             : '';
         const src = startPage ? `${pdfUrl}#page=${startPage}` : pdfUrl;
+        // 필기모드로 되돌아가는 버튼 (로컬 PDF일 때만)
+        const penBtn = deskCanPen(paper)
+            ? `<button type="button" class="desk-view-toggle desk-pen-on-btn" id="desk-pen-on" title="드래그로 형광펜·발췌가 되는 필기모드">🖍️ 필기모드</button>`
+            : '';
         return `<div class="desk-pdf-wrap">
-            <div class="desk-left-toolbar">${textBtn}${bmBtn}</div>
+            <div class="desk-left-toolbar">${penBtn}${textBtn}${bmBtn}</div>
             <iframe class="desk-pdf" src="${src}" title="PDF"></iframe>
         </div>`;
     }
@@ -4120,13 +4899,26 @@ function deskExcerptsHTML(paper) {
         const pageBtn = e.page
             ? `<button type="button" class="desk-mat-memo-page" data-page="${e.page}" title="${e.page}페이지로 이동">p.${e.page}</button>`
             : '';
-        return `<div class="desk-mat-memo-item">
+        // 색 띠(왼쪽) — e.color 없으면 색 없음
+        const band = e.color ? ` style="border-left:4px solid ${e.color}"` : '';
+        const dests = `<span class="desk-ex-sendlabel">보낼 곳</span>` + EX_SEND_DESTS.map(([k, l]) =>
+            `<button type="button" class="desk-ex-dest" data-eid="${e.id}" data-dest="${k}">${l}</button>`).join('');
+        const pens = EX_COLORS.map(c =>
+            `<button type="button" class="desk-ex-pen${e.color === c ? ' on' : ''}" data-eid="${e.id}" data-color="${c}"
+                style="${c ? `background:${c}` : ''}" title="${c ? '색 지정' : '색 없음'}"></button>`).join('');
+        return `<div class="desk-mat-memo-item"${band}>
             <div class="desk-memo-item-header">
                 <span class="desk-ex-label cat-${e.cat}">${escHtml(label)}</span>
                 ${pageBtn}
                 <button type="button" class="desk-ex-del" data-eid="${e.id}" title="삭제">✕</button>
             </div>
-            <div class="desk-mat-memo-text">${escHtml(e.text)}</div>
+            <div class="desk-mat-memo-text" data-eid="${e.id}">${escHtml(e.text)}</div>
+            <div class="desk-ex-bar">
+                <button type="button" class="desk-ex-send" data-eid="${e.id}">프로포절로 보내기 ▾</button>
+                <button type="button" class="desk-ex-editbtn" data-eid="${e.id}">수정</button>
+                <span class="desk-ex-pens">${pens}</span>
+            </div>
+            <div class="desk-ex-sendmenu" data-eid="${e.id}" hidden>${dests}</div>
         </div>`;
     }).join('');
 }
@@ -4149,6 +4941,27 @@ function bindDeskRight(overlay, paper) {
     overlay.querySelector('#desk-memo-input')?.addEventListener('keydown', e => {
         if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); deskAddExcerpt(overlay, paper); }
     });
+
+    // 연구책상 아무 데서나 Ctrl+V → 붙여넣은 글이 곧바로 메모칸에 들어가고 커서까지 옮겨줌.
+    // (입력칸 안에서 누른 붙여넣기는 건드리지 않는다)
+    // overlay는 다시 그려도 유지되므로 중복 등록 방지 플래그를 둔다.
+    if (overlay.dataset.pasteBound !== '1') {
+        overlay.dataset.pasteBound = '1';
+        overlay.addEventListener('paste', ev => {
+            const t = ev.target;
+            if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+            const text = (ev.clipboardData || window.clipboardData)?.getData('text') || '';
+            if (!text.trim()) return;
+            const box = overlay.querySelector('#desk-memo-input');
+            if (!box) return;
+            ev.preventDefault();
+            box.value = box.value.trim() ? box.value.trimEnd() + '\n' + text : text;
+            box.focus();
+            box.setSelectionRange(box.value.length, box.value.length);
+            showToast('붙여넣었어요 — Ctrl+Enter로 저장', 'info');
+        });
+    }
+
     bindDeskExcerpts(overlay, paper);
 
     // 북마크는 툴바 팝업(openDeskBmPopup)으로 이동
@@ -4174,6 +4987,51 @@ function bindDeskExcerpts(overlay, paper) {
     // 페이지 이동
     overlay.querySelectorAll('#desk-excerpts .desk-mat-memo-page').forEach(b =>
         b.addEventListener('click', () => deskNavToPage(b.dataset.page)));
+
+    // 「프로포절로 보내기」 — 버튼 누르면 목적지 목록 펼치기
+    overlay.querySelectorAll('.desk-ex-send').forEach(b =>
+        b.addEventListener('click', () => {
+            const menu = overlay.querySelector(`.desk-ex-sendmenu[data-eid="${b.dataset.eid}"]`);
+            if (!menu) return;
+            // 다른 카드에 열린 메뉴는 닫기
+            overlay.querySelectorAll('.desk-ex-sendmenu').forEach(m => { if (m !== menu) m.hidden = true; });
+            menu.hidden = !menu.hidden;
+        }));
+    overlay.querySelectorAll('.desk-ex-dest').forEach(b =>
+        b.addEventListener('click', () => deskSendExcerpt(overlay, paper, b.dataset.eid, b.dataset.dest)));
+
+    // 「수정」 — 글 영역을 입력칸으로 바꿨다가, 포커스가 떠나면 저장
+    overlay.querySelectorAll('.desk-ex-editbtn').forEach(b =>
+        b.addEventListener('click', () => {
+            const eid = b.dataset.eid;
+            const box = overlay.querySelector(`.desk-mat-memo-text[data-eid="${eid}"]`);
+            const ex = (paper.excerpts || []).find(x => x.id === eid);
+            if (!box || !ex || box.dataset.editing === '1') return;
+            box.dataset.editing = '1';
+            const ta = document.createElement('textarea');
+            ta.className = 'desk-ex-edit-input';
+            ta.value = ex.text;
+            box.replaceWith(ta);
+            ta.focus();
+            ta.setSelectionRange(ta.value.length, ta.value.length);
+            const done = () => {
+                const v = ta.value.trim();
+                if (v) deskUpdateExcerpt(paper, eid, 'text', v);
+                deskRenderExcerpts(overlay, paper);
+            };
+            ta.addEventListener('blur', done, { once: true });
+            ta.addEventListener('keydown', ev => {
+                if (ev.key === 'Escape') { ev.preventDefault(); ta.removeEventListener('blur', done); deskRenderExcerpts(overlay, paper); }
+                if (ev.key === 'Enter' && ev.ctrlKey) { ev.preventDefault(); ta.blur(); }
+            });
+        }));
+
+    // 색 지정 — 형광펜처럼 카드 왼쪽 띠 색을 고름
+    overlay.querySelectorAll('.desk-ex-pen').forEach(b =>
+        b.addEventListener('click', () => {
+            deskUpdateExcerpt(paper, b.dataset.eid, 'color', b.dataset.color);
+            deskRenderExcerpts(overlay, paper);
+        }));
 }
 
 // 발췌 한 조각을 모형(미니프로포절 칸 / 태그)으로 보냄.
@@ -4231,8 +5089,9 @@ function deskAddExcerpt(overlay, paper) {
     const idx = state.papers.findIndex(p => p.id === paper.id);
     if (idx >= 0) state.papers[idx] = paper;
     ta.value = '';
-    const pi = overlay.querySelector('#desk-memo-page');
-    if (pi) pi.value = '';
+    // 페이지 번호는 일부러 지우지 않는다 — 같은 쪽에서 여러 조각을 뽑을 때
+    // 매번 다시 타이핑하게 되던 문제. 쪽이 넘어가면 사용자가 직접 고쳐 넣는다.
+    // (라벨은 deskAddCat에 남아 있어 이미 유지됨)
     deskRenderExcerpts(overlay, paper);
     ta.focus();
 }
@@ -4250,6 +5109,7 @@ function openForm(editId = null, mode = null) {
     state.editingId = editId;
     state.formMode = mode;
     state.currentPdfFile = null;
+    state.currentFolderFile = null;
     formVariables = [];
     formTags = [];
     formAttachedImages = [];
@@ -4257,8 +5117,13 @@ function openForm(editId = null, mode = null) {
 
     const ids = ['f-title','f-authors','f-year','f-source','f-volume','f-issue',
                  'f-pages','f-doi','f-pdflink','f-abstract','f-methods','f-findings','f-note',
-                 'doi-input','riss-input','f-fulltext'];
+                 'doi-input','riss-input','f-fulltext',
+                 'f-publisher','f-booktitle','f-editors','f-edition','f-url',
+                 'f-translator','f-origyear'];
     ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    const itEl = document.getElementById('f-itemtype');
+    if (itEl) itEl.value = 'journal';
+    applyItemTypeUI('journal');
     document.getElementById('pdf-filename').textContent = '선택된 파일 없음';
 
     const paper = editId ? state.papers.find(p => p.id === editId) : null;
@@ -4269,10 +5134,19 @@ function openForm(editId = null, mode = null) {
         set('f-pages', paper.pages); set('f-doi', paper.doi); set('f-pdflink', paper.pdfLink); set('f-abstract', paper.abstract);
         set('f-methods', paper.methods); set('f-findings', paper.findings); set('f-note', paper.myNote);
         set('f-fulltext', paper.fullText);
+        // APA 자료 유형 — 옛 논문은 내용으로 추정한다
+        const it = apaItemType(paper);
+        if (itEl) itEl.value = it;
+        applyItemTypeUI(it);
+        set('f-publisher', paper.publisher); set('f-booktitle', paper.bookTitle);
+        set('f-editors', paper.editors);     set('f-edition', paper.edition);
+        set('f-url', paper.url);
+        set('f-translator', paper.translator); set('f-origyear', paper.originalYear);
         formVariables = [...(paper.variables || [])];
         formTags = [...(paper.tags || [])];
         pushDebug('info', `openForm — 제목:${paper.title} pdfData:${paper.pdfData ? paper.pdfData.byteLength+'bytes' : '없음'} fullText길이:${(paper.fullText||'').length}`);
         if (paper.pdfData) document.getElementById('pdf-filename').textContent = paper.pdfFilename || 'PDF 있음';
+        else if (paper.pdfFolderFile) document.getElementById('pdf-filename').textContent = `📁 ${paper.pdfFolderFile} (폴더 연결)`;
         // AI 요약 복원
         const aiBox = document.getElementById('ai-summary-result');
         if (aiBox) {
@@ -4597,6 +5471,20 @@ function applyParsedToForm(data) {
     set('f-volume', data.volume);
     set('f-issue', data.issue);
     set('f-pages', data.pages);
+
+    // 자료 유형 자동 판별 — RISS 인용문에는 "○○대학교 대학원 석사학위논문" 같은 말이 들어있다.
+    // 한국 논문은 DOI가 없는 경우가 많아, 여기서라도 잡아줘야 사람이 매번 안 고른다.
+    const blob = `${data.source || ''} ${data.title || ''}`;
+    let guess = '';
+    if (/학위\s*논문|석사|박사|dissertation|thesis/i.test(blob))      guess = 'thesis';
+    else if (/[^가-힣]역\)|옮김|번역|Trans\./i.test(blob))            guess = 'translation';
+    else if (data.volume || data.issue)                                guess = 'journal';
+    if (guess) {
+        const sel = document.getElementById('f-itemtype');
+        if (sel) { sel.value = guess; applyItemTypeUI(guess); }
+        const KO = { thesis: '학위논문', translation: '번역서', journal: '학술지 논문' };
+        pushDebug('info', `RISS 유형 자동판별: ${KO[guess]}`);
+    }
 }
 
 // ── 논문 저장 ──────────────────────────────────────────────
@@ -4616,6 +5504,19 @@ async function savePaper(e) {
         pdfFilename = state.currentPdfFile.name;
     }
 
+    // 폴더 연결 — 파일을 복사하지 않고 "폴더 속 이 이름" 만 기억한다
+    let pdfFolderFile = null;
+    if (state.editingId) {
+        pdfFolderFile = state.papers.find(p => p.id === state.editingId)?.pdfFolderFile || null;
+    }
+    if (state.currentFolderFile) {
+        pdfFolderFile = state.currentFolderFile;
+        // 폴더 연결로 바꾸면 브라우저에 있던 복사본은 버린다
+        // (이게 첨부 → 폴더연결 전환 통로. 안 버리면 사본이 계속 남아 용량을 차지한다)
+        pdfData = null;
+        pdfFilename = null;
+    }
+
     // 기존 논문을 펼쳐서 폼에 없는 필드(발췌 excerpts·빠른인용·참고문헌·정렬 등) 보존
     const existing = state.editingId ? state.papers.find(p => p.id === state.editingId) : null;
     const val = id => document.getElementById(id).value.trim();
@@ -4626,6 +5527,15 @@ async function savePaper(e) {
         authors: val('f-authors'),
         year: val('f-year'),
         source: val('f-source'),
+        // APA 자료 유형별 항목
+        itemType:  document.getElementById('f-itemtype')?.value || 'journal',
+        publisher: val('f-publisher'),
+        bookTitle: val('f-booktitle'),
+        editors:   val('f-editors'),
+        edition:   val('f-edition'),
+        url:       val('f-url'),
+        translator: val('f-translator'),
+        originalYear: val('f-origyear'),
         volume: val('f-volume'),
         issue: val('f-issue'),
         pages: val('f-pages'),
@@ -4644,6 +5554,7 @@ async function savePaper(e) {
         attachedImages: formAttachedImages.length ? formAttachedImages : (existing?.attachedImages || []),
         pdfData,
         pdfFilename,
+        pdfFolderFile,
         aiSummary: (document.getElementById('ai-summary-result')?.querySelector('.ai-summary-text')?.textContent || document.getElementById('ai-summary-result')?.textContent || '').trim() || existing?.aiSummary || '',
         aiSummaryBasis: existing?.aiSummaryBasis || '',
         projectId: state.currentProjectId,
@@ -4766,20 +5677,77 @@ async function lookupDOI() {
         const item = (await res.json()).message;
         const data = parseCrossRef(item);
 
-        const fill = (id, v) => { if (v) document.getElementById(id).value = v; };
-        fill('f-title', data.title);
-        fill('f-authors', data.authors);
-        fill('f-year', data.year);
-        fill('f-source', data.source);
-        fill('f-abstract', data.abstract);
-        fill('f-doi', doi);
+        applyCrossRefToForm(data, doi, false);   // 직접 누른 경우이므로 덮어쓴다
 
-        showToast('불러왔습니다. 내용이 맞는지 꼭 확인하세요.', 'info');
+        const TYPE_KO = { journal: '학술지 논문', thesis: '학위논문', book: '단행본', chapter: '책의 장', web: '웹자료·보고서' };
+        showToast(`불러왔습니다 — 유형: ${TYPE_KO[data.itemType] || '학술지 논문'}. 내용이 맞는지 꼭 확인하세요.`, 'info');
     } catch (err) {
         showToast(err.message, 'error');
     } finally {
         btn.innerHTML = '자동 불러오기';
         btn.disabled = false;
+    }
+}
+
+// ── PDF 본문에서 DOI 찾기 ─────────────────────────────────
+// DOI는 "10.기관번호/논문번호" 모양이고 논문 표지·각주에 거의 항상 인쇄되어 있다.
+// ⚠️ 논문 뒤쪽 참고문헌 목록에는 "다른 논문"의 DOI가 잔뜩 있다.
+//    그래서 앞부분(표지·초록)만 본다. 뒤까지 보면 엉뚱한 논문이 들어온다.
+const DOI_RE = /\b10\.\d{4,9}\/[^\s"'<>,;)\]}]+/i;
+
+function extractDoiFromText(txt) {
+    if (!txt) return '';
+    const head = String(txt).slice(0, 4000);
+    const m = head.match(DOI_RE);
+    if (!m) return '';
+    return m[0].replace(/[.,;:)\]}]+$/, '');   // 문장부호가 붙어 잡히는 경우 제거
+}
+
+// CrossRef 결과를 폼에 넣는다. onlyEmpty=true 면 이미 적힌 칸은 건드리지 않는다.
+function applyCrossRefToForm(data, doi, onlyEmpty) {
+    const put = (id, v) => {
+        if (!v) return;
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (onlyEmpty && el.value.trim()) return;
+        el.value = v;
+    };
+    put('f-title', data.title);
+    put('f-authors', data.authors);
+    put('f-year', data.year);
+    put('f-source', data.source);
+    put('f-abstract', data.abstract);
+    put('f-doi', doi);
+    put('f-volume', data.volume); put('f-issue', data.issue); put('f-pages', data.pages);
+    put('f-publisher', data.publisher); put('f-booktitle', data.bookTitle); put('f-editors', data.editors);
+
+    const sel = document.getElementById('f-itemtype');
+    if (sel && data.itemType) { sel.value = data.itemType; applyItemTypeUI(data.itemType); }
+}
+
+// PDF를 첨부하면 본문에서 DOI를 찾아 서지정보까지 자동으로 채운다.
+// 이미 적혀 있는 칸은 덮어쓰지 않는다(손으로 넣은 내용을 지우지 않으려고).
+async function tryAutoDoiFromText(txt) {
+    const doiEl = document.getElementById('f-doi');
+    if (!doiEl || doiEl.value.trim()) return;      // 이미 DOI가 있으면 그대로 둔다
+
+    const doi = extractDoiFromText(txt);
+    if (!doi) { pushDebug('info', 'PDF에서 DOI를 찾지 못함'); return; }
+
+    doiEl.value = doi;
+    pushDebug('info', `PDF에서 DOI 발견: ${doi}`);
+    showToast(`DOI를 찾았어요 — 서지정보를 불러오는 중…`, 'info');
+    try {
+        const res = await fetch(`https://api.crossref.org/works/${encodeURIComponent(doi)}`);
+        if (!res.ok) throw new Error(`조회 실패 (${res.status})`);
+        const data = parseCrossRef((await res.json()).message);
+        applyCrossRefToForm(data, doi, true);
+        const TYPE_KO = { journal: '학술지 논문', thesis: '학위논문', book: '단행본', chapter: '책의 장', web: '웹자료·보고서' };
+        pushDebug('info', `DOI 자동조회 성공 — 유형:${data.itemType} 제목:${(data.title||'').slice(0,30)}`);
+        showToast(`서지정보를 자동으로 채웠어요 (${TYPE_KO[data.itemType] || ''}) — 맞는지 확인해 주세요`, 'success');
+    } catch (err) {
+        pushDebug('warn', `DOI 자동조회 실패: ${err.message}`);
+        showToast('DOI는 찾았지만 정보를 못 불러왔어요 — 「자동 불러오기」를 눌러보세요', 'warn');
     }
 }
 
@@ -4793,9 +5761,39 @@ function parseCrossRef(item) {
         || item['published-online']?.['date-parts']?.[0]?.[0]
         || ''
     );
-    const source = item['container-title']?.[0] || item.publisher || '';
     const abstract = (item.abstract || '').replace(/<[^>]+>/g, '');
-    return { title, authors, year, source, abstract };
+
+    // CrossRef 의 type 으로 APA 자료 유형을 자동으로 정한다 (사람이 안 골라도 되게)
+    const CR_TYPE = {
+        'journal-article': 'journal',
+        'proceedings-article': 'journal',
+        'book-chapter': 'chapter',
+        'book-part': 'chapter',
+        'book': 'book',
+        'monograph': 'book',
+        'edited-book': 'book',
+        'reference-book': 'book',
+        'dissertation': 'thesis',
+        'report': 'web',
+        'posted-content': 'web',
+    };
+    const itemType = CR_TYPE[item.type] || 'journal';
+
+    // 유형에 따라 어느 칸에 넣을지 달라진다
+    const container = item['container-title']?.[0] || '';
+    const publisher = item.publisher || '';
+    const source    = itemType === 'journal' ? container : (itemType === 'chapter' ? '' : container);
+    const bookTitle = itemType === 'chapter' ? container : '';
+    const editors   = (item.editor || []).map(a => [a.family, a.given].filter(Boolean).join(' ')).join(', ');
+
+    return {
+        title, authors, year, abstract, itemType,
+        source, publisher, bookTitle, editors,
+        volume: item.volume || '',
+        issue:  item.issue || '',
+        pages:  item.page || '',
+        doi:    item.DOI || '',
+    };
 }
 
 // ── 백업 JSON 생성 ──────────────────────────────────────────
@@ -4836,6 +5834,132 @@ let backupDirHandle = null;
 let autoBackupTimer = null;
 
 // 앱 시작 시 저장해둔 백업 폴더 핸들 복원(권한 요청은 안 함)
+// ══════════════════════════════════════════════════════════════
+// 논문 PDF 폴더 연결 — 파일을 브라우저에 복사하지 않고 폴더에서 바로 읽는다.
+// 첨부(pdfData)는 PDF를 통째로 브라우저에 복사해 두 벌이 되지만,
+// 이 방식은 "폴더 + 파일이름"만 기억하므로 사본이 생기지 않는다.
+// 폴더 허락은 한 번만 받으면 그 안의 모든 PDF에 적용된다(몇백 편이어도 1회).
+// ══════════════════════════════════════════════════════════════
+const PAPERDIR_HANDLE_KEY = 'paperDir';
+let paperDirHandle = null;
+
+async function loadPaperDirHandle() {
+    try {
+        const rec = await dbGet(STORE_SETTINGS, PAPERDIR_HANDLE_KEY);
+        if (rec && rec.handle) paperDirHandle = rec.handle;
+    } catch (err) {
+        pushDebug('warn', `논문 폴더 핸들 로드 실패: ${err.message}`);
+    }
+}
+
+// 읽기 권한 확인. 브라우저를 껐다 켜면 한 번은 다시 허락을 받아야 한다(보안 규칙).
+async function ensurePaperDirPermission(canPrompt) {
+    if (!paperDirHandle) return false;
+    const opts = { mode: 'read' };
+    if ((await paperDirHandle.queryPermission(opts)) === 'granted') return true;
+    if (canPrompt && (await paperDirHandle.requestPermission(opts)) === 'granted') return true;
+    return false;
+}
+
+// 사용자가 논문 폴더를 고른다 (한 번만)
+async function pickPaperDir() {
+    if (!window.showDirectoryPicker) {
+        showToast('이 브라우저는 폴더 연결을 지원하지 않아요. 크롬을 써주세요.', 'error');
+        return false;
+    }
+    try {
+        paperDirHandle = await window.showDirectoryPicker({ id: 'researchNotesPapers', mode: 'read' });
+        await dbPut(STORE_SETTINGS, { id: PAPERDIR_HANDLE_KEY, handle: paperDirHandle });
+        const n = (await listFolderPdfs()).length;
+        showToast(`논문 폴더를 연결했어요 — PDF ${n}개를 찾았습니다`, 'success');
+        pushDebug('info', `논문 폴더 지정 — PDF ${n}개`);
+        return true;
+    } catch (err) {
+        if (err?.name !== 'AbortError') pushDebug('warn', `논문 폴더 선택 실패: ${err.message}`);
+        return false;
+    }
+}
+
+// 폴더 안의 PDF 파일 이름 목록
+async function listFolderPdfs() {
+    if (!paperDirHandle || !(await ensurePaperDirPermission(true))) return [];
+    const out = [];
+    for await (const entry of paperDirHandle.values()) {
+        if (entry.kind === 'file' && /\.pdf$/i.test(entry.name)) out.push(entry.name);
+    }
+    return out.sort((a, b) => a.localeCompare(b, 'ko'));
+}
+
+// 폴더에서 PDF 하나를 읽어 온다 (복사 저장 없음 — 읽을 때만 메모리에 올림)
+async function readFolderPdf(name) {
+    if (!paperDirHandle || !name) return null;
+    if (!(await ensurePaperDirPermission(true))) return null;
+    const fh = await paperDirHandle.getFileHandle(name);
+    const file = await fh.getFile();
+    return await file.arrayBuffer();
+}
+
+// 논문의 PDF 내용을 얻는다 — 첨부본(pdfData)이 있으면 그걸, 없으면 폴더에서.
+async function getPaperPdfBuf(paper) {
+    if (paper?.pdfData) return paper.pdfData;
+    if (paper?.pdfFolderFile) {
+        try {
+            return await readFolderPdf(paper.pdfFolderFile);
+        } catch (err) {
+            pushDebug('warn', `폴더 PDF 읽기 실패(${paper.pdfFolderFile}): ${err.message}`);
+            return null;
+        }
+    }
+    return null;
+}
+
+// 폴더의 PDF 목록에서 하나 고르는 작은 창 (검색 가능 — 몇백 개여도 찾기 쉽게)
+async function openFolderPickModal(onPick) {
+    if (!paperDirHandle && !(await pickPaperDir())) return;
+    const names = await listFolderPdfs();
+    if (!names.length) { showToast('폴더에 PDF가 없어요', 'warn'); return; }
+
+    const ov = document.createElement('div');
+    ov.className = 'modal-overlay fp-overlay';
+    ov.innerHTML = `
+        <div class="modal fp-modal">
+            <div class="modal-header">
+                <h2>폴더에서 PDF 고르기</h2>
+                <button type="button" class="modal-close" id="fp-close" title="닫기">✕</button>
+            </div>
+            <div class="fp-body">
+                <input type="text" id="fp-search" class="fp-search" placeholder="파일 이름 검색… (${names.length}개)" autocomplete="off">
+                <div class="fp-list" id="fp-list"></div>
+                <div class="fp-foot">
+                    <button type="button" class="btn-secondary" id="fp-rechoose">다른 폴더 지정</button>
+                    <span class="fp-hint">파일은 복사되지 않고 폴더에서 바로 읽습니다</span>
+                </div>
+            </div>
+        </div>`;
+    document.body.appendChild(ov);
+
+    const listEl = ov.querySelector('#fp-list');
+    const draw = (q = '') => {
+        const kw = q.trim().toLowerCase();
+        const hit = kw ? names.filter(n => n.toLowerCase().includes(kw)) : names;
+        listEl.innerHTML = hit.length
+            ? hit.slice(0, 300).map(n => `<button type="button" class="fp-item" data-name="${escHtml(n)}">${escHtml(n)}</button>`).join('')
+            : '<div class="fp-empty">찾는 이름이 없어요</div>';
+        listEl.querySelectorAll('.fp-item').forEach(b =>
+            b.addEventListener('click', () => { close(); onPick(b.dataset.name); }));
+    };
+    const close = () => ov.remove();
+    draw();
+    ov.querySelector('#fp-search').addEventListener('input', e => draw(e.target.value));
+    ov.querySelector('#fp-close').addEventListener('click', close);
+    ov.addEventListener('click', e => { if (e.target === ov) close(); });
+    ov.querySelector('#fp-rechoose').addEventListener('click', async () => {
+        close();
+        if (await pickPaperDir()) openFolderPickModal(onPick);
+    });
+    setTimeout(() => ov.querySelector('#fp-search')?.focus(), 30);
+}
+
 async function loadBackupHandle() {
     try {
         const rec = await dbGet(STORE_SETTINGS, BACKUP_HANDLE_KEY);
@@ -5509,7 +6633,17 @@ function bindEvents() {
     // 검색 모드 토글(키워드만 / 전체단어 / RISS)
     document.querySelectorAll('#search-mode-toggle .sm-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            if (btn.dataset.mode === 'riss') return;
+            // RISS 단추는 검색이 아니라 "인용문 붙여넣기" 입구다.
+            // 예전엔 눌러도 아무 일도 안 해서 검색되는 줄 오해하기 쉬웠다.
+            if (btn.dataset.mode === 'riss') {
+                openForm(null, 'edit');
+                setTimeout(() => {
+                    const box = document.getElementById('riss-input');
+                    if (box) { box.focus(); box.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+                }, 120);
+                showToast('RISS에서 「인용하기」 글을 복사해 여기에 붙여넣고 「자동 입력」을 누르세요', 'info');
+                return;
+            }
             document.querySelectorAll('#search-mode-toggle .sm-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             state.searchMode = btn.dataset.mode;
@@ -5520,8 +6654,19 @@ function bindEvents() {
     // 미니 창 열기
     let _miniWin = null;
     document.getElementById('btn-open-mini').addEventListener('click', () => {
-        if (_miniWin && !_miniWin.closed) { _miniWin.focus(); return; }
-        _miniWin = window.open('mini.html', '_blank',
+        // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
+        // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
+        const miniUrl = 'mini.html?v=20260817c';
+        // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
+        // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
+        if (_miniWin && !_miniWin.closed) {
+            let moved = false;
+            try { _miniWin.location.replace(miniUrl); moved = true; } catch (_) {}
+            if (moved) { _miniWin.focus(); return; }
+            try { _miniWin.close(); } catch (_) {}
+            _miniWin = null;
+        }
+        _miniWin = window.open(miniUrl, '_blank',
             'width=300,height=600,resizable=yes,scrollbars=no');
     });
 
@@ -5662,8 +6807,21 @@ function bindEvents() {
     });
 
     // PDF 선택
+    // 자료 유형 바꾸면 필요한 칸만 보이게
+    document.getElementById('f-itemtype')?.addEventListener('change', e => applyItemTypeUI(e.target.value));
+
     document.getElementById('btn-pick-pdf').addEventListener('click', () => {
         document.getElementById('f-pdf').click();
+    });
+    // 폴더에서 연결 — 복사 없이 이름만 기억
+    document.getElementById('btn-link-folder')?.addEventListener('click', () => {
+        openFolderPickModal(name => {
+            state.currentFolderFile = name;
+            state.currentPdfFile = null;   // 복사 첨부와 겹치지 않게
+            const el = document.getElementById('pdf-filename');
+            if (el) el.textContent = `📁 ${name} (폴더 연결)`;
+            showToast('폴더의 PDF와 연결했어요 — 저장을 눌러 반영하세요', 'success');
+        });
     });
     document.getElementById('f-pdf').addEventListener('change', async e => {
         const file = e.target.files[0];
@@ -5675,7 +6833,11 @@ function bindEvents() {
                 _showPdfExtractingBadge('pdf-filename', true);
                 const txt = await extractPdfText(file);
                 _showPdfExtractingBadge('pdf-filename', false);
-                if (txt) { ftEl.value = txt; showToast('PDF 텍스트 자동 추출 완료', 'success'); }
+                if (txt) {
+                    ftEl.value = txt;
+                    showToast('PDF 텍스트 자동 추출 완료', 'success');
+                    await tryAutoDoiFromText(txt);   // 본문에서 DOI를 찾아 서지정보까지 채운다
+                }
                 else showToast('텍스트 추출 실패 — 직접 붙여넣기 해주세요', 'warn');
             }
         }
@@ -6566,6 +7728,7 @@ async function init() {
     await initDB();
     await requestPersistentStorage();
     await loadBackupHandle();
+    await loadPaperDirHandle();   // 논문 PDF 폴더(복사 없이 읽기)
     await initProjects();
     await loadData();
     bindEvents();

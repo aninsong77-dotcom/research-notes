@@ -1577,6 +1577,12 @@ body {
     color: var(--text-primary);
     flex: 1;
 }
+/* 참고문헌의 기울임(학술지명·권) — Noto Sans KR에는 이탤릭 글꼴이 없어
+   브라우저가 기울여 그려주지 않는 경우가 있다. oblique로 각도를 직접 지정해 강제한다. */
+.ref-text i, .ve-apa-text i {
+    font-style: italic;
+    font-synthesis: style;
+}
 .ref-item-actions {
     display: flex;
     flex-direction: column;
@@ -3521,6 +3527,135 @@ body {
 }
 .desk-ex-del:hover { background: var(--border); color: var(--danger); }
 .desk-ex-tbtns { display: flex; gap: 6px; align-items: center; }
+
+/* ── 발췌 카드 아래 버튼줄 (보내기 · 수정 · 색) ────────────────── */
+.desk-ex-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+.desk-ex-editbtn {
+    border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary);
+    font-family: inherit; font-size: 12px; padding: 3px 10px; border-radius: 12px; cursor: pointer;
+    white-space: nowrap;
+}
+.desk-ex-editbtn:hover { background: var(--bg); color: var(--text-primary); }
+
+/* 색 지정(형광펜) 동그라미 */
+.desk-ex-pens { display: flex; gap: 4px; align-items: center; margin-left: auto; }
+.desk-ex-pen {
+    width: 15px; height: 15px; border-radius: 50%; cursor: pointer; padding: 0;
+    border: 1.5px solid var(--border); background: var(--surface);
+}
+.desk-ex-pen.on { border-color: var(--text-primary); box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--text-muted); }
+
+/* 보내기 목적지 목록은 아래 .desk-ex-sendmenu/.desk-ex-dest(기존 정의) 사용.
+   단 기존 정의가 display:flex 라서 hidden 속성이 먹지 않는다 → 속성 선택자로 덮어씀
+   (클래스+속성이라 우선순위가 높아 순서와 무관하게 이긴다). */
+.desk-ex-sendmenu[hidden] { display: none; }
+
+/* 자료 유형별로 보였다 숨었다 하는 칸 — 기본은 숨김(JS applyItemTypeUI 가 켠다) */
+.apa-x { display: none; }
+
+/* ══ 폴더에서 PDF 고르기 창 ═══════════════════════════════════ */
+.btn-file-folder { border-color: var(--accent-mid); background: var(--accent-light); color: var(--accent); font-weight: 700; }
+.fp-modal { max-width: 520px; width: 92%; }
+.fp-body { padding: 16px 20px 18px; display: flex; flex-direction: column; gap: 12px; }
+.fp-search {
+    width: 100%; font-family: inherit; font-size: 14px; padding: 9px 12px;
+    border: 1.5px solid var(--border); border-radius: 9px;
+    color: var(--text-primary); background: var(--surface);
+}
+.fp-search:focus { outline: none; border-color: var(--accent); }
+.fp-list {
+    max-height: 46vh; overflow-y: auto; display: flex; flex-direction: column; gap: 3px;
+    border: 1px solid var(--border); border-radius: 9px; padding: 6px; background: var(--bg);
+}
+.fp-item {
+    text-align: left; font-family: inherit; font-size: 13px; line-height: 1.5;
+    padding: 8px 10px; border-radius: 7px; border: 0; background: transparent;
+    color: var(--text-primary); cursor: pointer; word-break: break-all;
+}
+.fp-item:hover { background: var(--accent-light); color: var(--accent); }
+.fp-empty { padding: 22px; text-align: center; color: var(--text-muted); font-size: 13px; }
+.fp-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.fp-hint { font-size: 11.5px; color: var(--text-muted); }
+
+/* ══ 필기모드 — PDF를 앱이 직접 그리는 화면 ══════════════════ */
+.desk-pen-wrap { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.desk-pen-toolbar { flex-shrink: 0; flex-wrap: wrap; align-items: center; gap: 5px; }
+.desk-pen-pageind { font-size: 12px; color: var(--text-secondary); padding: 0 4px; font-variant-numeric: tabular-nums; }
+.desk-pen-pageind b { color: var(--text-primary); }
+.desk-pen-zoom { font-size: 11.5px; color: var(--text-muted); min-width: 38px; text-align: center; font-variant-numeric: tabular-nums; }
+.desk-pen-on-btn { border-color: var(--accent-mid) !important; background: var(--accent-light) !important; color: var(--accent) !important; font-weight: 700; }
+
+.desk-pen-scroll {
+    flex: 1; min-height: 0; overflow: auto;
+    background: #5b5f66; padding: 12px; display: flex; flex-direction: column;
+    align-items: center; gap: 12px;
+}
+.desk-pen-loading { color: #fff; font-size: 13px; padding: 40px 20px; text-align: center; line-height: 1.7; }
+
+.desk-pen-page {
+    position: relative; flex-shrink: 0;
+    background: #fff; box-shadow: 0 4px 14px rgba(0,0,0,.3); border-radius: 2px;
+}
+.desk-pen-page canvas { display: block; border-radius: 2px; }
+
+/* 형광펜 자국 — 캔버스 위, 글자층 아래 */
+.desk-pen-hl-layer { position: absolute; inset: 0; pointer-events: none; }
+.desk-pen-hl {
+    position: absolute; border-radius: 2px; opacity: .45;
+    pointer-events: auto; cursor: pointer; mix-blend-mode: multiply;
+}
+/* 클릭 판정은 JS 좌표 계산으로 한다(맨 위 글자층이 덮고 있어서).
+   그래서 커서만 페이지 단위로 바꿔 "누를 수 있음"을 알린다. */
+.desk-pen-page.desk-pen-over-hl .desk-pen-text-layer,
+.desk-pen-page.desk-pen-over-hl .desk-pen-text-layer span { cursor: pointer; }
+.desk-pen-page.desk-pen-over-hl .desk-pen-hl { opacity: .7; }
+
+/* 글자층 — 눈에 안 보이지만 드래그로 선택되는 투명한 글자 */
+.desk-pen-text-layer {
+    position: absolute; inset: 0; overflow: hidden;
+    line-height: 1; opacity: 1;
+}
+.desk-pen-text-layer span {
+    position: absolute; white-space: pre; transform-origin: 0 0;
+    color: transparent; cursor: text;
+}
+.desk-pen-text-layer ::selection { background: rgba(66,133,244,.35); }
+
+/* 드래그 직후 뜨는 형광펜 팝업 */
+.desk-pen-pop {
+    position: absolute; z-index: 30;
+    display: flex; align-items: center; gap: 6px;
+    background: #26282b; border-radius: 10px; padding: 7px 9px;
+    box-shadow: 0 8px 26px rgba(0,0,0,.45);
+}
+.desk-pen-pop[hidden] { display: none; }
+.desk-pen-sep { width: 1px; height: 17px; background: rgba(255,255,255,.22); }
+.desk-pen-pick {
+    width: 19px; height: 19px; border-radius: 50%; padding: 0;
+    border: 2px solid rgba(255,255,255,.35); cursor: pointer;
+}
+.desk-pen-pick:hover { border-color: #fff; }
+.desk-pen-pick[data-color=""] {
+    width: auto; height: auto; border-radius: 7px; padding: 4px 10px;
+    background: var(--accent); color: #fff; border: 0;
+    font-family: inherit; font-size: 12px; font-weight: 700; white-space: nowrap;
+}
+
+/* 형광펜 눌렀을 때 오른쪽 카드 반짝임 */
+.desk-ex-flash { animation: deskExFlash 1.2s ease; }
+@keyframes deskExFlash {
+    0%, 100% { background: var(--surface); }
+    25%      { background: var(--accent-light); }
+}
+@media (prefers-reduced-motion: reduce) { .desk-ex-flash { animation: none; outline: 2px solid var(--accent); } }
+
+/* 수정 중 입력칸 */
+.desk-ex-edit-input {
+    width: 100%; min-height: 64px; resize: vertical;
+    font-family: inherit; font-size: 13px; line-height: 1.6;
+    color: var(--text-primary); background: var(--surface);
+    border: 1.5px solid var(--accent); border-radius: 8px; padding: 8px 10px;
+}
 .desk-ex-send {
     flex-shrink: 0;
     border: 1.5px solid var(--accent-mid);
