@@ -1750,10 +1750,19 @@ function sameCitation(a, b) {
 // 본문에서 인용을 뽑는다 → [{name:'홍길동', year:'2020', suffix:'a', raw:'(홍길동, 2020a)'}]
 function extractCitations(text) {
     const out = [];
+    // 저자가 여럿이면 **첫 저자**만 남긴다 — 참고문헌 목록도 첫 저자 기준이라 그래야 맞댈 수 있다.
+    //   (홍길동·김철수, 2020) → 홍길동 / (Smith & Jones, 2020) → Smith
+    const firstAuthorOf = raw => {
+        let n = String(raw || '').replace(/\s+/g, ' ').trim();
+        n = n.replace(/\s*(?:등|외|et\s+al\.?|and\s+others)\s*$/i, '').trim();
+        n = n.split(/\s*(?:·|;|&|,|\/|와\s|과\s|\band\b)\s*/)[0].trim();   // 첫 저자만
+        n = n.replace(/\s*(?:등|외|et\s+al\.?)\s*$/i, '').trim();
+        n = n.replace(/^[(\[「『]+|[)\]」』]+$/g, '').trim();
+        return n;
+    };
     const push = (name, year, suffix, raw) => {
-        name = String(name || '').replace(/\s+/g, ' ').trim()
-            .replace(/\s*(등|외|and others)\s*$/,'').replace(/\s*et\s+al\.?\s*$/i, '').trim();
-        if (name && year) out.push({ name, year, suffix: suffix || '', raw });
+        const n = firstAuthorOf(name);
+        if (n && year) out.push({ name: n, year, suffix: suffix || '', raw });
     };
 
     // ① 괄호형 — (홍길동, 2020) · (홍길동, 2020, p. 25) · (홍길동, 2020; 김철수, 2021)
@@ -1769,7 +1778,15 @@ function extractCitations(text) {
     }
 
     // ② 서술형 — 홍길동(2020)은 … / Smith et al. (2014) found …
-    const NARR = /([가-힣]{2,6}(?:\s*(?:등|외))?|[A-Z][A-Za-z''\-]+(?:\s+(?:et\s+al\.|and\s+[A-Z][A-Za-z''\-]+))?)\s*\(\s*(\d{4})([a-z])?\s*[,)]/g;
+    // 서술형 — 이름 뒤에 바로 (연도) 가 오는 형태. 공동저자 표기도 함께 잡고 첫 저자만 남긴다.
+    //   홍길동(2020) · 홍길동과 김철수(2020) · 홍길동·김철수(2020) · 홍길동 등(2020)
+    //   Smith (2020) · Smith and Jones (2020) · Smith et al. (2020)
+    const NAME = '(?:[가-힣]{2,6}|[A-Z][A-Za-z\\-]+)';
+    const NARR = new RegExp(
+        '(' + NAME
+      + '(?:\\s*(?:·|과|와|,)\\s*' + NAME + ')*'
+      + '(?:\\s*(?:등|외)|\\s+et\\s+al\\.?|\\s+and\\s+' + NAME + ')?'
+      + ')\\s*\\(\\s*(\\d{4})([a-z])?\\s*[,:)\\s]', 'g');
     for (const m of String(text || '').matchAll(NARR)) {
         push(m[1], m[2], m[3], `${m[1]}(${m[2]}${m[3] || ''})`);
     }
@@ -7237,7 +7254,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260817z';
+        const miniUrl = 'mini.html?v=20260818a';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
