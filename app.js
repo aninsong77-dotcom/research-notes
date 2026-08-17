@@ -1252,9 +1252,10 @@ function renderReferences(container) {
         if (!picked.length) { showToast('선택된 논문이 없습니다. 포함할 논문을 체크하세요.', 'error'); return; }
         const parts = picked.map(formatAPAParts);
         const text = parts.map(p => p.text).join('\n\n');
-        // 기울임을 살리려면 HTML도 같이 실어야 한다. 내어쓰기(hanging indent)까지 적용.
+        // 기울임만 싣는다. 문단 서식(내어쓰기·여백·글꼴)을 넣으면 한글에 붙일 때
+        // 그 블록만 문서와 다른 모양이 되므로, 한글이 커서 위치 서식을 물려받게 둔다.
         const html = `<div>${parts.map(p =>
-            `<p style="margin:0 0 10px;text-indent:-2em;padding-left:2em">${p.html}</p>`).join('')}</div>`;
+            `<p>${p.html}</p>`).join('')}</div>`;
         const ok = await copyRich(html, text);
         showToast(ok ? `${picked.length}편 복사됐습니다 — 한글/워드에 붙여넣으면 기울임까지 들어갑니다.` : '복사 실패', ok ? 'success' : 'error');
     });
@@ -7152,7 +7153,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260817u';
+        const miniUrl = 'mini.html?v=20260817w';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {

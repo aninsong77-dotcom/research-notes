@@ -780,7 +780,7 @@
             const text = parts.map(x => x.text).join('\n\n');
             // 기울임을 살리려면 HTML도 함께 실어야 한다 (내어쓰기까지 적용)
             const html = `<div>${parts.map(x =>
-                `<p style="margin:0 0 10px;text-indent:-2em;padding-left:2em">${x.html}</p>`).join('')}</div>`;
+                `<p>${x.html}</p>`).join('')}</div>`;
             const ok = await copyRich(html, text);
             showToast(ok ? `${list.length}편 복사됨 — 한글에 「골라 붙이기 → HTML 형식」` : '복사 실패', ok ? 'success' : 'error');
         };
