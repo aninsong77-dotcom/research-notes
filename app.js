@@ -5735,6 +5735,57 @@ async function readTextSmart(file) {
     return txt;
 }
 
+// 엔드노트(.enw) 형식 — 도서관에서 「EndNote」로 받으면 이 모양인 경우가 있다.
+//   %0 Journal Article / %A 박은하 / %T 제목 / %D 2025
+// 이름표만 다르고 담는 내용은 RIS 와 같아서, RIS 이름표로 바꿔 같은 처리를 태운다.
+const ENW_TAG = {
+    '0': 'TY', 'A': 'AU', 'E': 'A2', 'T': 'TI', 'J': 'JO', 'B': 'T2',
+    'D': 'PY', 'V': 'VL', 'N': 'IS', 'P': 'SP', 'R': 'DO', 'X': 'AB',
+    'K': 'KW', 'I': 'PB', 'U': 'UR', '9': 'M3',
+};
+const ENW_TYPE = {
+    'journal article': 'JOUR', 'article': 'JOUR', 'conference paper': 'CPAPER',
+    'thesis': 'THES', 'dissertation': 'THES', '학위논문': 'THES',
+    'book': 'BOOK', 'book section': 'CHAP', 'edited book': 'BOOK',
+    'report': 'RPRT', 'web page': 'ELEC', 'electronic article': 'JOUR',
+};
+
+function parseENW(text) {
+    const records = [];
+    let cur = null, lastTag = null;
+    for (const rawLine of String(text || '').split(/\r?\n/)) {
+        const line = rawLine.replace(/^﻿/, '');
+        const m = line.match(/^%(.)\s(.*)$/);
+        if (m) {
+            const tag = ENW_TAG[m[1].toUpperCase()] || ENW_TAG[m[1]];
+            let val = m[2].trim();
+            if (m[1] === '0') { cur = {}; records.push(cur); }
+            if (!cur) { cur = {}; records.push(cur); }
+            if (!tag) { lastTag = null; continue; }
+            if (tag === 'TY') val = ENW_TYPE[val.toLowerCase()] || 'JOUR';
+            (cur[tag] = cur[tag] || []).push(val);
+            lastTag = tag;
+        } else if (!line.trim()) {
+            cur = null; lastTag = null;      // 빈 줄이 레코드 구분
+        } else if (cur && lastTag) {
+            const arr = cur[lastTag];
+            arr[arr.length - 1] += ' ' + line.trim();
+        }
+    }
+    // 학위논문인데 %9 에 '석사'/'박사'가 있으면 유형을 바로잡는다
+    records.forEach(r => {
+        const m3 = (r.M3 || []).join(' ');
+        if (/학위|석사|박사|thesis|dissertation/i.test(m3)) r.TY = ['THES'];
+    });
+    return records.filter(r => Object.keys(r).length);
+}
+
+// 파일 내용을 보고 형식을 알아서 고른다
+function parseBibFile(text) {
+    if (/^\s*%[0A-Z]\s/m.test(text) && !/^\s*TY\s\s-/m.test(text)) return parseENW(text);
+    return parseRIS(text);
+}
+
 // RIS 원문 → 레코드 배열 [{TY:'JOUR', AU:['박은하'], TI:'제목', ...}]
 function parseRIS(text) {
     const records = [];
@@ -5801,7 +5852,7 @@ async function importRisFile(file) {
     let recs;
     try {
         const text = await readTextSmart(file);
-        recs = parseRIS(text).map(risToPaper).filter(p => p.title);
+        recs = parseBibFile(text).map(risToPaper).filter(p => p.title);
     } catch (err) {
         pushDebug('warn', `RIS 읽기 실패: ${err.message}`);
         showToast('파일을 읽지 못했어요', 'error');
@@ -6880,7 +6931,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260817p';
+        const miniUrl = 'mini.html?v=20260817q';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
