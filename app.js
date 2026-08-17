@@ -1255,7 +1255,7 @@ function renderReferences(container) {
         // 기울임 + 내어쓰기(APA 필수, 0.5인치=36pt)만 싣는다. 글꼴·글자크기는 싣지 않아
         // 문서의 글자 모양은 그대로 두고 한글이 커서 위치 서식을 물려받게 한다.
         const html = `<div>${parts.map(p =>
-            `<p style="text-indent:-36pt;margin-left:36pt">${p.html}</p>`).join('')}</div>`;
+            `<p style="margin-left:.5in;text-indent:-.5in">${p.html}</p>`).join('')}</div>`;
         const ok = await copyRich(html, text);
         showToast(ok ? `${picked.length}편 복사됐습니다 — 한글/워드에 붙여넣으면 기울임까지 들어갑니다.` : '복사 실패', ok ? 'success' : 'error');
     });
@@ -2090,7 +2090,9 @@ function matchManuscript(bodyText, refsText, refChunksIn) {
         // 따로 붙여넣었으면 본문 쪽에 목록이 섞여 있어도 잘라낸다(전체를 붙인 경우 대비)
         body = stripReferenceSection(body).body;
     } else {
-        const sp = stripReferenceSection(body);
+        let sp = stripReferenceSection(body);
+        if (!sp.refs) sp = splitRefsLoose(body);     // 제목이 줄 혼자 없을 때
+        if (!sp.refs) sp = splitRefsByShape(body);   // 제목이 아예 없을 때
         body = sp.body; refs = sp.refs; cutAt = sp.cutAt;
     }
     // ① 본문에서 뽑은 인용 (같은 문헌 중복 제거)
@@ -2231,7 +2233,8 @@ function openManuscriptMatch() {
             return;
         }
         let sp = stripReferenceSection(text);
-        if (!sp.refs) sp = splitRefsLoose(text);   // 제목이 줄 혼자 없을 때
+        if (!sp.refs) sp = splitRefsLoose(text);     // 제목이 줄 혼자 없을 때
+        if (!sp.refs) sp = splitRefsByShape(text);   // 제목이 아예 없을 때
         ta1.value = sp.body || text;
         ed2.textContent = sp.refs || '';       // .ms-rich 는 pre-wrap 이라 줄바꿈이 그대로 보인다
         ta1.dispatchEvent(new Event('input'));
@@ -2327,14 +2330,19 @@ function renderManuscriptResult(ov, res) {
         const tagHtml = tags.length && tags[0] !== '원본 서식 유지'
             ? `<span class="ms-tag" title="${escHtml(tags.join(' · '))} — 눌러서 원문 보기">고침</span>`
             : '';
-        return `<div class="ms-fixrow${unCited.has(i) ? ' un' : ''}" data-i="${i}">
-            <label class="ms-fixchk" title="이 항목을 목록에서 뺍니다"><input type="checkbox" data-i="${i}"></label>
+        // 연도 괄호가 없는 줄은 참고문헌이 아니다(영문 초록 제목·게재정보·쪽머리말 등).
+        // 지우지는 않는다 — 앱이 잘못 봤을 수도 있으니 보여주고 **미리 빼둔** 상태로 둔다.
+        const notRef = !/\(\s*(19|20)\d{2}[a-z]?\s*\)/.test(ch.text);
+        const cls = ['ms-fixrow', unCited.has(i) ? 'un' : '', notRef ? 'notref off' : ''].filter(Boolean).join(' ');
+        return `<div class="${cls}" data-i="${i}">
+            <label class="ms-fixchk" title="이 항목을 목록에서 뺍니다"><input type="checkbox" data-i="${i}"${notRef ? ' checked' : ''}></label>
             <div class="ms-fixmain">
                 <div class="ms-fixtext" contenteditable="true" spellcheck="false">${html}</div>
                 <div class="ms-fixtags" title="눌러서 원문과 견주기">${tagHtml}</div>
                 <div class="ms-fixdiff" hidden><b>원문</b> ${escHtml(tidy.orig)}</div>
             </div>
-            ${unCited.has(i) ? '<span class="ms-fixbadge">인용 없음</span>' : ''}
+            ${notRef ? '<span class="ms-fixbadge">참고문헌 아님 · 빼둠</span>'
+                     : (unCited.has(i) ? '<span class="ms-fixbadge">인용 없음</span>' : '')}
         </div>`;
     }).join('');
 
@@ -2381,6 +2389,9 @@ function renderManuscriptResult(ov, res) {
                 <span class="ms-steps-note">
                     복사한 뒤 한글에서 <b>Ctrl+V</b> → 「HTML 문서 붙이기」 창이 뜨면 <b>「원본 형식 유지」</b>를
                     고르세요. 기울임이 그대로 들어갑니다 (「텍스트 형식으로 붙이기」는 기울임이 사라집니다).
+                    <b>둘째 줄 들여쓰기(내어쓰기)가 안 들어갔으면</b> 붙여넣은 부분을 선택하고
+                    <b>Alt+T</b>(문단 모양) → 「들여쓰기/내어쓰기」에서 <b>내어쓰기</b>를 한 번 지정하세요.
+                    한글 버전에 따라 앱이 보낸 문단 여백을 무시합니다.
                     「참고문헌」 화면의 복사 버튼과 <b>똑같은 방식</b>이라 폰트·글자크기는 앱이 건드리지 않고
                     한글이 커서 위치의 서식을 물려받습니다.
                 </span>
@@ -2589,9 +2600,10 @@ function renderManuscriptResult(ov, res) {
         // 「참고문헌」 화면의 복사(btn-copy-all-refs)와 **똑같은 모양**으로 싣는다.
         // 기울임만 넣고 문단 서식(내어쓰기·여백·글꼴)은 넣지 않는다 —
         // 넣으면 그 블록만 문서와 다른 모양이 되므로 한글이 커서 위치 서식을 물려받게 둔다.
-        // APA 는 둘째 줄부터 0.5인치(36pt) 내어쓰기가 필수다. 원본 논문에도 들어가 있다.
+        // APA 는 둘째 줄부터 0.5인치 내어쓰기가 필수다. 원본 논문에도 들어가 있다.
+        // pt 단위로는 한글이 무시했으므로 워드가 쓰는 인치 표기로 바꿔 본다.
         // 글꼴·글자크기는 여전히 싣지 않으므로 문서의 글자 모양은 바뀌지 않는다.
-        const HANG = 'text-indent:-36pt;margin-left:36pt';
+        const HANG = 'margin-left:.5in;text-indent:-.5in';
         const html = `<div>${items.map(x => `<p style="${HANG}">${x.html}</p>`).join('')}</div>`;
         const itCount = (html.match(/<i style="font-style:italic">/g) || []).length;
         pushDebug('info', `목록 복사 — ${items.length}편 / 기울임 ${itCount}군데 / html ${html.length}자`);
@@ -6606,6 +6618,33 @@ function trimAfterRefs(refsText) {
     return s;
 }
 
+// 제목이 **아예 없는** 문서를 위한 마지막 방법 — 목록의 「모양」으로 시작 지점을 찾는다.
+// 실측: 학술지 논문(대구한의대 2018)은 「참고문헌」이라는 글자가 문서에 한 번도 없고
+// 목록이 그냥 시작한다. 제목을 찾는 두 방법이 다 실패하므로 모양으로 찾아야 한다.
+//   판단 기준 = 「이름 (연도).」 으로 시작하는 줄이 뒤쪽에서 촘촘히 몰려 있는 자리.
+function splitRefsByShape(text) {
+    const lines = String(text || '').split(/\r?\n/);
+    const looksRef = l => {
+        const t = String(l || '').trim();
+        return t.length >= 20 && /^[^()]{2,60}\(\s*(19|20)\d{2}[a-z]?\s*\)/.test(t);
+    };
+    const WIN = 10, NEED = 5;               // 열 줄 중 다섯 줄이면 목록으로 본다
+    const from = Math.floor(lines.length * 0.35);
+    for (let i = from; i < lines.length - NEED; i++) {
+        if (!looksRef(lines[i])) continue;
+        let hit = 0;
+        for (let j = i; j < Math.min(i + WIN, lines.length); j++) if (looksRef(lines[j])) hit++;
+        if (hit >= NEED) {
+            return {
+                body: lines.slice(0, i).join('\n'),
+                refs: lines.slice(i).join('\n'),
+                cutAt: '제목이 없어 목록 모양으로 찾음',
+            };
+        }
+    }
+    return { body: text, refs: '', cutAt: null };
+}
+
 // 「참고문헌」 제목이 줄 혼자 서 있지 않은 경우(PDF 에서 흔함)의 예비 분리.
 // stripReferenceSection 이 실패했을 때만 쓴다 — 뒤쪽에서, 바로 뒤에 연도 괄호가
 // 따라오는 자리만 목록 시작으로 인정한다(본문 중의 「참고문헌」 언급을 피하려고).
@@ -7988,7 +8027,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260819a';
+        const miniUrl = 'mini.html?v=20260819b';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {

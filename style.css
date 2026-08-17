@@ -3729,6 +3729,8 @@ body {
 .ms-row.done > .ms-sub,
 .ms-row.done > b { opacity: .45; }
 .ms-fixrow.added { border-color: var(--accent); border-left-width: 3px; }
+/* 참고문헌이 아닌 줄 — 보여주되 미리 빼둔다 */
+.ms-fixrow.notref { border-style: dashed; }
 .ms-tag.add { color: #fff; background: var(--accent); }
 .ms-tag.fix { color: #fff; background: var(--warning); border-color: var(--warning); }
 /* 채워 넣어야 할 빈칸 */
