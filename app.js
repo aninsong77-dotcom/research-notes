@@ -6931,7 +6931,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260817q';
+        const miniUrl = 'mini.html?v=20260817r';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
@@ -7119,10 +7119,21 @@ function bindEvents() {
         const f = e.target.files[0];
         e.target.value = '';
         if (!f) return;
-        // 한 버튼으로 두 가지를 받는다 — 앱 백업(.json)과 도서관 서지정보(.ris)
-        if (/\.(ris|txt|nbib|enw)$/i.test(f.name)) importRisFile(f);
-        else if (/\.json$/i.test(f.name))          importData(f);
-        else showToast('읽을 수 없는 형식이에요. 백업 파일(.json) 또는 서지정보 파일(.ris)을 골라주세요.', 'error');
+        // 한 버튼으로 두 가지를 받는다 — 앱 백업(JSON)과 도서관 서지정보(RIS·엔드노트).
+        // ⚠️ 확장자로 판단하면 도서관마다 .txt·.ciw·확장자 없음 등으로 내려줘서 빗나간다.
+        //    파일 내용 앞부분을 보고 고른다.
+        (async () => {
+            let head = '';
+            try { head = (await readTextSmart(f)).slice(0, 3000); }
+            catch (err) { showToast('파일을 읽지 못했어요', 'error'); return; }
+
+            if (/^\s*[{[]/.test(head))                       importData(f);            // 앱 백업
+            else if (/^\s*TY\s\s-/m.test(head) || /^\s*%[0A-Z]\s/m.test(head)) importRisFile(f);  // 서지정보
+            else {
+                pushDebug('warn', `가져오기 — 형식을 알 수 없음: ${f.name} / 앞부분: ${head.slice(0, 80)}`);
+                showToast('읽을 수 없는 형식이에요. 🐞 디버그에 파일 앞부분을 남겼습니다.', 'error');
+            }
+        })();
     });
 
     // 논문 추가 — 통합 모달
