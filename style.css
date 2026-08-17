@@ -3724,7 +3724,10 @@ body {
 .ms-mini.ghost { color: var(--text-secondary); background: transparent; border-color: var(--border); }
 .ms-mini:disabled { cursor: default; opacity: .5; }
 .ms-pick { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 5px; }
-.ms-row.done { opacity: .5; }
+/* 처리한 줄은 글만 흐리게 — 되돌리기 단추는 또렷해야 누를 수 있다 */
+.ms-row.done > div:not(.ms-pick),
+.ms-row.done > .ms-sub,
+.ms-row.done > b { opacity: .45; }
 .ms-fixrow.added { border-color: var(--accent); border-left-width: 3px; }
 .ms-tag.add { color: #fff; background: var(--accent); }
 .ms-tag.fix { color: #fff; background: var(--warning); border-color: var(--warning); }

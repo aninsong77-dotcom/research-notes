@@ -2278,8 +2278,6 @@ function citeToRefHtml(c) {
     };
 }
 
-function escapeRe(x) { return String(x).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
-
 function renderManuscriptResult(ov, res) {
     const cite = c => `<div class="ms-row"><b>${escHtml(c.name)} (${escHtml(c.year + c.suffix)})</b>
         <span class="ms-sub">${escHtml(c.raw)}</span></div>`;
@@ -2471,58 +2469,106 @@ function renderManuscriptResult(ov, res) {
     };
     let leftAdd = res.toAdd.length, leftCk = res.check.length;
 
-    // ── 「목록에 없음」 → 완성본 목록에 넣기 ──────────────────
+    // ── 「목록에 없음」 → 완성본 목록에 넣기 (다시 누르면 되돌린다) ──
+    const addedRows = new Map();
     const addList = body.querySelector('#ms-addlist');
     if (addList) addList.addEventListener('click', e => {
         const btn = e.target.closest('button[data-add]');
-        if (!btn || btn.disabled) return;
-        const c = res.toAdd[+btn.dataset.add];
+        if (!btn) return;
+        const key = btn.dataset.add;
+        const c = res.toAdd[+key];
         if (!c) return;
-        const made = citeToRefHtml(c);
-        const row = document.createElement('div');
-        row.className = 'ms-fixrow added';
-        row.dataset.i = 'new-' + btn.dataset.add;
-        row.innerHTML = `<label class="ms-fixchk" title="이 항목을 목록에서 뺍니다"><input type="checkbox"></label>
-            <div class="ms-fixmain">
-                <div class="ms-fixtext" contenteditable="true" spellcheck="false">${made.html}</div>
-                <div class="ms-fixtags"><span class="ms-tag add">넣음 · ${escHtml(made.from)}</span></div>
-                <div class="ms-fixdiff" hidden><b>본문 인용</b> ${escHtml(c.raw)}</div>
-            </div>`;
-        fixList.appendChild(row);
-        btn.closest('.ms-row-act').classList.add('done');
-        btn.textContent = '✔ 넣었습니다';
-        btn.disabled = true;
-        leftAdd--; tabCount('add', leftAdd);
+        const wrap = btn.closest('.ms-row-act');
+
+        if (addedRows.has(key)) {                     // ── 되돌리기
+            addedRows.get(key).remove();
+            addedRows.delete(key);
+            wrap.classList.remove('done');
+            btn.textContent = '＋ 목록에 넣기';
+            btn.classList.remove('ghost');
+            leftAdd++;
+            showToast('목록에서 다시 뺐습니다', 'info');
+        } else {                                      // ── 넣기
+            const made = citeToRefHtml(c);
+            const row = document.createElement('div');
+            row.className = 'ms-fixrow added';
+            row.dataset.i = 'new-' + key;
+            row.innerHTML = `<label class="ms-fixchk" title="이 항목을 목록에서 뺍니다"><input type="checkbox"></label>
+                <div class="ms-fixmain">
+                    <div class="ms-fixtext" contenteditable="true" spellcheck="false">${made.html}</div>
+                    <div class="ms-fixtags"><span class="ms-tag add">넣음 · ${escHtml(made.from)}</span></div>
+                    <div class="ms-fixdiff" hidden><b>본문 인용</b> ${escHtml(c.raw)}</div>
+                </div>`;
+            fixList.appendChild(row);
+            addedRows.set(key, row);
+            wrap.classList.add('done');
+            btn.textContent = '↩ 되돌리기';
+            btn.classList.add('ghost');
+            leftAdd--;
+            showToast(made.from === '내 논문에서 가져옴'
+                ? '내 논문 정보로 완성해 넣었습니다' : '뼈대를 넣었습니다 — 「고쳐진 목록」에서 채워주세요',
+                'success');
+        }
+        tabCount('add', leftAdd);
         tabCount('fix', fixRowsEl().length);
         updateCount();
-        showToast(made.from === '내 논문에서 가져옴'
-            ? '내 논문 정보로 완성해 넣었습니다' : '뼈대를 넣었습니다 — 「고쳐진 목록」에서 채워주세요',
-            'success');
     });
 
-    // ── 「확인해 보세요」 → 맞는 쪽을 골라 목록에 반영 ─────────
+    // ── 「확인해 보세요」 → 맞는 쪽을 골라 목록에 반영 (되돌리기 있음) ──
+    const ckPrev = new Map();
     const ckList = body.querySelector('#ms-cklist');
     if (ckList) ckList.addEventListener('click', e => {
         const btn = e.target.closest('button[data-ck]');
-        if (!btn || btn.disabled) return;
-        const x = res.check[+btn.dataset.ck];
+        if (!btn) return;
+        const key = btn.dataset.ck;
+        const x = res.check[+key];
         if (!x) return;
         const wrap = btn.closest('.ms-row-pair');
-        if (btn.dataset.side === 'cite') {
+        const side = btn.dataset.side;
+
+        if (side === 'undo') {
+            const saved = ckPrev.get(key);
+            if (saved && saved.el) {
+                saved.el.innerHTML = saved.html;
+                const t = saved.el.parentElement.querySelector('.ms-tag.fix');
+                if (t) t.remove();
+            }
+            ckPrev.delete(key);
+            wrap.classList.remove('done');
+            wrap.querySelector('.ms-pick').innerHTML = pickButtons(x, key);
+            leftCk++; tabCount('ck', leftCk);
+            showToast('되돌렸습니다', 'info');
+            return;
+        }
+
+        if (side === 'cite') {
             const target = fixList.querySelector(`.ms-fixrow[data-i="${x.ref.ci}"] .ms-fixtext`);
-            if (!target) { showToast('목록에서 그 항목을 못 찾았습니다', 'warn'); return; }
-            let h = target.innerHTML;
-            if (x.ref.name !== x.cite.name) h = h.replace(new RegExp(escapeRe(x.ref.name), 'g'), x.cite.name);
-            if (x.ref.year !== x.cite.year) h = h.replace(new RegExp(escapeRe(x.ref.year), 'g'), x.cite.year);
+            if (!target) { showToast('목록에서 그 항목을 못 찾았습니다 — 이미 뺐거나 앱이 못 읽은 항목입니다', 'warn'); return; }
+            const before = target.innerHTML;
+            // ⚠️ 종류에 맞는 것만 바꾼다. 이름·연도를 둘 다 바꾸려 하면 멀쩡한 쪽을 망가뜨린다
+            //    (adler ↔ Adler 처럼 대소문자만 다르면 목록을 거꾸로 소문자로 만들었다).
+            //    연도는 「(2006)」 괄호 형태만 바꾼다 — 제목·쪽수의 숫자까지 바뀌면 안 된다.
+            let h = before;
+            if (x.kind === '철자')      h = h.split(x.ref.name).join(x.cite.name);
+            else if (x.kind === '연도') h = h.split('(' + x.ref.year + ')').join('(' + x.cite.year + ')');
+            if (h === before) {
+                showToast('바꿀 글자를 목록 항목에서 못 찾았습니다 — 그 줄을 직접 고쳐주세요', 'warn');
+                return;
+            }
             target.innerHTML = h;
+            ckPrev.set(key, { el: target, html: before });
             const tg = target.parentElement.querySelector('.ms-fixtags');
             if (tg && !tg.querySelector('.ms-tag.fix')) tg.insertAdjacentHTML('afterbegin', '<span class="ms-tag fix">오타 고침</span>');
-            showToast(`목록을 본문에 맞춰 고쳤습니다 — ${x.ref.name} → ${x.cite.name}`, 'success');
+            showToast('목록을 고쳤습니다 — ' + (x.kind === '연도'
+                ? x.ref.year + ' → ' + x.cite.year
+                : x.ref.name + ' → ' + x.cite.name), 'success');
         } else {
+            ckPrev.set(key, null);
             showToast('목록을 그대로 둡니다', 'info');
         }
         wrap.classList.add('done');
-        wrap.querySelectorAll('button[data-ck]').forEach(b => b.disabled = true);
+        wrap.querySelector('.ms-pick').innerHTML =
+            `<button type="button" class="ms-mini ghost" data-ck="${key}" data-side="undo">↩ 되돌리기</button>`;
         leftCk--; tabCount('ck', leftCk);
     });
 
@@ -7942,7 +7988,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260818w';
+        const miniUrl = 'mini.html?v=20260819a';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
