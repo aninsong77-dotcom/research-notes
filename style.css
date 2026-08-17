@@ -3537,8 +3537,17 @@ body {
 
 /* ══ 사용법 — 좌측 목차 + 우측 본문 2단 ═════════════════════ */
 #modal-help .modal-large { max-width: 1020px; width: 94%; }
+
+/* 제목줄(닫기 ✕ 포함)을 위에 고정 — 닫으려고 다시 스크롤 올릴 필요 없게.
+   .modal 이 실제 스크롤 컨테이너라 그 안에서 sticky 가 걸린다. */
+#modal-help .modal-header {
+    position: sticky; top: 0; z-index: 6;
+    background: var(--surface);
+    padding-top: 18px; padding-bottom: 14px; margin-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+}
 .help-layout { display: grid; grid-template-columns: 186px 1fr; gap: 30px; align-items: start; }
-.help-side { position: sticky; top: 0; }
+.help-side { position: sticky; top: 62px; }   /* 고정된 제목줄 아래에 붙는다 */
 .help-main { min-width: 0; }
 
 .help-toc { display: flex; flex-direction: column; gap: 2px; }
@@ -3569,7 +3578,7 @@ body {
 @media (prefers-reduced-motion: reduce) {
     .help-section.help-jump { animation: none; outline: 2px solid var(--accent); }
 }
-.help-section { scroll-margin-top: 58px; }
+.help-section { scroll-margin-top: 74px; }   /* 목차로 이동할 때 제목줄에 안 가리게 */
 
 /* 자료 유형별로 보였다 숨었다 하는 칸 — 기본은 숨김(JS applyItemTypeUI 가 켠다) */
 .apa-x { display: none; }
