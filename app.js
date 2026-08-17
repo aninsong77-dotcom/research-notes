@@ -2253,15 +2253,53 @@ function openManuscriptMatch() {
     };
 }
 
+// 본문 인용 한 건을 참고문헌 항목으로 만든다.
+// 앱 서랍(내 논문 목록)에 같은 문헌이 있으면 완성된 APA 로, 없으면 채워 넣을 뼈대로.
+function citeToRefHtml(c) {
+    // ① 앱 서랍에서 찾기 — 첫 저자 성 + 연도가 맞는 논문
+    const found = (state.papers || []).find(p => {
+        if (String(p.year || '') !== String(c.year)) return false;
+        const first = splitAuthors(p.authors || '')[0] || '';
+        return nameEq(normalizeCiteName(first) || first, c.name);
+    });
+    if (found) return { html: formatAPAParts(found).html, from: '내 논문에서 가져옴' };
+
+    // ② 뼈대 — 본문 인용에서 저자와 연도만 건져 쓴다
+    const names = String(c.raw || '')
+        .replace(/^[^(]*\(/, '').replace(/\)[^)]*$/, '')   // 괄호 안만
+        .replace(/\d{4}[a-z]?\.?/g, '').replace(/[,\s]+$/, '')
+        .replace(/\s*(외|등|et al\.?)\s*$/i, ' 외').trim() || c.name;
+    return {
+        html: `${escHtml(names)} (${escHtml(c.year + c.suffix)}). `
+            + `<span class="ms-blank">제목을 넣으세요</span>. `
+            + `<i style="font-style:italic"><span class="ms-blank">학술지명</span>, <span class="ms-blank">권</span></i>`
+            + `(<span class="ms-blank">호</span>), <span class="ms-blank">쪽\u2013쪽</span>.`,
+        from: '직접 채워 넣으세요',
+    };
+}
+
+function escapeRe(x) { return String(x).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
 function renderManuscriptResult(ov, res) {
     const cite = c => `<div class="ms-row"><b>${escHtml(c.name)} (${escHtml(c.year + c.suffix)})</b>
         <span class="ms-sub">${escHtml(c.raw)}</span></div>`;
-    const KIND_LABEL = { '철자': '철자 다름', '연도': '연도 다름', '표기': '한글·영문 표기 차이 (오류 아닐 수 있음)' };
-    const pair = x => `<div class="ms-row ms-row-pair">
+    // 「목록에 없음」 — 눌러서 완성본 목록에 넣는다
+    const citeAdd = (c, i) => `<div class="ms-row ms-row-act" data-add="${i}">
+        <div><b>${escHtml(c.name)} (${escHtml(c.year + c.suffix)})</b>
+        <span class="ms-sub">${escHtml(c.raw)}</span></div>
+        <button type="button" class="ms-mini" data-add="${i}">＋ 목록에 넣기</button>
+    </div>`;
+    // 「확인해 보세요」 — 어느 쪽이 맞는지 골라 목록에 반영한다
+    const pairPick = (x, i) => `<div class="ms-row ms-row-pair" data-ck="${i}">
         <b>${escHtml(KIND_LABEL[x.kind] || x.kind)}</b>
         <span class="ms-sub"><i>본문</i> ${escHtml(x.cite.name)} (${escHtml(x.cite.year + x.cite.suffix)}) &nbsp;·&nbsp; ${escHtml(x.cite.raw)}</span>
         <span class="ms-sub"><i>목록</i> ${escHtml(x.ref.name)} (${escHtml(x.ref.year + x.ref.suffix)}) &nbsp;·&nbsp; ${escHtml(x.ref.raw)}</span>
+        <div class="ms-pick">
+            <button type="button" class="ms-mini" data-ck="${i}" data-side="cite">본문이 맞음 → 목록 고치기</button>
+            <button type="button" class="ms-mini ghost" data-ck="${i}" data-side="ref">목록이 맞음 (그대로)</button>
+        </div>
     </div>`;
+    const KIND_LABEL = { '철자': '철자 다름', '연도': '연도 다름', '표기': '한글·영문 표기 차이 (오류 아닐 수 있음)' };
 
     const body = ov.querySelector('#ms-body');
     const noRefs = !res.hasRefs;
@@ -2319,7 +2357,7 @@ function renderManuscriptResult(ov, res) {
 
         <div class="ms-pane" data-pane="add">
             <div class="ms-pane-note">본문에서 인용했는데 <b>참고문헌 목록에 없습니다.</b> APA 에서는 인용한 문헌이 목록에 반드시 있어야 하므로, 이쪽은 채워 넣으셔야 합니다.</div>
-            <div class="ms-plist">${res.toAdd.map(cite).join('') || '<div class="ms-empty">없음 — 인용한 문헌이 목록에 모두 있습니다</div>'}</div>
+            <div class="ms-plist" id="ms-addlist">${res.toAdd.map(citeAdd).join('') || '<div class="ms-empty">없음 — 인용한 문헌이 목록에 모두 있습니다</div>'}</div>
         </div>
         <div class="ms-pane" data-pane="rm" hidden>
             <div class="ms-pane-note">목록에는 있는데 <b>본문에서 인용되지 않았습니다.</b>
@@ -2330,13 +2368,14 @@ function renderManuscriptResult(ov, res) {
         <div class="ms-pane" data-pane="ck" hidden>
             <div class="ms-pane-note">본문과 목록이 <b>비슷한데 정확히 다릅니다.</b> 어느 쪽이 맞는지 확인해 고치세요.
                 단 <b>「한글·영문 표기 차이」는 번역서에서 정상</b>일 수 있으니 그대로 두셔도 됩니다.</div>
-            <div class="ms-plist">${res.check.map(pair).join('') || '<div class="ms-empty">없음</div>'}</div>
+            <div class="ms-plist" id="ms-cklist">${res.check.map(pairPick).join('') || '<div class="ms-empty">없음</div>'}</div>
         </div>
         <div class="ms-pane" data-pane="fix" hidden>
             <div class="ms-pane-note">
                 붙여넣은 목록 <b>그대로</b>입니다. <b>뺄 항목에 체크</b>하고, 글자는 <b>직접 눌러 고칠 수도</b> 있습니다.
                 <b>APA 서식을 적용하고 가나다·알파벳 순으로 정렬해 두었습니다.</b>
                 글자는 직접 눌러 고칠 수 있고, <span class="ms-tag">고침</span> 을 누르면 원문과 견줘 볼 수 있습니다.
+                다른 탭에서 <b>「＋ 목록에 넣기」·「본문이 맞음」</b>을 누르면 그 결과가 여기로 들어옵니다.
                 다 되면 아래 복사 버튼으로 논문에 붙여넣으세요.
                 <span class="ms-steps-note">
                     복사한 뒤 한글에서 <b>Ctrl+V</b> → 「HTML 문서 붙이기」 창이 뜨면 <b>「원본 형식 유지」</b>를
@@ -2423,6 +2462,66 @@ function renderManuscriptResult(ov, res) {
     };
     updateCount();
 
+    const tabCount = (pane, n) => {
+        const sp = body.querySelector(`.ms-tab[data-pane="${pane}"] span`);
+        if (sp) sp.textContent = n;
+    };
+    let leftAdd = res.toAdd.length, leftCk = res.check.length;
+
+    // ── 「목록에 없음」 → 완성본 목록에 넣기 ──────────────────
+    const addList = body.querySelector('#ms-addlist');
+    if (addList) addList.addEventListener('click', e => {
+        const btn = e.target.closest('button[data-add]');
+        if (!btn || btn.disabled) return;
+        const c = res.toAdd[+btn.dataset.add];
+        if (!c) return;
+        const made = citeToRefHtml(c);
+        const row = document.createElement('div');
+        row.className = 'ms-fixrow added';
+        row.dataset.i = 'new-' + btn.dataset.add;
+        row.innerHTML = `<label class="ms-fixchk" title="이 항목을 목록에서 뺍니다"><input type="checkbox"></label>
+            <div class="ms-fixmain">
+                <div class="ms-fixtext" contenteditable="true" spellcheck="false">${made.html}</div>
+                <div class="ms-fixtags"><span class="ms-tag add">넣음 · ${escHtml(made.from)}</span></div>
+                <div class="ms-fixdiff" hidden><b>본문 인용</b> ${escHtml(c.raw)}</div>
+            </div>`;
+        fixList.appendChild(row);
+        btn.closest('.ms-row-act').classList.add('done');
+        btn.textContent = '✔ 넣었습니다';
+        btn.disabled = true;
+        leftAdd--; tabCount('add', leftAdd);
+        updateCount();
+        showToast(made.from === '내 논문에서 가져옴'
+            ? '내 논문 정보로 완성해 넣었습니다' : '뼈대를 넣었습니다 — 「고쳐진 목록」에서 채워주세요',
+            'success');
+    });
+
+    // ── 「확인해 보세요」 → 맞는 쪽을 골라 목록에 반영 ─────────
+    const ckList = body.querySelector('#ms-cklist');
+    if (ckList) ckList.addEventListener('click', e => {
+        const btn = e.target.closest('button[data-ck]');
+        if (!btn || btn.disabled) return;
+        const x = res.check[+btn.dataset.ck];
+        if (!x) return;
+        const wrap = btn.closest('.ms-row-pair');
+        if (btn.dataset.side === 'cite') {
+            const target = fixList.querySelector(`.ms-fixrow[data-i="${x.ref.ci}"] .ms-fixtext`);
+            if (!target) { showToast('목록에서 그 항목을 못 찾았습니다', 'warn'); return; }
+            let h = target.innerHTML;
+            if (x.ref.name !== x.cite.name) h = h.replace(new RegExp(escapeRe(x.ref.name), 'g'), x.cite.name);
+            if (x.ref.year !== x.cite.year) h = h.replace(new RegExp(escapeRe(x.ref.year), 'g'), x.cite.year);
+            target.innerHTML = h;
+            const tg = target.parentElement.querySelector('.ms-fixtags');
+            if (tg && !tg.querySelector('.ms-tag.fix')) tg.insertAdjacentHTML('afterbegin', '<span class="ms-tag fix">오타 고침</span>');
+            showToast(`목록을 본문에 맞춰 고쳤습니다 — ${x.ref.name} → ${x.cite.name}`, 'success');
+        } else {
+            showToast('목록을 그대로 둡니다', 'info');
+        }
+        wrap.classList.add('done');
+        wrap.querySelectorAll('button[data-ck]').forEach(b => b.disabled = true);
+        leftCk--; tabCount('ck', leftCk);
+    });
+
     // 남긴 항목만 모은다. 사용자가 칸에서 직접 고친 내용이 그대로 반영된다.
     const collectFix = () => fixRowsEl()
         .filter(r => !r.querySelector('input').checked)
@@ -2435,6 +2534,8 @@ function renderManuscriptResult(ov, res) {
     body.querySelector('#ms-fix-rich').onclick = async () => {
         const items = collectFix();
         if (!items.length) { showToast('남은 항목이 없습니다', 'warn'); return; }
+        const blanks = fixList.querySelectorAll('.ms-fixrow:not(.off) .ms-blank').length;
+        if (blanks && !confirm('아직 채우지 않은 빈칸이 ' + blanks + '군데 있습니다. 그대로 복사할까요?')) return;
         // 「참고문헌」 화면의 복사(btn-copy-all-refs)와 **똑같은 모양**으로 싣는다.
         // 기울임만 넣고 문단 서식(내어쓰기·여백·글꼴)은 넣지 않는다 —
         // 넣으면 그 블록만 문서와 다른 모양이 되므로 한글이 커서 위치 서식을 물려받게 둔다.
@@ -7824,7 +7925,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260818t';
+        const miniUrl = 'mini.html?v=20260818u';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
