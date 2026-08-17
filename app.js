@@ -1943,10 +1943,37 @@ function renderManuscriptResult(ov, res) {
         </div>
 
         <div class="ms-foot">
+            <button type="button" class="btn-secondary" id="ms-copy" title="결과를 글자로 복사 — 문의할 때 붙여넣기">결과 복사</button>
             <button type="button" class="btn-secondary" id="ms-back">다시 붙여넣기</button>
             <button type="button" class="btn-primary" id="ms-apply">본문에 맞춰 목록 만들기 (${res.cited.length}편)</button>
         </div>`;
 
+    // 결과를 글자로 복사 — 왜 이렇게 나왔는지 물어볼 때 그대로 붙여넣을 수 있게
+    ov.querySelector('#ms-copy').onclick = async () => {
+        const line = c => `  - ${c.name} (${c.year}${c.suffix})  |  ${c.raw}`;
+        const txt = [
+            `[본문과 참고문헌 맞추기 결과]`,
+            `본문 인용 ${res.cites.length}개 / 문서 목록 ${res.refEntries.length}편`
+            + ` / 목록 찾음:${res.hasRefs ? (res.cutAt || '따로 붙여넣음') : '못 찾음'}`,
+            ``,
+            `➕ 목록에 넣어야 할 것 (${res.toAdd.length})`,
+            ...res.toAdd.map(line),
+            ``,
+            `➖ 목록에서 빼야 할 것 (${res.toRemove.length})`,
+            ...res.toRemove.map(line),
+            ``,
+            `⚠️ 앱에 없는 인용 (${res.unknown.length})`,
+            ...res.unknown.map(line),
+            ``,
+            `[본문에서 찾은 인용 전체 ${res.cites.length}]`,
+            ...res.cites.map(line),
+            ``,
+            `[문서 목록에서 찾은 항목 전체 ${res.refEntries.length}]`,
+            ...res.refEntries.map(line),
+        ].join('\n');
+        const ok = await copyToClipboard(txt);
+        showToast(ok ? '결과를 복사했습니다 — 붙여넣어 보여주세요' : '복사 실패', ok ? 'success' : 'error');
+    };
     ov.querySelector('#ms-back').onclick = () => { ov.remove(); openManuscriptMatch(); };
     ov.querySelector('#ms-apply').onclick = async () => {
         const btn = ov.querySelector('#ms-apply');
@@ -7254,7 +7281,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260818a';
+        const miniUrl = 'mini.html?v=20260818b';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
