@@ -1729,10 +1729,13 @@ function extractReferenceEntries(refsText) {
     for (const c of chunks) {
         const m = c.match(/^(.{1,120}?)\s*\(\s*(\d{4})([a-z])?\s*\)/);
         if (!m) continue;
-        const people = splitAuthors(m[1]);
-        if (!people.length) continue;
-        const first = apaAuthorName(people[0]);
-        const name = first.split(',')[0].trim();
+        // 본문 인용과 같은 규칙으로 첫 저자의 성만 남긴다 — 그래야 서로 맞댈 수 있다.
+        // "Smith, J., & Jones, M." 처럼 APA 형식이면 쉼표 앞이 성이므로 그것을 먼저 쓴다.
+        let name = '';
+        const head = m[1];
+        const apaLike = /^[A-Za-z][A-Za-z''\-]+,\s*[A-Z]\./.test(head);
+        if (apaLike) name = head.split(',')[0].replace(/\.+$/, '').trim();
+        else         name = normalizeCiteName(head);
         if (!name) continue;
         out.push({ name, year: m[2], suffix: m[3] || '', raw: c.slice(0, 90) + (c.length > 90 ? '…' : '') });
     }
@@ -1747,21 +1750,51 @@ function sameCitation(a, b) {
     return x === y || x.startsWith(y) || y.startsWith(x);
 }
 
+// 인용에서 뽑은 이름 뭉치를 「첫 저자의 성」 하나로 정리한다.
+// 실제 석사논문으로 시험해 나온 오류를 근거로 만든 규칙:
+//  ① "확인하였고, 유미리(2008)" → 앞의 서술어를 이름으로 잡던 문제
+//     → 한글 후보가 5자 이상이거나 고·며·서·를·을·면 으로 끝나면 이름이 아니다.
+//       (은·이·가 는 김정은·이현이 처럼 실제 이름에 쓰이므로 제외하지 않는다)
+//  ② "(Robert W. Lundin, 2001)" ↔ 목록 "Lundin. (2001)" → 성이 아니라 이름을 잡던 문제
+//     → 쉼표 없는 영문 여러 낱말은 마지막 낱말(성)을 쓴다. 이니셜(한 글자)은 건너뛴다.
+//  ③ "승인번호:2022-02-040", "355(6331)" → 이름이 아닌 것
+//     → 숫자·콜론이 들어가면 버린다.
+//  ④ "Sweeney. (1998)" ↔ "(Sweeney, 1998)" → 끝의 마침표 때문에 안 맞던 문제 → 떼어낸다.
+const KO_NOT_NAME_END = /[고며서를을면]$/;
+
+function normalizeCiteName(raw) {
+    let n = String(raw || '').replace(/\s+/g, ' ').trim();
+    n = n.replace(/^[(\[「『·,]+/, '').replace(/[)\]」』]+$/, '').trim();
+    if (!n || /[:0-9]/.test(n)) return '';                       // ③ 숫자·콜론 → 이름 아님
+    n = n.replace(/\s*(?:등|외|et\s+al\.?|and\s+others)\s*$/i, '').trim();
+
+    // 여러 저자 → 조각으로 나눈 뒤 「이름다운」 첫 조각을 고른다
+    const parts = n.split(/\s*(?:·|;|&|,|\/|와\s|과\s|\band\b)\s*/).map(x => x.trim()).filter(Boolean);
+    const looksLikeName = x => {
+        const t = x.replace(/\s*(?:등|외|et\s+al\.?)\s*$/i, '').trim();
+        if (!t) return false;
+        if (/[가-힣]/.test(t)) return t.length <= 4 && !KO_NOT_NAME_END.test(t);   // ①
+        return /[A-Za-z]{2,}/.test(t);
+    };
+    let pick = parts.find(looksLikeName) || '';
+    if (!pick) return '';
+    pick = pick.replace(/\s*(?:등|외|et\s+al\.?)\s*$/i, '').trim();
+
+    // ② 영문이 여러 낱말이면 마지막 성을 쓴다 (이니셜은 건너뜀)
+    if (!/[가-힣]/.test(pick)) {
+        const words = pick.split(' ').map(w => w.replace(/\.$/, '')).filter(Boolean);
+        const real = words.filter(w => w.replace(/[^A-Za-z]/g, '').length >= 2);
+        if (real.length) pick = real[real.length - 1];
+        else pick = words[words.length - 1] || pick;
+    }
+    return pick.replace(/\.+$/, '').trim();                       // ④ 끝 마침표 제거
+}
+
 // 본문에서 인용을 뽑는다 → [{name:'홍길동', year:'2020', suffix:'a', raw:'(홍길동, 2020a)'}]
 function extractCitations(text) {
     const out = [];
-    // 저자가 여럿이면 **첫 저자**만 남긴다 — 참고문헌 목록도 첫 저자 기준이라 그래야 맞댈 수 있다.
-    //   (홍길동·김철수, 2020) → 홍길동 / (Smith & Jones, 2020) → Smith
-    const firstAuthorOf = raw => {
-        let n = String(raw || '').replace(/\s+/g, ' ').trim();
-        n = n.replace(/\s*(?:등|외|et\s+al\.?|and\s+others)\s*$/i, '').trim();
-        n = n.split(/\s*(?:·|;|&|,|\/|와\s|과\s|\band\b)\s*/)[0].trim();   // 첫 저자만
-        n = n.replace(/\s*(?:등|외|et\s+al\.?)\s*$/i, '').trim();
-        n = n.replace(/^[(\[「『]+|[)\]」』]+$/g, '').trim();
-        return n;
-    };
     const push = (name, year, suffix, raw) => {
-        const n = firstAuthorOf(name);
+        const n = normalizeCiteName(name);
         if (n && year) out.push({ name: n, year, suffix: suffix || '', raw });
     };
 
@@ -7281,7 +7314,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260818b';
+        const miniUrl = 'mini.html?v=20260818c';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
