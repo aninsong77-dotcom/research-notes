@@ -1699,7 +1699,12 @@ function formatInText(paper) {
 function stripReferenceSection(text) {
     const s = String(text || '');
     const lines = s.split(/\r?\n/);
-    const HEAD = /^\s*(?:[<\[【]?\s*)?(?:참\s*고\s*문\s*헌|인\s*용\s*문\s*헌|References?|REFERENCES|Bibliography)(?:\s*[>\]】]?)\s*$/i;
+    // 제목 앞에 붙는 장식·번호를 넉넉히 허용한다. 실측: 「■ 참 고 문 헌」 처럼
+    // 사각 글머리표가 붙어 있어 못 찾은 논문이 있었다. 「Ⅴ. 참고문헌」·「5. 참고문헌」도 같은 문제.
+    const DECO = String.raw`(?:[■□▪▶●○◆◇※#*<\[【(]|[0-9IVXⅠ-Ⅹ]+\s*[.)]|제?\s*\d+\s*장)`;
+    const HEAD = new RegExp(
+        String.raw`^\s*(?:${DECO}\s*)*(?:참\s*고\s*문\s*헌|인\s*용\s*문\s*헌|참\s*고\s*자\s*료|References?|REFERENCES|Bibliography)` +
+        String.raw`(?:\s*[>\]】)]?)\s*$`, 'i');
 
     // 뒤에서부터 찾는다 — 앞쪽 목차에 있는 「참고문헌」에 걸리지 않게.
     // 그 아래에 실제 목록으로 보이는 줄이 2개 이상 있을 때만 자른다.
@@ -8027,7 +8032,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260819b';
+        const miniUrl = 'mini.html?v=20260819c';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
