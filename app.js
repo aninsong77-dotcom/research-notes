@@ -5702,6 +5702,185 @@ async function lookupDOI() {
     }
 }
 
+// ══════════════════════════════════════════════════════════════
+// RIS 파일 읽기 — 도서관·RISS·KCI 의 「내보내기」로 받은 서지정보 파일.
+// 한 줄이 "이름표  - 값" 이고, ER 로 논문 한 편이 끝난다. 여러 편이 이어 붙어 있다.
+//   TY  - JOUR / AU  - 박은하 / TI  - 제목 / PY  - 2025 / ER  -
+// API 와 주는 내용은 같고 통로만 다르다(앱이 받아오는 대신 사용자가 파일로 들고 옴).
+// ══════════════════════════════════════════════════════════════
+
+// RIS 자료유형 → 앱의 자료 유형
+const RIS_TYPE = {
+    JOUR: 'journal', EJOUR: 'journal', CPAPER: 'journal', CONF: 'journal',
+    THES: 'thesis',
+    BOOK: 'book', EBOOK: 'book', SER: 'book',
+    CHAP: 'chapter', ECHAP: 'chapter',
+    RPRT: 'web', ELEC: 'web', WEB: 'web', GEN: 'journal',
+};
+
+// 한국 사이트의 RIS 는 EUC-KR 로 저장된 경우가 있어 글자가 깨진다.
+// UTF-8 로 읽어보고 깨짐 문자(U+FFFD)가 섞이면 EUC-KR 로 다시 읽는다.
+async function readTextSmart(file) {
+    const buf = await file.arrayBuffer();
+    let txt = new TextDecoder('utf-8').decode(buf);
+    if (txt.includes('�')) {
+        try {
+            const alt = new TextDecoder('euc-kr').decode(buf);
+            if (!alt.includes('�')) {
+                pushDebug('info', 'RIS: EUC-KR 로 다시 읽음');
+                return alt;
+            }
+        } catch (_) { /* 브라우저가 euc-kr 을 모르면 그대로 둔다 */ }
+    }
+    return txt;
+}
+
+// RIS 원문 → 레코드 배열 [{TY:'JOUR', AU:['박은하'], TI:'제목', ...}]
+function parseRIS(text) {
+    const records = [];
+    let cur = null, lastTag = null;
+    for (const rawLine of String(text || '').split(/\r?\n/)) {
+        const line = rawLine.replace(/^﻿/, '');
+        const m = line.match(/^([A-Z][A-Z0-9])\s{2}-\s?(.*)$/);
+        if (m) {
+            const [, tag, val] = m;
+            if (tag === 'TY') { cur = {}; records.push(cur); }
+            if (!cur) { cur = {}; records.push(cur); }
+            if (tag === 'ER') { cur = null; lastTag = null; continue; }
+            (cur[tag] = cur[tag] || []).push(val.trim());
+            lastTag = tag;
+        } else if (cur && lastTag && line.trim()) {
+            // 줄이 길어 다음 줄로 이어진 경우
+            const arr = cur[lastTag];
+            arr[arr.length - 1] += ' ' + line.trim();
+        }
+    }
+    return records.filter(r => Object.keys(r).length);
+}
+
+// RIS 레코드 → 앱의 논문 객체 (id·projectId 는 저장할 때 붙인다)
+function risToPaper(r) {
+    const one = (...tags) => { for (const t of tags) if (r[t]?.length) return r[t][0]; return ''; };
+    const all = (...tags) => { for (const t of tags) if (r[t]?.length) return r[t]; return []; };
+
+    const type = RIS_TYPE[(one('TY') || '').toUpperCase()] || 'journal';
+    const authors = all('AU', 'A1').join(', ');
+    const editors = all('A2', 'ED').join(', ');
+    const title = one('TI', 'T1');
+    const container = one('JO', 'JF', 'JA', 'T2');   // 학술지명 또는 책 제목
+    const year = (one('PY', 'Y1', 'DA').match(/\d{4}/) || [''])[0];
+    const sp = one('SP'), ep = one('EP');
+    const pages = one('SE') || (sp && ep ? `${sp}-${ep}` : sp || '');
+    const doi = one('DO', 'DOI').replace(/^https?:\/\/doi\.org\//i, '');
+
+    const p = {
+        itemType: type,
+        title, authors, year,
+        source:   type === 'chapter' ? '' : container,
+        bookTitle: type === 'chapter' ? container : '',
+        editors,
+        volume: one('VL'), issue: one('IS'), pages,
+        doi, url: one('UR', 'L1'),
+        publisher: one('PB'), edition: one('ET'),
+        abstract: one('AB', 'N2'),
+        tags: all('KW'),
+        variables: [], analysis: {},
+        myNote: '', methods: '', findings: '',
+        readStatus: 'unread',
+        fullText: '', fullTextHtml: '', attachedImages: [],
+        pdfData: null, pdfFilename: '', pdfFolderFile: null, pdfLink: null,
+    };
+    // 학위논문인데 기관이 PB 에만 있는 경우 학술지명 칸으로 옮긴다(APA 형식이 여기서 기관을 읽음)
+    if (type === 'thesis' && !p.source && p.publisher) { p.source = p.publisher; p.publisher = ''; }
+    return p;
+}
+
+// RIS 파일을 읽어 미리 보여주고, 고른 것만 저장한다.
+// 바로 저장하지 않는 이유: 도서관마다 내보내기 품질이 달라서 권·호·쪽이 비는 경우가 있다.
+async function importRisFile(file) {
+    let recs;
+    try {
+        const text = await readTextSmart(file);
+        recs = parseRIS(text).map(risToPaper).filter(p => p.title);
+    } catch (err) {
+        pushDebug('warn', `RIS 읽기 실패: ${err.message}`);
+        showToast('파일을 읽지 못했어요', 'error');
+        return;
+    }
+    if (!recs.length) {
+        showToast('서지정보를 찾지 못했어요. RIS 형식이 맞는지 확인해 주세요.', 'error');
+        return;
+    }
+    pushDebug('info', `RIS 파싱 — ${recs.length}편 (${file.name})`);
+
+    const TYPE_KO = { journal: '학술지', thesis: '학위논문', book: '단행본', chapter: '책의 장', translation: '번역서', web: '웹자료' };
+    const existing = state.papers;
+    const rows = recs.map((p, i) => {
+        const dup = existing.find(e =>
+            (p.doi && e.doi && e.doi.replace(/^https?:\/\/doi\.org\//i, '') === p.doi) ||
+            (e.title || '').trim() === p.title.trim());
+        const miss = [];
+        if (!p.authors) miss.push('저자');
+        if (!p.year) miss.push('연도');
+        if (p.itemType === 'journal' && !p.source) miss.push('학술지명');
+        return `<label class="ris-row${dup ? ' ris-dup' : ''}">
+            <input type="checkbox" class="ris-ck" data-i="${i}" ${dup ? '' : 'checked'}>
+            <span class="ris-type">${TYPE_KO[p.itemType] || ''}</span>
+            <span class="ris-main">
+                <b>${escHtml(p.title)}</b>
+                <span class="ris-sub">${escHtml([p.authors, p.year, p.source || p.bookTitle].filter(Boolean).join(' · ')) || '<span class="muted">서지정보 부족</span>'}</span>
+                ${dup ? '<span class="ris-badge ris-badge-dup">이미 있음</span>' : ''}
+                ${miss.length ? `<span class="ris-badge ris-badge-miss">${miss.join('·')} 없음</span>` : ''}
+            </span>
+        </label>`;
+    }).join('');
+
+    const ov = document.createElement('div');
+    ov.className = 'modal-overlay ris-overlay';
+    ov.innerHTML = `
+        <div class="modal ris-modal">
+            <div class="modal-header">
+                <h2>가져올 논문 고르기 <span class="ris-count">${recs.length}편</span></h2>
+                <button type="button" class="modal-close" id="ris-close" title="닫기">✕</button>
+            </div>
+            <div class="ris-body">
+                <div class="ris-tools">
+                    <button type="button" class="btn-secondary" id="ris-all">모두 선택</button>
+                    <button type="button" class="btn-secondary" id="ris-none">모두 해제</button>
+                    <span class="ris-hint">「이미 있음」은 기본으로 꺼져 있습니다. 저장 후 논문을 열어 빠진 칸을 채우세요.</span>
+                </div>
+                <div class="ris-list">${rows}</div>
+                <div class="ris-foot">
+                    <button type="button" class="btn-secondary" id="ris-cancel">취소</button>
+                    <button type="button" class="btn-primary" id="ris-save">선택한 논문 가져오기</button>
+                </div>
+            </div>
+        </div>`;
+    document.body.appendChild(ov);
+    const close = () => ov.remove();
+    ov.querySelector('#ris-close').onclick = close;
+    ov.querySelector('#ris-cancel').onclick = close;
+    ov.addEventListener('click', e => { if (e.target === ov) close(); });
+    ov.querySelector('#ris-all').onclick  = () => ov.querySelectorAll('.ris-ck').forEach(c => c.checked = true);
+    ov.querySelector('#ris-none').onclick = () => ov.querySelectorAll('.ris-ck').forEach(c => c.checked = false);
+
+    ov.querySelector('#ris-save').onclick = async () => {
+        const picked = [...ov.querySelectorAll('.ris-ck')].filter(c => c.checked).map(c => recs[+c.dataset.i]);
+        if (!picked.length) { showToast('고른 논문이 없어요', 'warn'); return; }
+        const btn = ov.querySelector('#ris-save');
+        btn.disabled = true; btn.textContent = '저장 중…';
+        for (const p of picked) {
+            await dbPut(STORE_PAPERS, { ...p, id: genId(), projectId: state.currentProjectId,
+                                        addedAt: Date.now(), updatedAt: Date.now() });
+        }
+        pushDebug('info', `RIS 가져오기 완료 — ${picked.length}편 저장`);
+        close();
+        await loadData();
+        renderContent();
+        showToast(`${picked.length}편을 가져왔어요. PDF는 논문을 열어 「폴더에서 연결」로 이어주세요.`, 'success');
+    };
+}
+
 // ── PDF 본문에서 DOI 찾기 ─────────────────────────────────
 // DOI는 "10.기관번호/논문번호" 모양이고 논문 표지·각주에 거의 항상 인쇄되어 있다.
 // ⚠️ 논문 뒤쪽 참고문헌 목록에는 "다른 논문"의 DOI가 잔뜩 있다.
@@ -6701,7 +6880,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260817n';
+        const miniUrl = 'mini.html?v=20260817p';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
@@ -6886,8 +7065,13 @@ function bindEvents() {
         document.getElementById('import-input').click();
     });
     document.getElementById('import-input').addEventListener('change', e => {
-        if (e.target.files[0]) importData(e.target.files[0]);
+        const f = e.target.files[0];
         e.target.value = '';
+        if (!f) return;
+        // 한 버튼으로 두 가지를 받는다 — 앱 백업(.json)과 도서관 서지정보(.ris)
+        if (/\.(ris|txt|nbib|enw)$/i.test(f.name)) importRisFile(f);
+        else if (/\.json$/i.test(f.name))          importData(f);
+        else showToast('읽을 수 없는 형식이에요. 백업 파일(.json) 또는 서지정보 파일(.ris)을 골라주세요.', 'error');
     });
 
     // 논문 추가 — 통합 모달

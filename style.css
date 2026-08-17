@@ -3583,6 +3583,38 @@ body {
 /* 자료 유형별로 보였다 숨었다 하는 칸 — 기본은 숨김(JS applyItemTypeUI 가 켠다) */
 .apa-x { display: none; }
 
+/* ══ RIS 가져오기 — 저장 전 미리보기 ═══════════════════════════ */
+.ris-modal { max-width: 720px; width: 94%; }
+.ris-count { font-size: 13px; font-weight: 700; color: var(--accent); margin-left: 6px; }
+.ris-body { padding: 14px 20px 18px; display: flex; flex-direction: column; gap: 12px; }
+.ris-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ris-hint { font-size: 11.5px; color: var(--text-muted); }
+.ris-list {
+    max-height: 52vh; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;
+    border: 1px solid var(--border); border-radius: 10px; padding: 8px; background: var(--bg);
+}
+.ris-row {
+    display: grid; grid-template-columns: 18px 58px 1fr; gap: 10px; align-items: start;
+    padding: 9px 10px; border-radius: 8px; background: var(--surface);
+    border: 1px solid var(--border-soft, var(--border)); cursor: pointer;
+}
+.ris-row:hover { border-color: var(--accent-mid); }
+.ris-row.ris-dup { opacity: .62; }
+.ris-type {
+    font-size: 11px; font-weight: 700; color: var(--accent);
+    background: var(--accent-light); border-radius: 999px; padding: 2px 0; text-align: center;
+}
+.ris-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ris-main b { font-size: 13.5px; line-height: 1.5; word-break: keep-all; }
+.ris-sub { font-size: 12px; color: var(--text-secondary); }
+.ris-badge {
+    display: inline-block; font-size: 10.5px; font-weight: 700;
+    padding: 1px 7px; border-radius: 999px; margin-top: 2px; width: fit-content;
+}
+.ris-badge-dup  { background: var(--border); color: var(--text-secondary); }
+.ris-badge-miss { background: #fff4e5; color: #b06a00; }
+.ris-foot { display: flex; justify-content: flex-end; gap: 8px; }
+
 /* ══ 폴더에서 PDF 고르기 창 ═══════════════════════════════════ */
 .btn-file-folder { border-color: var(--accent-mid); background: var(--accent-light); color: var(--accent); font-weight: 700; }
 .fp-modal { max-width: 520px; width: 92%; }

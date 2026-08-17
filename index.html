@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=20260817n">
+    <link rel="stylesheet" href="style.css?v=20260817p">
 </head>
 <body>
 
@@ -123,7 +123,7 @@
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:3px"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
                     백업
                 </button>
-                <button class="btn-data" id="btn-import" title="받음 — 파일에서 데이터를 가져오기">
+                <button class="btn-data" id="btn-import" title="받음 — 백업 파일(.json) 복구 / 도서관 서지정보 파일(.ris) 여러 편 가져오기">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:3px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                     받음
                 </button>
@@ -871,7 +871,7 @@
     </div>
 
     <!-- 가져오기용 숨겨진 파일 입력 -->
-    <input type="file" id="import-input" accept=".json" style="display:none">
+    <input type="file" id="import-input" accept=".json,.ris,.txt,.nbib,.enw" style="display:none">
 
     <!-- PDF.js — PDF 텍스트 추출용 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.min.mjs" type="module"></script>
@@ -891,8 +891,8 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
 
-    <script src="mindmap.js?v=20260817n"></script>
-    <script src="app.js?v=20260817n"></script>
-    <script src="auth.js?v=20260817n"></script>
+    <script src="mindmap.js?v=20260817p"></script>
+    <script src="app.js?v=20260817p"></script>
+    <script src="auth.js?v=20260817p"></script>
 </body>
 </html>
