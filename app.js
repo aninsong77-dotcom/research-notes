@@ -1793,8 +1793,16 @@ function citationMatchesPaper(cite, paper) {
 }
 
 // 본문 ↔ 저장된 논문 대조 결과
-function matchManuscript(text) {
-    const { body, refs, cutAt } = stripReferenceSection(text);
+// bodyText: 논문 내용 / refsText: 참고문헌 목록(비우면 bodyText 뒤쪽에서 자동으로 찾는다)
+function matchManuscript(bodyText, refsText) {
+    let body = String(bodyText || ''), refs = String(refsText || '').trim(), cutAt = null;
+    if (refs) {
+        // 따로 붙여넣었으면 본문 쪽에 목록이 섞여 있어도 잘라낸다(전체를 붙인 경우 대비)
+        body = stripReferenceSection(body).body;
+    } else {
+        const sp = stripReferenceSection(body);
+        body = sp.body; refs = sp.refs; cutAt = sp.cutAt;
+    }
     const papers = state.papers;
 
     // ① 본문에서 뽑은 인용 (같은 문헌 중복 제거)
@@ -1816,7 +1824,7 @@ function matchManuscript(text) {
     // ⑤ 본문에 인용했는데 앱에도 없는 것 — 직접 추가해야 함
     const unknown = cites.filter(c => !papers.some(p => citationMatchesPaper(c, p)));
 
-    return { cites, refEntries, toAdd, toRemove, cited, notCited, unknown, cutAt, hasRefs: !!refs.trim() };
+    return { cites, refEntries, toAdd, toRemove, cited, notCited, unknown, cutAt, hasRefs: !!refs.trim(), split: !!String(refsText||'').trim() };
 }
 
 // 「본문과 맞추기」 창 — 붙여넣기 → 대조 결과 → 확인 후 반영
@@ -1831,17 +1839,30 @@ function openManuscriptMatch() {
             </div>
             <div class="ms-body" id="ms-body">
                 <p class="ms-guide">
-                    한글에서 <b>본문 전체를 선택(Ctrl+A)해 복사(Ctrl+C)</b>한 뒤 아래에 붙여넣으세요.<br>
-                    앱이 인용을 찾아 참고문헌 목록과 대조합니다. <b>원고에는 아무것도 심지 않습니다.</b><br>
-                    <span class="ms-steps">① 본문 붙여넣기 → ② 맞춰보기 → ③ 반영 →
-                    <b>④ 「선택 항목 복사」로 한글에 다시 붙여넣기</b></span><br>
-                    <span class="ms-steps-note">앱은 한글 파일을 직접 고치지 못합니다. ④는 직접 하셔야 합니다.<br>
-                    <b>Ctrl+A 로 전체를 복사하세요</b> — 본문과 뒤쪽 참고문헌 목록을 앱이 나눠서 서로 대조합니다.</span>
+                    한글에서 복사해 아래 두 칸에 나눠 붙여넣으세요. 앱이 서로 대조해
+                    <b>목록에 넣어야 할 것과 빼야 할 것</b>을 알려줍니다.
+                    <span class="ms-steps-note">앱은 한글 파일을 직접 고치지 못합니다 — 결과를 보고 목록은 직접 바꿔주세요.</span>
                 </p>
-                <textarea id="ms-input" class="ms-input" rows="10"
-                    placeholder="여기에 본문을 붙여넣으세요 (Ctrl+V)"></textarea>
+
+                <div class="ms-pair">
+                    <div class="ms-cell">
+                        <label class="ms-label" for="ms-input">① 논문 내용 <span>(참고문헌 앞까지)</span></label>
+                        <textarea id="ms-input" class="ms-input" rows="9" placeholder="본문을 붙여넣으세요"></textarea>
+                        <span class="ms-hint" id="ms-len1"></span>
+                    </div>
+                    <div class="ms-cell">
+                        <label class="ms-label" for="ms-refs">② 참고문헌 목록 <span>(문서 끝부분)</span></label>
+                        <textarea id="ms-refs" class="ms-input" rows="9" placeholder="문서 끝 참고문헌 목록을 붙여넣으세요"></textarea>
+                        <span class="ms-hint" id="ms-len2"></span>
+                    </div>
+                </div>
+
+                <div class="ms-tip">
+                    ②를 비워두고 ①에 <b>Ctrl+A 로 전체</b>를 붙여넣어도 됩니다 —
+                    뒤쪽 「참고문헌」 제목을 찾아 앱이 알아서 나눕니다. 못 찾으면 알려드립니다.
+                </div>
+
                 <div class="ms-foot">
-                    <span class="ms-hint" id="ms-len"></span>
                     <button type="button" class="btn-primary" id="ms-run">맞춰보기</button>
                 </div>
             </div>
@@ -1851,19 +1872,18 @@ function openManuscriptMatch() {
     ov.querySelector('#ms-close').onclick = close;
     ov.addEventListener('click', e => { if (e.target === ov) close(); });
 
-    const ta = ov.querySelector('#ms-input');
-    const lenEl = ov.querySelector('#ms-len');
-    ta.addEventListener('input', () => {
-        const n = ta.value.length;
-        lenEl.textContent = n ? `${n.toLocaleString()}자` : '';
+    const ta1 = ov.querySelector('#ms-input'), ta2 = ov.querySelector('#ms-refs');
+    const show = (ta, el) => ta.addEventListener('input', () => {
+        el.textContent = ta.value.length ? `${ta.value.length.toLocaleString()}자` : '';
     });
-    setTimeout(() => ta.focus(), 30);
+    show(ta1, ov.querySelector('#ms-len1'));
+    show(ta2, ov.querySelector('#ms-len2'));
+    setTimeout(() => ta1.focus(), 30);
 
     ov.querySelector('#ms-run').onclick = () => {
-        const text = ta.value;
-        if (!text.trim()) { showToast('본문을 붙여넣어 주세요', 'warn'); ta.focus(); return; }
-        const res = matchManuscript(text);
-        pushDebug('info', `본문 맞추기 — 글자:${text.length} 인용:${res.cites.length} / 인용됨:${res.cited.length} 안됨:${res.notCited.length} 앱에없음:${res.unknown.length}`);
+        if (!ta1.value.trim()) { showToast('논문 내용을 붙여넣어 주세요', 'warn'); ta1.focus(); return; }
+        const res = matchManuscript(ta1.value, ta2.value);
+        pushDebug('info', `본문 맞추기 — 본문:${ta1.value.length}자 목록:${ta2.value.length}자 / 인용:${res.cites.length} 목록:${res.refEntries.length} 넣기:${res.toAdd.length} 빼기:${res.toRemove.length}`);
         renderManuscriptResult(ov, res);
     };
 }
@@ -7217,7 +7237,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260817y';
+        const miniUrl = 'mini.html?v=20260817z';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
