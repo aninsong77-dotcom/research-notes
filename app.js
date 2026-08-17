@@ -2289,15 +2289,18 @@ function renderManuscriptResult(ov, res) {
         <span class="ms-sub">${escHtml(c.raw)}</span></div>
         <button type="button" class="ms-mini" data-add="${i}">＋ 목록에 넣기</button>
     </div>`;
+    // 「표기」(아들러↔Adler)는 오류가 아니라 정상이다 — APA 는 원저자명을 영문으로 쓴다.
+    // 여기서 「본문이 맞음」을 누르면 목록의 Adler 를 아들러로 바꿔버리므로 그 단추를 두지 않는다.
+    const pickButtons = (x, i) => x.kind === '표기'
+        ? `<button type="button" class="ms-mini ghost" data-ck="${i}" data-side="ref">확인했음 (그대로 둠)</button>`
+        : `<button type="button" class="ms-mini" data-ck="${i}" data-side="cite">본문이 맞음 → 목록 고치기</button>`
+          + `<button type="button" class="ms-mini ghost" data-ck="${i}" data-side="ref">목록이 맞음 (그대로)</button>`;
     // 「확인해 보세요」 — 어느 쪽이 맞는지 골라 목록에 반영한다
     const pairPick = (x, i) => `<div class="ms-row ms-row-pair" data-ck="${i}">
         <b>${escHtml(KIND_LABEL[x.kind] || x.kind)}</b>
         <span class="ms-sub"><i>본문</i> ${escHtml(x.cite.name)} (${escHtml(x.cite.year + x.cite.suffix)}) &nbsp;·&nbsp; ${escHtml(x.cite.raw)}</span>
         <span class="ms-sub"><i>목록</i> ${escHtml(x.ref.name)} (${escHtml(x.ref.year + x.ref.suffix)}) &nbsp;·&nbsp; ${escHtml(x.ref.raw)}</span>
-        <div class="ms-pick">
-            <button type="button" class="ms-mini" data-ck="${i}" data-side="cite">본문이 맞음 → 목록 고치기</button>
-            <button type="button" class="ms-mini ghost" data-ck="${i}" data-side="ref">목록이 맞음 (그대로)</button>
-        </div>
+        <div class="ms-pick">${pickButtons(x, i)}</div>
     </div>`;
     const KIND_LABEL = { '철자': '철자 다름', '연도': '연도 다름', '표기': '한글·영문 표기 차이 (오류 아닐 수 있음)' };
 
@@ -7939,7 +7942,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260818v';
+        const miniUrl = 'mini.html?v=20260818w';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
