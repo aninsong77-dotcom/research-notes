@@ -1452,6 +1452,30 @@ const APA_PROPER = new Set([
     'christian','christianity','buddhist','buddhism','muslim','islam','confucian',
 ]);
 
+// APA 는 **학술지명**만 Title Case 로 쓴다(논문 제목은 sentence case — toSentenceCase).
+// 관사·전치사·접속사는 소문자로 두되, 첫 낱말과 콜론 뒤 첫 낱말은 대문자.
+const TC_MINOR = new Set(['a','an','and','as','at','but','by','for','from','in','into','nor',
+    'of','on','or','over','per','so','the','to','up','via','with','yet','vs']);
+function toTitleCase(str) {
+    const s = String(str || '');
+    if (!s || /[가-힣]/.test(s)) return s;   // 한글 학술지명은 그대로
+    let capNext = true;
+    return s.split(/(\s+)/).map(tok => {
+        if (/^\s+$/.test(tok)) return tok;
+        const bare = tok.replace(/[^A-Za-z0-9'-]/g, '');
+        const letters = tok.replace(/[^A-Za-z]/g, '');
+        const isAcronym = letters.length > 1 && letters === letters.toUpperCase();  // JAMA
+        const isMixed = /[a-z][A-Z]/.test(tok);                                     // eLife
+        let out;
+        if (isAcronym || isMixed) out = tok;
+        else if (!capNext && TC_MINOR.has(bare.toLowerCase())) out = tok.toLowerCase();
+        else out = tok.replace(/[A-Za-z]/, ch => ch.toUpperCase()).replace(/([A-Za-z])(\w*)/,
+            (all, f, rest) => f + rest.toLowerCase());
+        capNext = /[:;?!]$/.test(tok);
+        return out;
+    }).join('');
+}
+
 function toSentenceCase(str) {
     const s = String(str || '').trim();
     if (!s || /[가-힣]/.test(s)) return s;   // 한글 제목은 그대로
@@ -1809,7 +1833,8 @@ function apaAutoItalic(text) {
 
     // ① 학술지 논문 — 「… 제목. 학술지명, 권(호), 쪽-쪽.」
     //    학술지명에는 마침표·쉼표가 없다는 점을 이용해 뒤에서부터 찾는다.
-    const JR = /([^.,;()]{2,80}),\s*(\d+)\s*(?:\(\s*[^)]{1,20}\s*\))?\s*,\s*(?:[Pp]{1,2}\.?\s*)?\d+(?:\s*[-–~]\s*\d+)?/g;
+    //    호 뒤의 쉼표는 빠져 있는 논문도 많다(「31(2) 232-242.」) → 쉼표를 선택으로 둔다.
+    const JR = /([^.,;()]{2,60}),\s*(\d+)\s*(?:\(\s*[^)]{1,20}\s*\))?\s*,?\s*(?:[Pp]{1,2}\.?\s*)?\d+(?:\s*[-–~]\s*\d+)?/g;
     let hit = null, m;
     while ((m = JR.exec(t))) hit = m;
     // 신문기사·웹자료의 날짜(「… 2022, 5, 1 자료 얻음」)를 학술지명·권·쪽으로
@@ -1826,7 +1851,10 @@ function apaAutoItalic(text) {
 
     // ② 학위논문·책 — 제목이 기울임. 「저자 (연도). 제목. 기관/출판사.」
     const THESIS = /(석사|박사)\s*학위\s*논문|석사논문|박사논문|thesis|dissertation/i;
-    const BOOK   = /(서울|경기|파주|고양|대구|부산|인천|광주|대전)\s*:|학지사|출판사|Press\b|Publish|Routledge|Sage|Guilford|Wiley|Norton|Basic Books/i;
+    // 책의 결정적 신호는 맨 끝의 「발행지: 출판사.」 다. 출판사 이름을 나열하는 방식은
+    // 끝이 없어서(Erlbaum 을 몰라 Vondracek 1986 을 놓쳤다) **형태**로 잡는다.
+    //   「Hillsdale, NJ: Erlbaum.」 「서울: 학지사.」 「New York: Norton.」
+    const BOOK = /(?:^|\.\s)[^.]{2,40}:\s*[^.]{2,40}\.\s*$|(?:서울|경기|파주|고양|대구|부산|인천|광주|대전)\s*:|학지사|출판사|Press\b|Publish|Routledge|Sage|Guilford|Wiley|Norton|Erlbaum|Academic|Books\b/i;
     const my = t.match(/\(\s*\d{4}[a-z]?\s*\)\s*\.?\s*/);
     if (my && (THESIS.test(t) || BOOK.test(t))) {
         const start = my.index + my[0].length;
@@ -1849,15 +1877,49 @@ function apaTidyEntry(text) {
     const tags = [];
 
     // ① 이니셜 앞 띄어쓰기 — "Miyake,K." → "Miyake, K."
-    const a = t.replace(/,(?=[A-Z]\.)/g, ', ');
+    let a = t.replace(/,(?=[A-Z]\.)/g, ', ');
+    a = a.replace(/\b([A-Z])\.([A-Z])\./g, '$1. $2.');   // "R.O." → "R. O."
     if (a !== t) { t = a; tags.push('띄어쓰기'); }
 
     // ② 쪽 범위는 엔대시 — "309-330." → "309–330."  (맨 끝의 쪽 자리만 건드린다)
-    const b = t.replace(/,\s*(?:[Pp]{1,2}\.\s*)?(\d+)\s*[-~]\s*(\d+)(\s*\.?)$/, ', $1\u2013$2$3');
-    if (b !== t) { t = b; tags.push('쪽 \u2013'); }
+    //     DOI·URL 이 뒤에 붙으면 쪽이 문장 끝이 아니므로 마지막 쪽 범위를 찾아 바꾼다.
+    {
+        const PG = /,\s*(?:[Pp]{1,2}\.\s*)?(\d+)\s*[-~]\s*(\d+)/g;
+        let lp = null, pm;
+        while ((pm = PG.exec(t))) lp = pm;
+        if (lp) {
+            const rep = ', ' + lp[1] + '\u2013' + lp[2];
+            if (rep !== lp[0]) {
+                t = t.slice(0, lp.index) + rep + t.slice(lp.index + lp[0].length);
+                tags.push('쪽 \u2013');
+            }
+        }
+    }
 
-    // ③ 끝 마침표
-    if (!/[.\]\u3011]$/.test(t)) { t += '.'; tags.push('마침표'); }
+    // ②-2 DOI 는 링크 형태로 — APA 7 은 「https://doi.org/10.xxxx/yyy」 만 인정한다
+    const dd = t.replace(/\b(?:doi\s*:\s*|https?:\/\/(?:dx\.)?doi\.org\/)\s*(10\.\d{4,9}\/\S+?)\.?\s*$/i,
+        'https://doi.org/$1');
+    if (dd !== t) { t = dd; tags.push('DOI'); }
+
+    // ③ 끝 마침표 — 단 DOI·URL 로 끝나는 항목에는 APA 가 마침표를 붙이지 않는다.
+    if (/https?:\/\/\S+$/.test(t)) { /* 그대로 둔다 */ }
+    else     if (!/[.\]\u3011]$/.test(t)) { t += '.'; tags.push('마침표'); }
+
+    // ③-2 영문 학술지명은 Title Case (APA 필수) — 제목은 sentence case 지만 학술지명은 다르다.
+    //     "Journal of counseling psychology" → "Journal of Counseling Psychology"
+    {
+        const JR2 = /([^.,;()]{2,60}),\s*(\d+)\s*(?:\(\s*[^)]{1,20}\s*\))?\s*,?\s*(?:[Pp]{1,2}\.?\s*)?\d+/g;
+        let last = null, mm;
+        while ((mm = JR2.exec(t))) last = mm;
+        if (last && !/[가-힣]/.test(last[1]) && /[A-Za-z]/.test(last[1])) {
+            const raw = last[1];
+            const tc = toTitleCase(raw);
+            if (tc !== raw) {
+                t = t.slice(0, last.index) + tc + t.slice(last.index + raw.length);
+                tags.push('학술지명 대소문자');
+            }
+        }
+    }
 
     // ④ 영문 저자 목록 — 마지막 저자 앞에 & (APA 필수)
     //    형태가 「성, 이니셜.」 나열로 **깔끔한 것만** 손댄다. 「Slaney, Robert B and Ashby…」
@@ -1883,7 +1945,9 @@ function apaTidyEntry(text) {
         const st = my1.index + my1[0].length;
         const rest = t.slice(st);
         const dot = rest.search(/\.(\s|$)/);
-        if (dot > 3) {
+        // 마침표가 문장 끝에만 있으면 그것은 제목이 아니다 — 원문에 마침표가 버진 항목을
+        // sentence case 로 바꾸면 학술지명·고유명사까지 소문자로 만들어 **원문보다 나빠진다**.
+        if (dot > 3 && dot < rest.length - 10) {
             const title = rest.slice(0, dot);
             const sc = toSentenceCase(title);
             if (sc !== title) { t = t.slice(0, st) + sc + t.slice(st + dot); tags.push('제목 대소문자'); }
@@ -8032,7 +8096,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260819c';
+        const miniUrl = 'mini.html?v=20260819d';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
