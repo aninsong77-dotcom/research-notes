@@ -1772,7 +1772,10 @@ function openManuscriptMatch() {
             <div class="ms-body" id="ms-body">
                 <p class="ms-guide">
                     한글에서 <b>본문 전체를 선택(Ctrl+A)해 복사(Ctrl+C)</b>한 뒤 아래에 붙여넣으세요.<br>
-                    앱이 인용을 찾아 참고문헌 목록과 대조합니다. <b>원고에는 아무것도 심지 않습니다.</b>
+                    앱이 인용을 찾아 참고문헌 목록과 대조합니다. <b>원고에는 아무것도 심지 않습니다.</b><br>
+                    <span class="ms-steps">① 본문 붙여넣기 → ② 맞춰보기 → ③ 반영 →
+                    <b>④ 「선택 항목 복사」로 한글에 다시 붙여넣기</b></span><br>
+                    <span class="ms-steps-note">앱은 한글 파일을 직접 고치지 못합니다. ④는 직접 하셔야 합니다.</span>
                 </p>
                 <textarea id="ms-input" class="ms-input" rows="10"
                     placeholder="여기에 본문을 붙여넣으세요 (Ctrl+V)"></textarea>
@@ -1855,7 +1858,8 @@ function renderManuscriptResult(ov, res) {
         }
         ov.remove();
         renderContent();
-        showToast(`참고문헌 목록을 맞췄습니다 — ${res.cited.length}편 선택됨`, 'success');
+        // 앱은 한글 파일을 고칠 수 없다. 다음 단계를 반드시 알려준다.
+        showToast(`${res.cited.length}편이 선택됐습니다. 이제 「선택 항목 복사」로 한글의 참고문헌 자리에 붙여넣으세요.`, 'success');
     };
 }
 
@@ -7148,7 +7152,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260817t';
+        const miniUrl = 'mini.html?v=20260817u';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
