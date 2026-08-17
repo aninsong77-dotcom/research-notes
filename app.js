@@ -6643,6 +6643,16 @@ function bindEvents() {
     document.getElementById('btn-add-top').addEventListener('click', addByView);
 
     // 사용법 모달
+    // 사용법 목차 — 항목을 누르면 그 섹션으로 이동하고 잠깐 테두리로 표시
+    document.querySelectorAll('.help-toc-item').forEach(b =>
+        b.addEventListener('click', () => {
+            const sec = document.getElementById(b.dataset.go);
+            if (!sec) return;
+            sec.scrollIntoView({ block: 'start', behavior: 'smooth' });
+            sec.classList.add('help-jump');
+            setTimeout(() => sec.classList.remove('help-jump'), 1300);
+        }));
+
     document.getElementById('btn-help-guide').addEventListener('click', () => {
         document.getElementById('modal-help').style.display = 'flex';
         const hint = document.getElementById('help-scroll-hint');
@@ -6677,7 +6687,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260817h';
+        const miniUrl = 'mini.html?v=20260817i';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {

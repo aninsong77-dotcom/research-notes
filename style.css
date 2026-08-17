@@ -3535,6 +3535,32 @@ body {
    (클래스+속성이라 우선순위가 높아 순서와 무관하게 이긴다). */
 .desk-ex-sendmenu[hidden] { display: none; }
 
+/* ══ 사용법 모달 목차 ═══════════════════════════════════════ */
+.help-toc {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    padding: 12px 14px; margin-bottom: 16px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+    position: sticky; top: 0; z-index: 2;
+}
+.help-toc-item {
+    font-family: inherit; font-size: 12.5px; font-weight: 600;
+    padding: 5px 11px; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary);
+    white-space: nowrap;
+}
+.help-toc-item:hover { border-color: var(--accent-mid); background: var(--accent-light); color: var(--accent); }
+
+/* 목차로 이동했을 때 그 항목을 잠깐 표시 */
+.help-section.help-jump { animation: helpJump 1.3s ease; }
+@keyframes helpJump {
+    0%, 100% { box-shadow: none; }
+    25%      { box-shadow: 0 0 0 3px var(--accent-mid); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .help-section.help-jump { animation: none; outline: 2px solid var(--accent); }
+}
+.help-section { scroll-margin-top: 58px; }
+
 /* 자료 유형별로 보였다 숨었다 하는 칸 — 기본은 숨김(JS applyItemTypeUI 가 켠다) */
 .apa-x { display: none; }
 
