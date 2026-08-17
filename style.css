@@ -3676,6 +3676,33 @@ body {
 .ms-row-pair { display: flex; flex-direction: column; gap: 3px; }
 .ms-row-pair i { font-style: normal; font-weight: 700; color: var(--text-muted); margin-right: 4px; }
 
+/* 서식 보존 붙여넣기 칸 — 기울임을 살리려고 textarea 대신 contenteditable 을 쓴다 */
+.ms-rich { overflow-y: auto; max-height: 34vh; white-space: pre-wrap; word-break: break-word; }
+.ms-rich:empty::before { content: attr(data-ph); color: var(--text-muted); }
+
+/* 고쳐진 목록 — 체크로 빼고, 글자는 직접 고친다 */
+.ms-fixbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ms-fixcount { font-size: 12.5px; font-weight: 700; color: var(--accent); margin-right: auto; }
+.ms-fixlist { overflow-y: auto; gap: 3px; }
+.ms-fixrow {
+    display: flex; align-items: flex-start; gap: 8px; padding: 6px 8px; border-radius: 7px;
+    background: var(--surface); border: 1px solid var(--border-soft, var(--border));
+}
+.ms-fixrow.un { border-color: var(--warning); }
+.ms-fixrow.off { opacity: .4; }
+.ms-fixrow.off .ms-fixtext { text-decoration: line-through; }
+.ms-fixchk { display: flex; align-items: center; padding-top: 2px; cursor: pointer; }
+.ms-fixchk input { cursor: pointer; }
+.ms-fixtext {
+    flex: 1; min-width: 0; font-size: 12.5px; line-height: 1.6;
+    padding: 1px 4px; border-radius: 5px; word-break: break-word;
+}
+.ms-fixtext:focus { outline: none; background: var(--bg); box-shadow: 0 0 0 1.5px var(--accent) inset; }
+.ms-fixbadge {
+    flex: none; font-size: 10.5px; font-weight: 700; color: var(--warning);
+    border: 1px solid var(--warning); border-radius: 5px; padding: 1px 5px; margin-top: 2px;
+}
+
 /* ══ RIS 가져오기 — 저장 전 미리보기 ═══════════════════════════ */
 .ris-modal { max-width: 720px; width: 94%; }
 .ris-count { font-size: 13px; font-weight: 700; color: var(--accent); margin-left: 6px; }

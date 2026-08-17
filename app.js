@@ -1719,14 +1719,93 @@ function stripReferenceSection(text) {
 
 // 문서 끝 참고문헌 목록에서 항목을 뽑는다 → [{name:'홍길동', year:'2020', raw:'홍길동, 김철수 (2020). …'}]
 // 한 항목은 "저자 (연도). 제목…" 이고, 저자가 여럿이면 **첫 저자**를 쓴다(본문 인용과 맞추려고).
-function extractReferenceEntries(refsText) {
-    const out = [];
-    // 연도 괄호가 나오는 지점을 기준으로 항목을 자른다
-    const chunks = String(refsText || '')
+// 붙여넣은 글에서 참고문헌 항목을 잘라낸다. {text, html} 짝으로 돌려주는 이유는
+// 나중에 「고쳐진 목록」을 다시 조립할 때 원래 기울임 서식을 그대로 써야 하기 때문.
+function refChunksFromText(refsText) {
+    const parts = String(refsText || '')
         .split(/\n\s*\n/).flatMap(b => b.split(/\n(?=\S)/))   // 빈 줄 또는 줄 시작이 글자인 곳
         .map(x => x.replace(/\s+/g, ' ').trim()).filter(Boolean);
+    return mergeRefChunks(parts.map(t => ({ text: t, html: escHtml(t) })));
+}
 
-    for (const c of chunks) {
+// 서식 보존 칸(contenteditable)에서 줄 단위로 뽑는다. 한글에서 붙여넣으면
+// <div>·<p>·<br> 이 섞여 오므로 셋 다 줄바꿈으로 취급한다.
+function refChunksFromEditor(el) {
+    const flat = [];
+    let buf = '';
+    const flush = () => { if (buf.trim()) flat.push(buf.trim()); buf = ''; };
+    const eat = node => {
+        for (const n of node.childNodes) {
+            if (n.nodeType === 3) { buf += escHtml(n.nodeValue); continue; }
+            if (n.nodeType !== 1) continue;
+            const tag = n.tagName;
+            if (tag === 'BR') { flush(); continue; }
+            if (/^(DIV|P|LI|TR|TD|H[1-6]|BLOCKQUOTE)$/.test(tag)) { flush(); eat(n); flush(); continue; }
+            if (/^(UL|OL|TABLE|TBODY|THEAD|SECTION|ARTICLE|SPAN|FONT|B|STRONG|I|EM|U|A|SUB|SUP)$/.test(tag)) {
+                // 기울임은 살려야 하므로 겉을 벗기지 않고 그대로 담는다
+                if (/^(I|EM|B|STRONG|U|SUB|SUP|A|SPAN|FONT)$/.test(tag)) { buf += n.outerHTML; continue; }
+                flush(); eat(n); flush(); continue;
+            }
+            buf += n.outerHTML;
+        }
+    };
+    eat(el);
+    flush();
+    return mergeRefChunks(flat.map(h => ({ text: htmlToPlain(h), html: h })));
+}
+
+function htmlToPlain(html) {
+    const d = document.createElement('div');
+    d.innerHTML = String(html || '');
+    return (d.textContent || '').replace(/\s+/g, ' ').trim();
+}
+
+// 참고문헌 한 항목이 여러 줄에 걸치는 일이 많다(내어쓰기). 연도 괄호가 없는 줄은
+// 앞 항목이 이어지는 줄로 보고 붙인다 — 이렇게 안 하면 목록을 다시 만들 때 줄이 사라진다.
+function mergeRefChunks(chunks) {
+    const out = [];
+    for (const ch of chunks) {
+        const isHead = /\(\s*\d{4}[a-z]?\s*\)/.test(ch.text);
+        if (!out.length || isHead) { out.push({ text: ch.text, html: ch.html }); continue; }
+        const prev = out[out.length - 1];
+        prev.text = (prev.text + ' ' + ch.text).trim();
+        prev.html = prev.html + ' ' + ch.html;
+    }
+    return out;
+}
+
+// 한글 문서의 폰트·글자크기·줄간격이 바뀌지 않도록 **기울임만 남기고** 서식을 전부 벗긴다.
+// 한글에서 복사해 온 글에는 font-family·font-size 가 span 으로 딸려 오는데,
+// 그걸 그대로 다시 붙여넣으면 문서 서식이 덮어써진다.
+function apaCleanHtml(html) {
+    const d = document.createElement('div');
+    d.innerHTML = String(html || '');
+    const walk = node => {
+        for (const child of [...node.childNodes]) {
+            if (child.nodeType !== 1) continue;
+            walk(child);
+            const st = child.getAttribute('style') || '';
+            const ital = child.tagName === 'I' || child.tagName === 'EM'
+                      || /font-style\s*:\s*italic/i.test(st);
+            if (ital) {
+                const rep = document.createElement('i');
+                rep.innerHTML = child.innerHTML;
+                child.replaceWith(rep);
+            } else {
+                child.replaceWith(...child.childNodes);
+            }
+        }
+    };
+    walk(d);
+    return d.innerHTML.replace(/<\/i>(\s*)<i>/g, '$1');
+}
+
+function extractReferenceEntries(refsText, chunksIn) {
+    const out = [];
+    const chunks = (chunksIn && chunksIn.length) ? chunksIn : refChunksFromText(refsText);
+
+    for (let ci = 0; ci < chunks.length; ci++) {
+        const c = chunks[ci].text;
         const m = c.match(/^(.{1,120}?)\s*\(\s*(\d{4})([a-z])?\s*\)/);
         if (!m) continue;
         // 본문 인용과 같은 규칙으로 첫 저자의 성만 남긴다 — 그래야 서로 맞댈 수 있다.
@@ -1748,7 +1827,7 @@ function extractReferenceEntries(refsText) {
             if (/[가-힣]/.test(t)) { if (t.length >= 2 && t.length <= 5) allNames.add(t.toLowerCase()); }
             else if (t.length >= 3 && !/^(and|the|in|of|for|with|von|van|der)$/i.test(t)) allNames.add(t.toLowerCase());
         }
-        out.push({ name, allNames, year: m[2], suffix: m[3] || '', full: c,
+        out.push({ name, allNames, year: m[2], suffix: m[3] || '', full: c, ci,
                    raw: c.slice(0, 90) + (c.length > 90 ? '…' : '') });
     }
     return out;
@@ -1885,7 +1964,7 @@ function extractCitations(text) {
 
 // 본문 ↔ 저장된 논문 대조 결과
 // bodyText: 논문 내용 / refsText: 참고문헌 목록(비우면 bodyText 뒤쪽에서 자동으로 찾는다)
-function matchManuscript(bodyText, refsText) {
+function matchManuscript(bodyText, refsText, refChunksIn) {
     let body = String(bodyText || ''), refs = String(refsText || '').trim(), cutAt = null;
     if (refs) {
         // 따로 붙여넣었으면 본문 쪽에 목록이 섞여 있어도 잘라낸다(전체를 붙인 경우 대비)
@@ -1900,7 +1979,9 @@ function matchManuscript(bodyText, refsText) {
         if (!cites.some(x => sameCitation(x, c))) cites.push(c);
     }
     // ② 문서 끝 참고문헌 목록에서 뽑은 항목
-    const refEntries = extractReferenceEntries(refs);
+    // 서식 보존 칸에서 왔으면 그 조각을 그대로 쓴다(기울임을 살려 목록을 다시 조립하려고).
+    const refChunks = (refChunksIn && refChunksIn.length) ? refChunksIn : refChunksFromText(refs);
+    const refEntries = extractReferenceEntries(refs, refChunks);
 
     // ③ 본문 ↔ 문서 목록 대조 — 이게 핵심
     let toAdd    = cites.filter(c => !refEntries.some(r => sameCitation(c, r)));     // 목록에 넣어야 함
@@ -1934,7 +2015,8 @@ function matchManuscript(bodyText, refsText) {
     const usedRefs = new Set(check.map(x => x.ref));
     toRemove = toRemove.filter(r => !usedRefs.has(r));
 
-    return { cites, refEntries, toAdd, toRemove, check, cutAt, hasRefs: !!refs.trim(), split: !!String(refsText||'').trim() };
+    return { cites, refEntries, refChunks, toAdd, toRemove, check, cutAt,
+             hasRefs: !!refs.trim(), split: !!String(refsText||'').trim() };
 }
 
 // 「본문과 맞추기」 창 — 붙여넣기 → 대조 결과 → 확인 후 반영
@@ -1961,9 +2043,10 @@ function openManuscriptMatch() {
                         <span class="ms-hint" id="ms-len1"></span>
                     </div>
                     <div class="ms-cell">
-                        <label class="ms-label" for="ms-refs">② 참고문헌 목록 <span>(문서 끝부분)</span></label>
-                        <textarea id="ms-refs" class="ms-input" rows="9" placeholder="문서 끝 참고문헌 목록을 붙여넣으세요"></textarea>
-                        <span class="ms-hint" id="ms-len2"></span>
+                        <label class="ms-label">② 참고문헌 목록 <span>(문서 끝부분)</span></label>
+                        <div id="ms-refs" class="ms-input ms-rich" contenteditable="true" spellcheck="false"
+                             data-ph="문서 끝 참고문헌 목록을 붙여넣으세요"></div>
+                        <span class="ms-hint" id="ms-len2">기울임 서식이 그대로 살아 있는 칸입니다</span>
                     </div>
                 </div>
 
@@ -1982,18 +2065,23 @@ function openManuscriptMatch() {
     ov.querySelector('#ms-close').onclick = close;
     ov.addEventListener('click', e => { if (e.target === ov) close(); });
 
-    const ta1 = ov.querySelector('#ms-input'), ta2 = ov.querySelector('#ms-refs');
-    const show = (ta, el) => ta.addEventListener('input', () => {
-        el.textContent = ta.value.length ? `${ta.value.length.toLocaleString()}자` : '';
+    const ta1 = ov.querySelector('#ms-input'), ed2 = ov.querySelector('#ms-refs');
+    const len1 = ov.querySelector('#ms-len1'), len2 = ov.querySelector('#ms-len2');
+    ta1.addEventListener('input', () => {
+        len1.textContent = ta1.value.length ? `${ta1.value.length.toLocaleString()}자` : '';
     });
-    show(ta1, ov.querySelector('#ms-len1'));
-    show(ta2, ov.querySelector('#ms-len2'));
+    ed2.addEventListener('input', () => {
+        const n = (ed2.textContent || '').length;
+        len2.textContent = n ? `${n.toLocaleString()}자 · 기울임 서식 살아 있음` : '기울임 서식이 그대로 살아 있는 칸입니다';
+    });
     setTimeout(() => ta1.focus(), 30);
 
     ov.querySelector('#ms-run').onclick = () => {
         if (!ta1.value.trim()) { showToast('논문 내용을 붙여넣어 주세요', 'warn'); ta1.focus(); return; }
-        const res = matchManuscript(ta1.value, ta2.value);
-        pushDebug('info', `본문 맞추기 — 본문:${ta1.value.length}자 목록:${ta2.value.length}자 / 인용:${res.cites.length} 목록:${res.refEntries.length} 넣기:${res.toAdd.length} 빼기:${res.toRemove.length}`);
+        const chunks = refChunksFromEditor(ed2);
+        const refsPlain = (ed2.textContent || '').trim();
+        const res = matchManuscript(ta1.value, refsPlain, chunks);
+        pushDebug('info', `본문 맞추기 — 본문:${ta1.value.length}자 목록:${refsPlain.length}자 조각:${chunks.length} / 인용:${res.cites.length} 목록:${res.refEntries.length} 넣기:${res.toAdd.length} 빼기:${res.toRemove.length}`);
         renderManuscriptResult(ov, res);
     };
 }
@@ -2001,14 +2089,24 @@ function openManuscriptMatch() {
 function renderManuscriptResult(ov, res) {
     const cite = c => `<div class="ms-row"><b>${escHtml(c.name)} (${escHtml(c.year + c.suffix)})</b>
         <span class="ms-sub">${escHtml(c.raw)}</span></div>`;
+    const KIND_LABEL = { '철자': '철자 다름', '연도': '연도 다름', '표기': '한글·영문 표기 차이 (오류 아닐 수 있음)' };
     const pair = x => `<div class="ms-row ms-row-pair">
-        <b>${x.kind === '철자' ? '철자 다름' : '연도 다름'}</b>
+        <b>${escHtml(KIND_LABEL[x.kind] || x.kind)}</b>
         <span class="ms-sub"><i>본문</i> ${escHtml(x.cite.name)} (${escHtml(x.cite.year + x.cite.suffix)}) &nbsp;·&nbsp; ${escHtml(x.cite.raw)}</span>
         <span class="ms-sub"><i>목록</i> ${escHtml(x.ref.name)} (${escHtml(x.ref.year + x.ref.suffix)}) &nbsp;·&nbsp; ${escHtml(x.ref.raw)}</span>
     </div>`;
 
     const body = ov.querySelector('#ms-body');
     const noRefs = !res.hasRefs;
+
+    // 「고쳐진 목록」 — 파싱된 항목만이 아니라 **붙여넣은 조각 전부**를 줄로 만든다.
+    // 앱이 못 읽은 줄까지 그대로 실어야 목록을 다시 만들 때 글이 사라지지 않는다.
+    const unCited = new Set(res.toRemove.map(r => r.ci).filter(i => i != null));
+    const fixRows = (res.refChunks || []).map((ch, i) => `<div class="ms-fixrow${unCited.has(i) ? ' un' : ''}" data-i="${i}">
+            <label class="ms-fixchk" title="이 항목을 목록에서 뺍니다"><input type="checkbox" data-i="${i}"></label>
+            <div class="ms-fixtext" contenteditable="true" spellcheck="false">${ch.html}</div>
+            ${unCited.has(i) ? '<span class="ms-fixbadge">인용 없음</span>' : ''}
+        </div>`).join('');
 
     body.innerHTML = `
         ${noRefs ? `<div class="ms-cut ms-cut-warn">
@@ -2021,6 +2119,7 @@ function renderManuscriptResult(ov, res) {
             <button type="button" class="ms-tab active" data-pane="add">➕ 목록에 없음<span>${res.toAdd.length}</span></button>
             <button type="button" class="ms-tab" data-pane="rm">➖ 인용 안 됨<span>${res.toRemove.length}</span></button>
             <button type="button" class="ms-tab" data-pane="ck">🔍 확인해 보세요<span>${res.check.length}</span></button>
+            <button type="button" class="ms-tab" data-pane="fix">📋 고쳐진 목록<span>${(res.refChunks || []).length}</span></button>
             <span class="ms-tabs-act">
                 <button type="button" class="btn-secondary" id="ms-copy" title="결과를 글자로 복사">결과 복사</button>
                 <button type="button" class="btn-secondary" id="ms-back">다시 붙여넣기</button>
@@ -2038,8 +2137,29 @@ function renderManuscriptResult(ov, res) {
             <div class="ms-plist">${res.toRemove.map(cite).join('') || '<div class="ms-empty">없음 — 목록이 전부 인용된 문헌입니다</div>'}</div>
         </div>
         <div class="ms-pane" data-pane="ck" hidden>
-            <div class="ms-pane-note">본문과 목록이 <b>비슷한데 정확히 다릅니다.</b> 어느 쪽이 맞는지 확인해 고치세요.</div>
+            <div class="ms-pane-note">본문과 목록이 <b>비슷한데 정확히 다릅니다.</b> 어느 쪽이 맞는지 확인해 고치세요.
+                단 <b>「한글·영문 표기 차이」는 번역서에서 정상</b>일 수 있으니 그대로 두셔도 됩니다.</div>
             <div class="ms-plist">${res.check.map(pair).join('') || '<div class="ms-empty">없음</div>'}</div>
+        </div>
+        <div class="ms-pane" data-pane="fix" hidden>
+            <div class="ms-pane-note">
+                붙여넣은 목록 <b>그대로</b>입니다. <b>뺄 항목에 체크</b>하고, 글자는 <b>직접 눌러 고칠 수도</b> 있습니다.
+                다 되면 아래 복사 버튼으로 논문에 붙여넣으세요.
+                <span class="ms-steps-note">
+                    「서식 유지」는 한글에서 <b>Ctrl+Alt+V → HTML 형식</b>으로 붙여넣으면 기울임이 살아 있습니다.
+                    폰트·글자크기 지정은 앱이 전부 걷어내므로 앱이 문서 서식을 덮어쓰지는 않습니다 —
+                    다만 <b>문단 모양(줄간격·내어쓰기)은 한글이 어떻게 받을지 버전마다 다를 수 있어</b>
+                    논문 사본에서 한 번 시험해 보시는 편이 안전합니다. 그게 걱정되면 「글자만」을 쓰세요(기울임은 빠집니다).
+                </span>
+            </div>
+            <div class="ms-fixbar">
+                <button type="button" class="btn-secondary" id="ms-fix-un">인용 안 된 것 모두 체크</button>
+                <button type="button" class="btn-secondary" id="ms-fix-clr">체크 모두 풀기</button>
+                <span class="ms-fixcount" id="ms-fixcount"></span>
+                <button type="button" class="btn-primary" id="ms-fix-rich">목록 복사 (서식 유지)</button>
+                <button type="button" class="btn-secondary" id="ms-fix-plain">글자만</button>
+            </div>
+            <div class="ms-plist ms-fixlist" id="ms-fixlist">${fixRows || '<div class="ms-empty">붙여넣은 목록이 없습니다</div>'}</div>
         </div>
 `;
 
@@ -2068,6 +2188,58 @@ function renderManuscriptResult(ov, res) {
         const ok = await copyToClipboard(txt);
         showToast(ok ? '결과를 복사했습니다' : '복사 실패', ok ? 'success' : 'error');
     };
+    // ── 「고쳐진 목록」 동작 ──────────────────────────────────
+    const fixList = body.querySelector('#ms-fixlist');
+    const fixCount = body.querySelector('#ms-fixcount');
+    const fixRowsEl = () => [...fixList.querySelectorAll('.ms-fixrow')];
+    const updateCount = () => {
+        const rows = fixRowsEl();
+        const out = rows.filter(r => !r.querySelector('input').checked).length;
+        fixCount.textContent = `남는 항목 ${out}편 (${rows.length - out}편 뺌)`;
+    };
+    fixList.addEventListener('change', e => {
+        if (e.target.type !== 'checkbox') return;
+        e.target.closest('.ms-fixrow').classList.toggle('off', e.target.checked);
+        updateCount();
+    });
+    body.querySelector('#ms-fix-un').onclick = () => {
+        fixRowsEl().forEach(r => {
+            const on = r.classList.contains('un');
+            r.querySelector('input').checked = on;
+            r.classList.toggle('off', on);
+        });
+        updateCount();
+    };
+    body.querySelector('#ms-fix-clr').onclick = () => {
+        fixRowsEl().forEach(r => { r.querySelector('input').checked = false; r.classList.remove('off'); });
+        updateCount();
+    };
+    updateCount();
+
+    // 남긴 항목만 모은다. 사용자가 칸에서 직접 고친 내용이 그대로 반영된다.
+    const collectFix = () => fixRowsEl()
+        .filter(r => !r.querySelector('input').checked)
+        .map(r => {
+            const el = r.querySelector('.ms-fixtext');
+            return { html: apaCleanHtml(el.innerHTML), text: (el.textContent || '').replace(/\s+/g, ' ').trim() };
+        })
+        .filter(x => x.text);
+
+    body.querySelector('#ms-fix-rich').onclick = async () => {
+        const items = collectFix();
+        if (!items.length) { showToast('남은 항목이 없습니다', 'warn'); return; }
+        // 폰트·크기·줄간격 지정을 일부러 넣지 않는다 — 넣으면 한글 문서 서식을 덮어쓴다.
+        const html = items.map(x => `<p>${x.html}</p>`).join('');
+        const ok = await copyRich(html, items.map(x => x.text).join('\n'));
+        showToast(ok ? `${items.length}편 복사 — 한글에서 Ctrl+Alt+V → HTML 형식` : '복사 실패', ok ? 'success' : 'error');
+    };
+    body.querySelector('#ms-fix-plain').onclick = async () => {
+        const items = collectFix();
+        if (!items.length) { showToast('남은 항목이 없습니다', 'warn'); return; }
+        const ok = await copyToClipboard(items.map(x => x.text).join('\n'));
+        showToast(ok ? `${items.length}편 복사 (글자만 — 기울임 없음)` : '복사 실패', ok ? 'success' : 'error');
+    };
+
     ov.querySelector('#ms-back').onclick = () => { ov.remove(); openManuscriptMatch(); };
 }
 
@@ -6755,8 +6927,8 @@ function _showPdfRestoreButton() {
     const btn = document.createElement('button');
     btn.id = 'btn-pdf-restore';
     btn.className = 'btn-pdf-restore';
-    btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>PDF 복원하기`;
-    btn.title = '백업 폴더 접근을 허용해서 PDF를 복원해요';
+    btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>원문 텍스트 복원`;
+    btn.title = '백업 폴더를 읽어 검색·AI요약에 쓰는 원문 텍스트를 채워요 (PDF 는 논문 폴더에 있어요)';
     btn.onclick = async () => {
         try {
             const perm = await backupDirHandle.requestPermission({ mode: 'read' });
@@ -7364,7 +7536,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260818i';
+        const miniUrl = 'mini.html?v=20260818j';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
