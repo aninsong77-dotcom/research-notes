@@ -1830,6 +1830,34 @@ function apaAutoItalic(text) {
     return escHtml(t);   // 판단 불가 — 원문 그대로
 }
 
+// 참고문헌 한 줄에 APA 서식을 적용한다. 무엇을 고쳤는지 tags 로 함께 돌려줘서
+// 화면에 표시할 수 있게 한다 — 학교 양식과 어긋날 수 있으므로 반드시 보여야 한다.
+// 여기서 하는 것은 **형태만 보면 확실한 것**뿐이다. 자료 유형 판별·영문 제목
+// 대소문자·연도 접미사(2020a/b)는 틀리면 피해가 크므로 손대지 않는다.
+function apaTidyEntry(text) {
+    const orig = String(text || '').replace(/\s+/g, ' ').trim();
+    if (!orig) return { html: '', text: '', tags: [], orig: '' };
+    let t = orig;
+    const tags = [];
+
+    // ① 이니셜 앞 띄어쓰기 — "Miyake,K." → "Miyake, K."
+    const a = t.replace(/,(?=[A-Z]\.)/g, ', ');
+    if (a !== t) { t = a; tags.push('띄어쓰기'); }
+
+    // ② 쪽 범위는 엔대시 — "309-330." → "309–330."  (맨 끝의 쪽 자리만 건드린다)
+    const b = t.replace(/,\s*(?:[Pp]{1,2}\.\s*)?(\d+)\s*[-~]\s*(\d+)(\s*\.?)$/, ', $1\u2013$2$3');
+    if (b !== t) { t = b; tags.push('쪽 \u2013'); }
+
+    // ③ 끝 마침표
+    if (!/[.\]\u3011]$/.test(t)) { t += '.'; tags.push('마침표'); }
+
+    // ④ 기울임
+    const html = apaAutoItalic(t);
+    if (html.includes('<i ')) tags.push('기울임');
+
+    return { html, text: t, tags, orig };
+}
+
 function apaCleanHtml(html) {
     const d = document.createElement('div');
     d.innerHTML = String(html || '');
@@ -2203,11 +2231,27 @@ function renderManuscriptResult(ov, res) {
     // 「고쳐진 목록」 — 파싱된 항목만이 아니라 **붙여넣은 조각 전부**를 줄로 만든다.
     // 앱이 못 읽은 줄까지 그대로 실어야 목록을 다시 만들 때 글이 사라지지 않는다.
     const unCited = new Set(res.toRemove.map(r => r.ci).filter(i => i != null));
-    const fixRows = (res.refChunks || []).map((ch, i) => `<div class="ms-fixrow${unCited.has(i) ? ' un' : ''}" data-i="${i}">
+    let nFixed = 0, nKept = 0;
+    const fixRows = (res.refChunks || []).map((ch, i) => {
+        // 원본에 이미 기울임이 있으면(한글 파일에서 온 경우) 그것을 존중하고 손대지 않는다
+        const hasIt = /<(i|em)\b|font-style\s*:\s*italic/i.test(ch.html);
+        const tidy = apaTidyEntry(ch.text);
+        const html = hasIt ? ch.html : tidy.html;
+        const tags = hasIt ? ['원본 서식 유지'] : tidy.tags;
+        if (tags.length && tags[0] !== '원본 서식 유지') nFixed++; else if (!hasIt) nKept++;
+        const tagHtml = tags.length
+            ? tags.map(x => `<span class="ms-tag">${escHtml(x)}</span>`).join('')
+            : '<span class="ms-tag off">손 안 댐</span>';
+        return `<div class="ms-fixrow${unCited.has(i) ? ' un' : ''}" data-i="${i}">
             <label class="ms-fixchk" title="이 항목을 목록에서 뺍니다"><input type="checkbox" data-i="${i}"></label>
-            <div class="ms-fixtext" contenteditable="true" spellcheck="false">${ch.html}</div>
+            <div class="ms-fixmain">
+                <div class="ms-fixtext" contenteditable="true" spellcheck="false">${html}</div>
+                <div class="ms-fixtags" title="눌러서 원문과 견주기">${tagHtml}</div>
+                <div class="ms-fixdiff" hidden><b>원문</b> ${escHtml(tidy.orig)}</div>
+            </div>
             ${unCited.has(i) ? '<span class="ms-fixbadge">인용 없음</span>' : ''}
-        </div>`).join('');
+        </div>`;
+    }).join('');
 
     body.innerHTML = `
         ${noRefs ? `<div class="ms-cut ms-cut-warn">
@@ -2245,7 +2289,8 @@ function renderManuscriptResult(ov, res) {
         <div class="ms-pane" data-pane="fix" hidden>
             <div class="ms-pane-note">
                 붙여넣은 목록 <b>그대로</b>입니다. <b>뺄 항목에 체크</b>하고, 글자는 <b>직접 눌러 고칠 수도</b> 있습니다.
-                기울임이 없는 원본(PDF 등)이면 <b>「✨ APA 기울임 입히기」</b>로 앱이 만들어 넣습니다.
+                <b>APA 서식은 이미 적용해 두었습니다</b> — 각 줄 아래 딱지가 무엇을 고쳤는지 알려줍니다.
+                딱지를 누르면 <b>원문과 견줘</b> 볼 수 있고, 글자는 직접 눌러 고칠 수 있습니다.
                 다 되면 아래 복사 버튼으로 논문에 붙여넣으세요.
                 <span class="ms-steps-note">
                     복사한 뒤 한글에서 <b>Ctrl+Alt+V → HTML 형식</b>으로 붙여넣으면 <b>기울임이 그대로 들어갑니다.</b>
@@ -2254,8 +2299,7 @@ function renderManuscriptResult(ov, res) {
                 </span>
             </div>
             <div class="ms-fixbar">
-                <button type="button" class="btn-secondary" id="ms-fix-ital">✨ APA 기울임 입히기</button>
-                <button type="button" class="btn-secondary" id="ms-fix-undo">되돌리기</button>
+                <button type="button" class="btn-secondary" id="ms-fix-undo">원문으로 되돌리기</button>
                 <button type="button" class="btn-secondary" id="ms-fix-un">인용 안 된 것 모두 체크</button>
                 <button type="button" class="btn-secondary" id="ms-fix-clr">체크 모두 풀기</button>
                 <span class="ms-fixcount" id="ms-fixcount"></span>
@@ -2297,33 +2341,31 @@ function renderManuscriptResult(ov, res) {
     const updateCount = () => {
         const rows = fixRowsEl();
         const out = rows.filter(r => !r.querySelector('input').checked).length;
-        fixCount.textContent = `남는 항목 ${out}편 (${rows.length - out}편 뺌)`;
+        fixCount.textContent = `남는 항목 ${out}편 (${rows.length - out}편 뺌) · APA 서식 고침 ${nFixed}편 · 손 안 댐 ${nKept}편`;
     };
     fixList.addEventListener('change', e => {
         if (e.target.type !== 'checkbox') return;
         e.target.closest('.ms-fixrow').classList.toggle('off', e.target.checked);
         updateCount();
     });
-    // PDF 처럼 기울임이 없는 원본에도 APA 기울임을 앱이 만들어 넣는다
-    body.querySelector('#ms-fix-ital').onclick = () => {
-        let n = 0;
-        fixRowsEl().forEach(r => {
-            const el = r.querySelector('.ms-fixtext');
-            if (el.dataset.orig == null) el.dataset.orig = el.innerHTML;   // 되돌리기용
-            const html = apaAutoItalic(el.textContent || '');
-            el.innerHTML = html;
-            if (html.includes('<i ')) n++;
-        });
-        showToast(n ? `${n}편에 기울임을 입혔습니다 — 눈으로 확인해 주세요` : '기울임을 넣을 곳을 못 찾았습니다', n ? 'success' : 'warn');
-        pushDebug('info', `APA 기울임 자동 — ${n}/${fixRowsEl().length}편`);
-    };
+    // 딱지를 누르면 그 줄의 원문을 펼쳐 견준다
+    fixList.addEventListener('click', e => {
+        const tags = e.target.closest('.ms-fixtags');
+        if (!tags) return;
+        const d = tags.parentElement.querySelector('.ms-fixdiff');
+        if (d) d.hidden = !d.hidden;
+    });
+
+    // 앱이 고친 것을 전부 원문으로 되돌린다
     body.querySelector('#ms-fix-undo').onclick = () => {
-        let n = 0;
         fixRowsEl().forEach(r => {
             const el = r.querySelector('.ms-fixtext');
-            if (el.dataset.orig != null) { el.innerHTML = el.dataset.orig; delete el.dataset.orig; n++; }
+            const d = r.querySelector('.ms-fixdiff');
+            const orig = d ? (d.textContent || '').replace(/^\s*원문\s*/, '') : '';
+            if (orig) el.textContent = orig;
+            r.querySelectorAll('.ms-tag').forEach(x => x.remove());
         });
-        showToast(n ? '원래 글자로 되돌렸습니다' : '되돌릴 것이 없습니다', 'info');
+        showToast('원문 그대로 되돌렸습니다', 'info');
     };
 
     body.querySelector('#ms-fix-un').onclick = () => {
@@ -7722,7 +7764,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260818q';
+        const miniUrl = 'mini.html?v=20260818r';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {

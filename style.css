@@ -3693,10 +3693,22 @@ body {
 .ms-fixrow.off .ms-fixtext { text-decoration: line-through; }
 .ms-fixchk { display: flex; align-items: center; padding-top: 2px; cursor: pointer; }
 .ms-fixchk input { cursor: pointer; }
+.ms-fixmain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .ms-fixtext {
-    flex: 1; min-width: 0; font-size: 12.5px; line-height: 1.6;
+    min-width: 0; font-size: 12.5px; line-height: 1.6;
     padding: 1px 4px; border-radius: 5px; word-break: break-word;
 }
+.ms-fixtags { display: flex; flex-wrap: wrap; gap: 4px; cursor: pointer; }
+.ms-tag {
+    font-size: 10px; font-weight: 700; letter-spacing: .02em;
+    color: var(--accent); border: 1px solid var(--accent); border-radius: 4px; padding: 0 4px;
+}
+.ms-tag.off { color: var(--text-muted); border-color: var(--border); font-weight: 400; }
+.ms-fixdiff {
+    font-size: 11.5px; line-height: 1.55; color: var(--text-muted);
+    background: var(--bg); border-left: 2px solid var(--border); padding: 4px 8px; border-radius: 0 5px 5px 0;
+}
+.ms-fixdiff b { color: var(--text-secondary); margin-right: 5px; }
 .ms-fixtext:focus { outline: none; background: var(--bg); box-shadow: 0 0 0 1.5px var(--accent) inset; }
 .ms-filebar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
     border: 1px dashed var(--border); border-radius: 9px; padding: 9px 12px; background: var(--bg); }
