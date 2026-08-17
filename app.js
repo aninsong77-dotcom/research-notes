@@ -1736,7 +1736,15 @@ function refChunksFromEditor(el) {
     const flush = () => { if (buf.trim()) flat.push(buf.trim()); buf = ''; };
     const eat = node => {
         for (const n of node.childNodes) {
-            if (n.nodeType === 3) { buf += escHtml(n.nodeValue); continue; }
+            if (n.nodeType === 3) {
+                // ⚠️ 줄바꿈 글자(\n)로도 나눠야 한다. <br>·<div> 같은 태그로만 나누면
+                //    글자만 붙여넣은 경우(PDF 등) 목록 전체가 한 덩어리가 된다 — 실제로 그랬다.
+                String(n.nodeValue).split('\n').forEach((seg, i) => {
+                    if (i) flush();
+                    buf += escHtml(seg);
+                });
+                continue;
+            }
             if (n.nodeType !== 1) continue;
             const tag = n.tagName;
             if (tag === 'BR') { flush(); continue; }
@@ -2080,7 +2088,8 @@ function openManuscriptMatch() {
         const n = (ed2.textContent || '').length;
         if (!n) { len2.textContent = '기울임 서식이 그대로 살아 있는 칸입니다'; return; }
         const it = countItalic(ed2);
-        len2.textContent = `${n.toLocaleString()}자 · ` + (it ? `기울임 ${it}군데 살아 있음` : '⚠ 기울임이 안 들어왔습니다');
+        len2.textContent = `${n.toLocaleString()}자 · ` + (it ? `기울임 ${it}군데 살아 있음`
+            : '⚠ 기울임이 안 들어왔습니다 — 한글(HWP) 문서에서 복사하세요 (PDF 는 기울임 정보가 없습니다)');
         len2.classList.toggle('ms-hint-warn', !it);
     });
     setTimeout(() => ta1.focus(), 30);
@@ -2088,7 +2097,8 @@ function openManuscriptMatch() {
     ov.querySelector('#ms-run').onclick = () => {
         if (!ta1.value.trim()) { showToast('논문 내용을 붙여넣어 주세요', 'warn'); ta1.focus(); return; }
         const chunks = refChunksFromEditor(ed2);
-        const refsPlain = (ed2.textContent || '').trim();
+        // textContent 는 줄바꿈이 사라지므로 조각을 이어 붙여 쓴다
+        const refsPlain = chunks.map(c => c.text).join('\n').trim() || (ed2.textContent || '').trim();
         const res = matchManuscript(ta1.value, refsPlain, chunks);
         pushDebug('info', `본문 맞추기 — 본문:${ta1.value.length}자 목록:${refsPlain.length}자 조각:${chunks.length} / 인용:${res.cites.length} 목록:${res.refEntries.length} 넣기:${res.toAdd.length} 빼기:${res.toRemove.length}`);
         renderManuscriptResult(ov, res);
@@ -6663,9 +6673,13 @@ async function buildBackupJson(skipBinary = false) {
         _fileEncoded: !!m.fileData,
     }));
     const notes = await dbGetAll(STORE_NOTES);
-    const proposals = await dbGetAll(STORE_PROPOSALS);
+    const proposals = await dbGetAll(STORE_PROPOSALS);      // 모형스케치북
+    const projects = await dbGetAll(STORE_PROJECTS);        // 프로젝트 구분
+    const mindmaps = await dbGetAll(STORE_MINDMAPS);        // 마인드맵
+    pushDebug('info', `백업생성 — 프로젝트${projects.length} 마인드맵${mindmaps.length} 스케치북${proposals.length} 메모${notes.length}`);
     return JSON.stringify(
-        { version: 3, exportedAt: Date.now(), papers: exportable, materials: exportableMat, notes, proposals },
+        { version: 4, exportedAt: Date.now(), papers: exportable, materials: exportableMat,
+          notes, proposals, projects, mindmaps },
         null, 2);
 }
 
@@ -7541,7 +7555,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260818m';
+        const miniUrl = 'mini.html?v=20260818n';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
