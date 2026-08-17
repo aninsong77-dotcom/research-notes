@@ -2146,18 +2146,16 @@ function renderManuscriptResult(ov, res) {
                 붙여넣은 목록 <b>그대로</b>입니다. <b>뺄 항목에 체크</b>하고, 글자는 <b>직접 눌러 고칠 수도</b> 있습니다.
                 다 되면 아래 복사 버튼으로 논문에 붙여넣으세요.
                 <span class="ms-steps-note">
-                    「서식 유지」는 한글에서 <b>Ctrl+Alt+V → HTML 형식</b>으로 붙여넣으면 기울임이 살아 있습니다.
-                    폰트·글자크기 지정은 앱이 전부 걷어내므로 앱이 문서 서식을 덮어쓰지는 않습니다 —
-                    다만 <b>문단 모양(줄간격·내어쓰기)은 한글이 어떻게 받을지 버전마다 다를 수 있어</b>
-                    논문 사본에서 한 번 시험해 보시는 편이 안전합니다. 그게 걱정되면 「글자만」을 쓰세요(기울임은 빠집니다).
+                    복사한 뒤 한글에서 <b>Ctrl+Alt+V → HTML 형식</b>으로 붙여넣으면 <b>기울임이 그대로 들어갑니다.</b>
+                    「참고문헌」 화면의 복사 버튼과 <b>똑같은 방식</b>이라 폰트·글자크기는 앱이 건드리지 않고
+                    한글이 커서 위치의 서식을 물려받습니다.
                 </span>
             </div>
             <div class="ms-fixbar">
                 <button type="button" class="btn-secondary" id="ms-fix-un">인용 안 된 것 모두 체크</button>
                 <button type="button" class="btn-secondary" id="ms-fix-clr">체크 모두 풀기</button>
                 <span class="ms-fixcount" id="ms-fixcount"></span>
-                <button type="button" class="btn-primary" id="ms-fix-rich">목록 복사 (서식 유지)</button>
-                <button type="button" class="btn-secondary" id="ms-fix-plain">글자만</button>
+                <button type="button" class="btn-primary" id="ms-fix-rich">목록 복사 (기울임 포함)</button>
             </div>
             <div class="ms-plist ms-fixlist" id="ms-fixlist">${fixRows || '<div class="ms-empty">붙여넣은 목록이 없습니다</div>'}</div>
         </div>
@@ -2228,16 +2226,12 @@ function renderManuscriptResult(ov, res) {
     body.querySelector('#ms-fix-rich').onclick = async () => {
         const items = collectFix();
         if (!items.length) { showToast('남은 항목이 없습니다', 'warn'); return; }
-        // 폰트·크기·줄간격 지정을 일부러 넣지 않는다 — 넣으면 한글 문서 서식을 덮어쓴다.
-        const html = items.map(x => `<p>${x.html}</p>`).join('');
-        const ok = await copyRich(html, items.map(x => x.text).join('\n'));
-        showToast(ok ? `${items.length}편 복사 — 한글에서 Ctrl+Alt+V → HTML 형식` : '복사 실패', ok ? 'success' : 'error');
-    };
-    body.querySelector('#ms-fix-plain').onclick = async () => {
-        const items = collectFix();
-        if (!items.length) { showToast('남은 항목이 없습니다', 'warn'); return; }
-        const ok = await copyToClipboard(items.map(x => x.text).join('\n'));
-        showToast(ok ? `${items.length}편 복사 (글자만 — 기울임 없음)` : '복사 실패', ok ? 'success' : 'error');
+        // 「참고문헌」 화면의 복사(btn-copy-all-refs)와 **똑같은 모양**으로 싣는다.
+        // 기울임만 넣고 문단 서식(내어쓰기·여백·글꼴)은 넣지 않는다 —
+        // 넣으면 그 블록만 문서와 다른 모양이 되므로 한글이 커서 위치 서식을 물려받게 둔다.
+        const html = `<div>${items.map(x => `<p>${x.html}</p>`).join('')}</div>`;
+        const ok = await copyRich(html, items.map(x => x.text).join('\n\n'));
+        showToast(ok ? `${items.length}편 복사됐습니다 — 한글에 붙여넣으면 기울임까지 들어갑니다.` : '복사 실패', ok ? 'success' : 'error');
     };
 
     ov.querySelector('#ms-back').onclick = () => { ov.remove(); openManuscriptMatch(); };
@@ -7536,7 +7530,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260818j';
+        const miniUrl = 'mini.html?v=20260818k';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
