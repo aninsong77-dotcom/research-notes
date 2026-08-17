@@ -5641,6 +5641,19 @@ function _showPdfExtractingBadge(nearElId, show) {
 }
 
 // 빠른추가 모달의 텍스트란에 PDF 자동 추출 채우기 (contenteditable div)
+// 빠른 추가 창에서 폴더의 PDF를 고른 뒤 공통으로 하는 일:
+// 이름 기억 → 화면 표시 → 제목 비어 있으면 파일명으로 채우기 → 본문 글자 뽑기
+async function _useFolderPdfForAdd(name) {
+    addChoiceFolderFile = name;
+    addChoicePdfFile = null;              // 복사 방식과 겹치지 않게
+    const nameEl = document.getElementById('add-pdf-filename');
+    if (nameEl) { nameEl.textContent = '📁 ' + name; nameEl.style.display = ''; }
+    const titleEl = document.getElementById('add-title');
+    if (titleEl && !titleEl.value) titleEl.value = name.replace(/\.pdf$/i, '');
+    const file = await getFolderFile(name);
+    if (file) await _autoFillAddText(file);
+}
+
 async function _autoFillAddText(file) {
     const txtEl = document.getElementById('add-text-input');
     if (!txtEl || txtEl.textContent.trim()) return;
@@ -5820,13 +5833,6 @@ async function buildBackupJson(skipBinary = false) {
         null, 2);
 }
 
-// ── 내보내기(다운로드) ─────────────────────────────────────
-async function exportData() {
-    const json = await buildBackupJson(false);
-    download(json, `연구노트_백업_${new Date().toISOString().slice(0, 10)}.json`, 'application/json');
-    showToast('데이터를 내보냈습니다', 'success');
-}
-
 // ── 폴더 백업: 지정 폴더의 같은 파일에 최신본 덮어쓰기 ──────
 const BACKUP_FILENAME = '연구노트_최신백업.json';
 const BACKUP_HANDLE_KEY = 'backupDir';
@@ -5888,6 +5894,23 @@ async function listFolderPdfs() {
         if (entry.kind === 'file' && /\.pdf$/i.test(entry.name)) out.push(entry.name);
     }
     return out.sort((a, b) => a.localeCompare(b, 'ko'));
+}
+
+// 폴더의 파일을 File 객체로 얻는다 (텍스트 추출 등에 그대로 쓸 수 있게)
+async function getFolderFile(name) {
+    if (!paperDirHandle || !name) return null;
+    if (!(await ensurePaperDirPermission(true))) return null;
+    try {
+        return await (await paperDirHandle.getFileHandle(name)).getFile();
+    } catch (err) {
+        pushDebug('warn', `폴더 파일 열기 실패(${name}): ${err.message}`);
+        return null;
+    }
+}
+
+// 폴더에 이 이름의 파일이 있는지 확인 (끌어다 놓은 파일이 논문 폴더 안인지 판별용)
+async function folderHasFile(name) {
+    return !!(await getFolderFile(name));
 }
 
 // 폴더에서 PDF 하나를 읽어 온다 (복사 저장 없음 — 읽을 때만 메모리에 올림)
@@ -6654,7 +6677,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260817e';
+        const miniUrl = 'mini.html?v=20260817f';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
@@ -6808,39 +6831,31 @@ function bindEvents() {
     // 자료 유형 바꾸면 필요한 칸만 보이게
     document.getElementById('f-itemtype')?.addEventListener('change', e => applyItemTypeUI(e.target.value));
 
-    document.getElementById('btn-pick-pdf').addEventListener('click', () => {
-        document.getElementById('f-pdf').click();
-    });
     // 폴더에서 연결 — 복사 없이 이름만 기억
     document.getElementById('btn-link-folder')?.addEventListener('click', () => {
-        openFolderPickModal(name => {
+        openFolderPickModal(async name => {
             state.currentFolderFile = name;
-            state.currentPdfFile = null;   // 복사 첨부와 겹치지 않게
             const el = document.getElementById('pdf-filename');
             if (el) el.textContent = `📁 ${name} (폴더 연결)`;
             showToast('폴더의 PDF와 연결했어요 — 저장을 눌러 반영하세요', 'success');
+
+            // 원문 텍스트가 비어 있으면 뽑아 넣고, 그 안에서 DOI를 찾아 서지정보까지 채운다
+            const ftEl = document.getElementById('f-fulltext');
+            if (!ftEl || ftEl.value.trim()) return;
+            const file = await getFolderFile(name);
+            if (!file) return;
+            _showPdfExtractingBadge('pdf-filename', true);
+            const txt = await extractPdfText(file);
+            _showPdfExtractingBadge('pdf-filename', false);
+            if (txt) {
+                ftEl.value = txt;
+                showToast('PDF 텍스트 자동 추출 완료', 'success');
+                await tryAutoDoiFromText(txt);
+            } else {
+                showToast('텍스트 추출 실패 — 직접 붙여넣기 해주세요', 'warn');
+            }
         });
     });
-    document.getElementById('f-pdf').addEventListener('change', async e => {
-        const file = e.target.files[0];
-        if (file) {
-            state.currentPdfFile = file;
-            document.getElementById('pdf-filename').textContent = file.name;
-            const ftEl = document.getElementById('f-fulltext');
-            if (ftEl && !ftEl.value.trim()) {
-                _showPdfExtractingBadge('pdf-filename', true);
-                const txt = await extractPdfText(file);
-                _showPdfExtractingBadge('pdf-filename', false);
-                if (txt) {
-                    ftEl.value = txt;
-                    showToast('PDF 텍스트 자동 추출 완료', 'success');
-                    await tryAutoDoiFromText(txt);   // 본문에서 DOI를 찾아 서지정보까지 채운다
-                }
-                else showToast('텍스트 추출 실패 — 직접 붙여넣기 해주세요', 'warn');
-            }
-        }
-    });
-
     // 폴더백업 / 가져오기
     document.getElementById('btn-folder-backup').addEventListener('click', folderBackup);
     document.getElementById('btn-import').addEventListener('click', () => {
@@ -6858,15 +6873,9 @@ function bindEvents() {
     });
     document.getElementById('btn-add-cancel').addEventListener('click', closeAddChoice);
     document.getElementById('btn-add-save').addEventListener('click', addChoiceSave);
-    document.getElementById('btn-add-pdf-pick').addEventListener('click', () => document.getElementById('add-pdf-file').click());
-    document.getElementById('add-pdf-file').addEventListener('change', async e => {
-        const file = e.target.files[0]; if (!file) return;
-        addChoicePdfFile = file;
-        const nameEl = document.getElementById('add-pdf-filename');
-        nameEl.textContent = '📎 ' + file.name; nameEl.style.display = '';
-        const titleEl = document.getElementById('add-title');
-        if (titleEl && !titleEl.value) titleEl.value = file.name.replace(/\.pdf$/i, '');
-        await _autoFillAddText(file);
+    // 폴더에서 연결 — PDF를 복사하지 않고 논문 폴더의 파일을 가리킨다
+    document.getElementById('btn-add-pdf-pick').addEventListener('click', () => {
+        openFolderPickModal(async name => await _useFolderPdfForAdd(name));
     });
     document.getElementById('add-pdf-dropzone').addEventListener('dragover', e => {
         e.preventDefault(); e.currentTarget.classList.add('drag-over');
@@ -6878,12 +6887,17 @@ function bindEvents() {
         e.preventDefault(); e.currentTarget.classList.remove('drag-over');
         const file = e.dataTransfer.files[0];
         if (!file || file.type !== 'application/pdf') { showToast('PDF 파일만 가능합니다.', 'warn'); return; }
-        addChoicePdfFile = file;
-        const nameEl = document.getElementById('add-pdf-filename');
-        nameEl.textContent = '📎 ' + file.name; nameEl.style.display = '';
-        const titleEl = document.getElementById('add-title');
-        if (titleEl && !titleEl.value) titleEl.value = file.name.replace(/\.pdf$/i, '');
-        await _autoFillAddText(file);
+        // 끌어다 놓은 파일이 논문 폴더 안에 있는지 이름으로 확인한다.
+        // 브라우저는 경로를 알려주지 않으므로 이름으로만 판별할 수 있다.
+        if (!paperDirHandle) {
+            showToast('먼저 「폴더에서 연결」로 논문 폴더를 한 번 지정해 주세요', 'warn');
+            return;
+        }
+        if (!(await folderHasFile(file.name))) {
+            showToast(`「${file.name}」이(가) 논문 폴더에 없어요. 폴더로 옮긴 뒤 다시 놓아주세요.`, 'warn');
+            return;
+        }
+        await _useFolderPdfForAdd(file.name);
     });
     document.getElementById('btn-add-text-analyze').addEventListener('click', aiAnalyzeForAddForm);
 
@@ -7308,10 +7322,12 @@ async function aiExtractPaper() {
 
 // ── 논문 추가 통합 모달 ─────────────────────────────────────
 let addChoicePdfFile = null;
+let addChoiceFolderFile = null;   // 폴더 연결로 고른 PDF 파일 이름
 let addChoiceAiData  = null;   // AI 분석으로 추출된 부가정보(초록·변인 등) 저장
 
 function openAddChoice() {
     addChoicePdfFile = null;
+    addChoiceFolderFile = null;
     addChoiceAiData  = null;
     document.getElementById('modal-add-choice').style.display = 'flex';
     setTimeout(() => document.getElementById('add-title')?.focus(), 80);
@@ -7320,6 +7336,7 @@ function openAddChoice() {
 function closeAddChoice() {
     document.getElementById('modal-add-choice').style.display = 'none';
     addChoicePdfFile = null;
+    addChoiceFolderFile = null;
     addChoiceAiData  = null;
     ['add-title','add-authors','add-year','add-link-url'].forEach(id => {
         const el = document.getElementById(id); if (el) el.value = '';
@@ -7347,7 +7364,8 @@ function findDuplicatePaper(title, authors, doi) {
 // 통합 저장 — PDF·링크·텍스트 중 하나 이상 + 제목 필수
 async function addChoiceSave() {
     const title   = (document.getElementById('add-title').value || '').trim()
-                    || (addChoicePdfFile ? addChoicePdfFile.name.replace(/\.pdf$/i, '') : '');
+                    || (addChoiceFolderFile ? addChoiceFolderFile.replace(/\.pdf$/i, '')
+                        : addChoicePdfFile ? addChoicePdfFile.name.replace(/\.pdf$/i, '') : '');
     const authors = (document.getElementById('add-authors').value || '').trim();
     const year    = (document.getElementById('add-year').value || '').trim();
     const url     = (document.getElementById('add-link-url').value || '').trim();
@@ -7355,7 +7373,7 @@ async function addChoiceSave() {
     const text    = (textEl?.innerText || '').trim();
 
     if (!title) { showToast('제목을 입력해주세요.', 'warn'); document.getElementById('add-title')?.focus(); return; }
-    if (!addChoicePdfFile && !url && !text) {
+    if (!addChoicePdfFile && !addChoiceFolderFile && !url && !text) {
         showToast('PDF, 링크, 텍스트 중 하나 이상을 입력해주세요.', 'warn'); return;
     }
     const dup = findDuplicatePaper(title, authors, '');
@@ -7365,11 +7383,13 @@ async function addChoiceSave() {
     if (btn) { btn.disabled = true; btn.textContent = '저장 중…'; }
     try {
         let pdfData = null, pdfFilename = '';
-        if (addChoicePdfFile) {
+        const pdfFolderFile = addChoiceFolderFile || null;   // 폴더 연결(복사 없음)
+        if (!pdfFolderFile && addChoicePdfFile) {
             pdfData = await readFile(addChoicePdfFile);
             pdfFilename = addChoicePdfFile.name;
-            pushDebug('info', `addChoiceSave PDF 읽기 완료 — 파일명:${pdfFilename} 크기:${pdfData?.byteLength ?? 0}bytes`);
+            pushDebug('info', `addChoiceSave PDF 복사 — 파일명:${pdfFilename} 크기:${pdfData?.byteLength ?? 0}bytes`);
         }
+        if (pdfFolderFile) pushDebug('info', `addChoiceSave 폴더 연결 — ${pdfFolderFile}`);
         pushDebug('info', `addChoiceSave 저장 시작 — 제목:${title} PDF있음:${!!pdfData} 텍스트길이:${text.length}`);
         const ai = addChoiceAiData || {};
         const paper = {
@@ -7384,7 +7404,7 @@ async function addChoiceSave() {
             variables: ai.variables || [], tags: [], analysis: {},
             readStatus: 'unread',
             fullText: text, fullTextHtml: '', attachedImages: [],
-            pdfData, pdfFilename,
+            pdfData, pdfFilename, pdfFolderFile,
             addedAt: Date.now(), updatedAt: Date.now(),
         };
         await dbPut(STORE_PAPERS, paper);
@@ -7727,6 +7747,7 @@ async function init() {
     await requestPersistentStorage();
     await loadBackupHandle();
     await loadPaperDirHandle();   // 논문 PDF 폴더(복사 없이 읽기)
+
     await initProjects();
     await loadData();
     bindEvents();

@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=20260817e">
+    <link rel="stylesheet" href="style.css?v=20260817f">
 </head>
 <body>
 
@@ -231,14 +231,12 @@
                         </summary>
                         <div class="fulltext-content">
                             <div class="form-group full">
-                                <label>PDF 파일 <small style="color:var(--text-muted)">— 이 기기에만 저장됨 (동기화 안 됨)</small></label>
+                                <label>PDF <small style="color:var(--text-muted)">— 내 논문 폴더의 파일과 연결합니다</small></label>
                                 <div class="file-upload">
-                                    <input type="file" id="f-pdf" accept=".pdf" style="display:none">
-                                    <button type="button" class="btn-file" id="btn-pick-pdf" title="PDF 파일 선택 (이 기기에만 저장)"><svg class="ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg> PDF 선택</button>
-                                    <button type="button" class="btn-file btn-file-folder" id="btn-link-folder" title="논문 폴더에서 고르기 — 파일을 복사하지 않아 용량을 안 씁니다">📁 폴더에서 연결</button>
+                                                                        <button type="button" class="btn-file btn-file-folder" id="btn-link-folder" title="논문 폴더에서 고르기 — 파일을 복사하지 않아 용량을 안 씁니다">📁 폴더에서 연결</button>
                                     <span id="pdf-filename">선택된 파일 없음</span>
                                 </div>
-                                <small style="color:var(--text-muted)"><b>폴더에서 연결</b>을 쓰면 PDF가 복사되지 않고 내 폴더에서 바로 읽습니다 (용량 절약 · 권장).<br>여러 기기에서 보려면 구글 드라이브에 올리고 아래 PDF 링크란을 사용하세요.</small>
+                                <small style="color:var(--text-muted)">PDF는 복사되지 않고 <b>내 논문 폴더에서 바로 읽습니다.</b> 폴더는 처음 한 번만 지정하면 됩니다.<br>다른 기기에서도 폴더만 지정하면 같은 PDF가 열립니다. (파일 이름을 바꾸면 연결이 끊깁니다)</small>
                             </div>
                             <div class="form-group full">
                                 <label>원문 텍스트 <small style="color:var(--text-muted)">— 전문을 그대로 붙여넣기 (AI가 섹션을 자동 감지해 요약)</small></label>
@@ -500,11 +498,11 @@
 
                 <!-- PDF -->
                 <div class="add-section">
-                    <div class="add-section-label">📑 PDF 파일 <span class="add-optional">선택</span></div>
+                    <div class="add-section-label">📑 PDF <span class="add-optional">내 논문 폴더에서 연결</span></div>
                     <div class="pdf-drop-zone" id="add-pdf-dropzone">
                         <span class="pdf-drop-icon">📄</span>
                         <span>PDF를 여기 끌어다 놓거나</span>
-                        <button type="button" class="btn-secondary" id="btn-add-pdf-pick" title="PDF 파일 선택">파일 선택</button>
+                        <button type="button" class="btn-secondary btn-file-folder" id="btn-add-pdf-pick" title="내 논문 폴더에서 PDF 고르기 — 복사하지 않습니다">📁 폴더에서 연결</button>
                         <input type="file" id="add-pdf-file" accept=".pdf" style="display:none">
                     </div>
                     <span id="add-pdf-filename" style="display:none;font-size:12px;color:var(--accent);font-weight:600"></span>
@@ -776,8 +774,8 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
 
-    <script src="mindmap.js?v=20260817e"></script>
-    <script src="app.js?v=20260817e"></script>
-    <script src="auth.js?v=20260817e"></script>
+    <script src="mindmap.js?v=20260817f"></script>
+    <script src="app.js?v=20260817f"></script>
+    <script src="auth.js?v=20260817f"></script>
 </body>
 </html>
