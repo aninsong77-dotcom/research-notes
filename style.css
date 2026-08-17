@@ -3623,6 +3623,8 @@ body {
 .ms-gh-ok   { color: var(--success); }
 .ms-gh-off  { color: var(--warning); }
 .ms-gh-miss { color: var(--danger); }
+.ms-gh-check { color: var(--accent); }
+.ms-chk { background: var(--accent-light); color: var(--accent); }
 .ms-note { font-weight: 400; font-size: 11.5px; color: var(--text-muted); }
 .ms-list { max-height: 190px; overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 3px; }
 .ms-row { padding: 7px 10px; border-radius: 7px; background: var(--surface-2, var(--bg)); }

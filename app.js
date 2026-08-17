@@ -1737,17 +1737,70 @@ function extractReferenceEntries(refsText) {
         if (apaLike) name = head.split(',')[0].replace(/\.+$/, '').trim();
         else         name = normalizeCiteName(head);
         if (!name) continue;
-        out.push({ name, year: m[2], suffix: m[3] || '', raw: c.slice(0, 90) + (c.length > 90 ? '…' : '') });
+        // 본문에서 둘째·셋째 저자로 인용하거나 저자 순서를 다르게 적는 경우가 실제로 많다.
+        //   본문 (Carver, 1977) ↔ 목록 Scheier & Carver (1977)
+        //   본문 (김병직, 이동귀, 2012) ↔ 목록 이동귀, 김병직, 이희경 (2012)
+        // 그래서 이 항목에 등장하는 **모든 이름**을 모아 대조 후보로 쓴다.
+        const allNames = new Set([name.toLowerCase()]);
+        for (const tok of head.split(/[,&·;]|and|\s+/)) {
+            const t = tok.replace(/[^A-Za-z가-힣]/g, '').trim();
+            if (!t) continue;
+            if (/[가-힣]/.test(t)) { if (t.length >= 2 && t.length <= 5) allNames.add(t.toLowerCase()); }
+            else if (t.length >= 3 && !/^(and|the|in|of|for|with|von|van|der)$/i.test(t)) allNames.add(t.toLowerCase());
+        }
+        out.push({ name, allNames, year: m[2], suffix: m[3] || '', raw: c.slice(0, 90) + (c.length > 90 ? '…' : '') });
     }
     return out;
 }
 
-// 두 항목(인용·목록)이 같은 문헌인지 — 이름 + 연도(+a/b)
+// 이름 비교 — 대소문자·공백 무시. 한쪽이 다른 쪽에 들어 있어도 같게 본다
+//   adler = Adler (대소문자) · 형선 ⊂ 김사라형선 (이름 일부)
+function nameEq(x, y) {
+    const a = String(x || '').replace(/\s/g, '').toLowerCase();
+    const b = String(y || '').replace(/\s/g, '').toLowerCase();
+    if (!a || !b) return false;
+    if (a === b) return true;
+    return (a.length >= 2 && b.includes(a)) || (b.length >= 2 && a.includes(b));
+}
+
+// 한 글자 차이인지 (Hamacheck ↔ Hamachek, Esiner ↔ Eisner)
+function nearlyEq(x, y) {
+    const a = String(x || '').replace(/\s/g, '').toLowerCase();
+    const b = String(y || '').replace(/\s/g, '').toLowerCase();
+    if (!a || !b || Math.abs(a.length - b.length) > 1) return false;
+    if (Math.min(a.length, b.length) < 4) return false;
+    let i = 0, j = 0, diff = 0;
+    while (i < a.length && j < b.length) {
+        if (a[i] === b[j]) { i++; j++; continue; }
+        if (++diff > 1) return false;
+        // 이웃 글자가 뒤바뀐 경우도 한 글자 차이로 본다 (Esiner ↔ Eisner)
+        if (a[i + 1] === b[j] && a[i] === b[j + 1]) { i += 2; j += 2; continue; }
+        if (a.length > b.length) i++;
+        else if (b.length > a.length) j++;
+        else { i++; j++; }
+    }
+    return true;
+}
+
+// 두 항목(인용·목록)이 같은 문헌인지 — 이름 + 연도(+a/b).
+// 목록 쪽은 그 항목에 나오는 모든 저자와 견준다(둘째 저자 인용·저자 순서 차이 대응).
 function sameCitation(a, b) {
     if (a.year !== b.year) return false;
     if (a.suffix && b.suffix && a.suffix !== b.suffix) return false;
-    const x = a.name.replace(/\s/g, ''), y = b.name.replace(/\s/g, '');
-    return x === y || x.startsWith(y) || y.startsWith(x);
+    if (nameEq(a.name, b.name)) return true;
+    if (b.allNames && [...b.allNames].some(n => nameEq(a.name, n))) return true;
+    if (a.allNames && [...a.allNames].some(n => nameEq(n, b.name))) return true;
+    return false;
+}
+
+// 같다고 하기는 어렵지만 「확인해 보라」고 알려줄 만한 관계
+function similarCitation(a, b) {
+    if (a.year === b.year) {
+        if (nearlyEq(a.name, b.name)) return '철자';
+        if (b.allNames && [...b.allNames].some(n => nearlyEq(a.name, n))) return '철자';
+    }
+    if (nameEq(a.name, b.name) && a.year !== b.year && Math.abs(+a.year - +b.year) <= 12) return '연도';
+    return '';
 }
 
 // 인용에서 뽑은 이름 뭉치를 「첫 저자의 성」 하나로 정리한다.
@@ -1776,7 +1829,10 @@ function normalizeCiteName(raw) {
         if (/[가-힣]/.test(t)) return t.length <= 4 && !KO_NOT_NAME_END.test(t);   // ①
         return /[A-Za-z]{2,}/.test(t);
     };
-    let pick = parts.find(looksLikeName) || '';
+    // 조각이 하나뿐이면 서술어 오인 위험이 없다 → 길이 제한을 풀어 '김사라형선' 같은 이름을 살린다
+    const single = parts.length === 1 && /[가-힣]/.test(parts[0])
+        && parts[0].length <= 6 && !KO_NOT_NAME_END.test(parts[0]);
+    let pick = single ? parts[0] : (parts.find(looksLikeName) || '');
     if (!pick) return '';
     pick = pick.replace(/\s*(?:등|외|et\s+al\.?)\s*$/i, '').trim();
 
@@ -1864,8 +1920,21 @@ function matchManuscript(bodyText, refsText) {
     const refEntries = extractReferenceEntries(refs);
 
     // ③ 본문 ↔ 문서 목록 대조 — 이게 핵심
-    const toAdd    = cites.filter(c => !refEntries.some(r => sameCitation(c, r)));   // 목록에 넣어야 함
-    const toRemove = refEntries.filter(r => !cites.some(c => sameCitation(c, r)));   // 목록에서 빼야 함
+    let toAdd    = cites.filter(c => !refEntries.some(r => sameCitation(c, r)));     // 목록에 넣어야 함
+    let toRemove = refEntries.filter(r => !cites.some(c => sameCitation(c, r)));     // 목록에서 빼야 함
+
+    // 「없다」가 아니라 「철자·연도가 다르다」인 것들을 따로 골라낸다.
+    // APA 에서는 본문과 목록의 철자가 다르면 그 자체가 고쳐야 할 오류라서 같다고 처리하지 않는다.
+    const check = [];
+    toAdd = toAdd.filter(c => {
+        for (const r of toRemove) {
+            const kind = similarCitation(c, r);
+            if (kind) { check.push({ kind, cite: c, ref: r }); return false; }
+        }
+        return true;
+    });
+    const usedRefs = new Set(check.map(x => x.ref));
+    toRemove = toRemove.filter(r => !usedRefs.has(r));
 
     // ④ 앱에 저장된 논문 ↔ 본문 인용 — 「반영」에 쓸 체크 상태
     const cited = [], notCited = [];
@@ -1874,7 +1943,7 @@ function matchManuscript(bodyText, refsText) {
     // ⑤ 본문에 인용했는데 앱에도 없는 것 — 직접 추가해야 함
     const unknown = cites.filter(c => !papers.some(p => citationMatchesPaper(c, p)));
 
-    return { cites, refEntries, toAdd, toRemove, cited, notCited, unknown, cutAt, hasRefs: !!refs.trim(), split: !!String(refsText||'').trim() };
+    return { cites, refEntries, toAdd, toRemove, check, cited, notCited, unknown, cutAt, hasRefs: !!refs.trim(), split: !!String(refsText||'').trim() };
 }
 
 // 「본문과 맞추기」 창 — 붙여넣기 → 대조 결과 → 확인 후 반영
@@ -1951,6 +2020,7 @@ function renderManuscriptResult(ov, res) {
             <span class="ms-chip ms-plain">문서 목록 ${res.refEntries.length}편</span>
             <span class="ms-chip ms-ok">넣어야 함 ${res.toAdd.length}</span>
             <span class="ms-chip ms-off">빼야 함 ${res.toRemove.length}</span>
+            <span class="ms-chip ms-chk">확인 필요 ${res.check.length}</span>
         </div>
 
         ${noRefs ? `<div class="ms-cut ms-cut-warn">
@@ -1968,6 +2038,15 @@ function renderManuscriptResult(ov, res) {
             <div class="ms-gh ms-gh-off">➖ 목록에서 <b>빼야</b> 할 것 — 목록엔 있는데 본문에 인용 안 됨</div>
             <div class="ms-list">${res.toRemove.map(cite).join('') || '<div class="ms-empty">없음 — 목록이 전부 인용된 문헌입니다</div>'}</div>
         </div>
+
+        ${res.check.length ? `<div class="ms-group">
+            <div class="ms-gh ms-gh-check">🔍 <b>확인해 보세요</b> — 본문과 목록이 비슷한데 정확히 다릅니다 (${res.check.length})</div>
+            <div class="ms-list">${res.check.map(x => `<div class="ms-row">
+                <b>${x.kind === '철자' ? '철자 다름' : '연도 다름'}</b>
+                <span class="ms-sub">본문: ${escHtml(x.cite.name)} (${escHtml(x.cite.year + x.cite.suffix)}) &nbsp;·&nbsp; ${escHtml(x.cite.raw)}</span>
+                <span class="ms-sub">목록: ${escHtml(x.ref.name)} (${escHtml(x.ref.year + x.ref.suffix)}) &nbsp;·&nbsp; ${escHtml(x.ref.raw)}</span>
+            </div>`).join('')}</div>
+        </div>` : ''}
 
         <div class="ms-group">
             <div class="ms-gh ms-gh-miss">⚠️ 앱에 없는 인용 — 앱에 <b>논문을 추가</b>하셔야 참고문헌이 만들어집니다</div>
@@ -1991,6 +2070,9 @@ function renderManuscriptResult(ov, res) {
             ``,
             `➕ 목록에 넣어야 할 것 (${res.toAdd.length})`,
             ...res.toAdd.map(line),
+            ``,
+            `🔍 확인해 보세요 — 비슷한데 다름 (${res.check.length})`,
+            ...res.check.map(x => `  - [${x.kind}] 본문 ${x.cite.name}(${x.cite.year}${x.cite.suffix}) ↔ 목록 ${x.ref.name}(${x.ref.year}${x.ref.suffix})  |  ${x.cite.raw}`),
             ``,
             `➖ 목록에서 빼야 할 것 (${res.toRemove.length})`,
             ...res.toRemove.map(line),
@@ -7314,7 +7396,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260818c';
+        const miniUrl = 'mini.html?v=20260818d';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
