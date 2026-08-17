@@ -5,10 +5,14 @@
 
 # 내부 작업 노트(공개 제외)
 CLAUDE.md
+AGENTS.md
 작업기록.md
 
 # 수정 전 백업본(로컬 전용)
 app_backup_*.js
+style_backup_*.css
+index_backup_*.html
+mini_backup_*.html
 
 # OS / 편집기 부산물
 Thumbs.db
@@ -17,4 +21,5 @@ desktop.ini
 *.tmp
 
 .conversationLog/
+.claude/
 
