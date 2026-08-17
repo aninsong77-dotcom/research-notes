@@ -1882,22 +1882,6 @@ function extractCitations(text) {
     return out;
 }
 
-// 논문 하나가 그 인용과 같은 문헌인지 — 첫 저자의 성 + 연도(+a/b)로 판단
-function citationMatchesPaper(cite, paper) {
-    if (!paper.year || paper.year !== cite.year) return false;
-    const sfx = _apaSuffix[paper.id] || '';
-    if (cite.suffix && sfx && cite.suffix !== sfx) return false;
-
-    const people = splitAuthors(paper.authors);
-    if (!people.length) return false;
-    const first = apaAuthorName(people[0]);
-    const surname = first.split(',')[0].trim();          // 한국어는 이름 전체, 영문은 성
-    const cn = cite.name.replace(/\s/g, '');
-    const sn = surname.replace(/\s/g, '');
-    if (!sn) return false;
-    return cn === sn || cn.startsWith(sn) || sn.startsWith(cn);
-}
-
 // 본문 ↔ 저장된 논문 대조 결과
 // bodyText: 논문 내용 / refsText: 참고문헌 목록(비우면 bodyText 뒤쪽에서 자동으로 찾는다)
 function matchManuscript(bodyText, refsText) {
@@ -1909,8 +1893,6 @@ function matchManuscript(bodyText, refsText) {
         const sp = stripReferenceSection(body);
         body = sp.body; refs = sp.refs; cutAt = sp.cutAt;
     }
-    const papers = state.papers;
-
     // ① 본문에서 뽑은 인용 (같은 문헌 중복 제거)
     const cites = [];
     for (const c of extractCitations(body)) {
@@ -1936,14 +1918,7 @@ function matchManuscript(bodyText, refsText) {
     const usedRefs = new Set(check.map(x => x.ref));
     toRemove = toRemove.filter(r => !usedRefs.has(r));
 
-    // ④ 앱에 저장된 논문 ↔ 본문 인용 — 「반영」에 쓸 체크 상태
-    const cited = [], notCited = [];
-    papers.forEach(p => (cites.some(c => citationMatchesPaper(c, p)) ? cited : notCited).push(p));
-
-    // ⑤ 본문에 인용했는데 앱에도 없는 것 — 직접 추가해야 함
-    const unknown = cites.filter(c => !papers.some(p => citationMatchesPaper(c, p)));
-
-    return { cites, refEntries, toAdd, toRemove, check, cited, notCited, unknown, cutAt, hasRefs: !!refs.trim(), split: !!String(refsText||'').trim() };
+    return { cites, refEntries, toAdd, toRemove, check, cutAt, hasRefs: !!refs.trim(), split: !!String(refsText||'').trim() };
 }
 
 // 「본문과 맞추기」 창 — 붙여넣기 → 대조 결과 → 확인 후 반영
@@ -2010,57 +1985,52 @@ function openManuscriptMatch() {
 function renderManuscriptResult(ov, res) {
     const cite = c => `<div class="ms-row"><b>${escHtml(c.name)} (${escHtml(c.year + c.suffix)})</b>
         <span class="ms-sub">${escHtml(c.raw)}</span></div>`;
+    const pair = x => `<div class="ms-row ms-row-pair">
+        <b>${x.kind === '철자' ? '철자 다름' : '연도 다름'}</b>
+        <span class="ms-sub"><i>본문</i> ${escHtml(x.cite.name)} (${escHtml(x.cite.year + x.cite.suffix)}) &nbsp;·&nbsp; ${escHtml(x.cite.raw)}</span>
+        <span class="ms-sub"><i>목록</i> ${escHtml(x.ref.name)} (${escHtml(x.ref.year + x.ref.suffix)}) &nbsp;·&nbsp; ${escHtml(x.ref.raw)}</span>
+    </div>`;
 
     const body = ov.querySelector('#ms-body');
     const noRefs = !res.hasRefs;
 
     body.innerHTML = `
-        <div class="ms-sum">
-            <span class="ms-chip ms-plain">본문 인용 ${res.cites.length}개</span>
-            <span class="ms-chip ms-plain">문서 목록 ${res.refEntries.length}편</span>
-            <span class="ms-chip ms-ok">넣어야 함 ${res.toAdd.length}</span>
-            <span class="ms-chip ms-off">빼야 함 ${res.toRemove.length}</span>
-            <span class="ms-chip ms-chk">확인 필요 ${res.check.length}</span>
-        </div>
-
         ${noRefs ? `<div class="ms-cut ms-cut-warn">
-            문서 끝에서 <b>참고문헌 목록을 찾지 못했습니다.</b>
-            제목 줄이 「참고문헌」·「References」 같은 낱말 하나로만 되어 있어야 알아봅니다.
+            문서 끝에서 <b>참고문헌 목록을 찾지 못했습니다.</b> 두 칸에 나눠 붙여넣으면 확실합니다.
             지금은 본문 인용만 셌습니다.</div>`
-          : `<div class="ms-cut">「${escHtml(res.cutAt)}」 아래를 문서의 참고문헌 목록으로 읽었습니다.</div>`}
+          : `<div class="ms-cut">본문 인용 <b>${res.cites.length}개</b> ·
+             문서 목록 <b>${res.refEntries.length}편</b>${res.cutAt ? ` · 「${escHtml(res.cutAt)}」 아래를 목록으로 읽음` : ''}</div>`}
 
-        <div class="ms-group">
-            <div class="ms-gh ms-gh-ok">➕ 목록에 <b>넣어야</b> 할 것 — 본문엔 인용했는데 목록에 없음</div>
-            <div class="ms-list">${res.toAdd.map(cite).join('') || '<div class="ms-empty">없음 — 인용한 문헌이 목록에 모두 있습니다</div>'}</div>
+        <div class="ms-tabs" id="ms-tabs">
+            <button type="button" class="ms-tab active" data-pane="add">➕ 목록에 넣어야<span>${res.toAdd.length}</span></button>
+            <button type="button" class="ms-tab" data-pane="rm">➖ 목록에서 빼야<span>${res.toRemove.length}</span></button>
+            <button type="button" class="ms-tab" data-pane="ck">🔍 확인해 보세요<span>${res.check.length}</span></button>
         </div>
 
-        <div class="ms-group">
-            <div class="ms-gh ms-gh-off">➖ 목록에서 <b>빼야</b> 할 것 — 목록엔 있는데 본문에 인용 안 됨</div>
-            <div class="ms-list">${res.toRemove.map(cite).join('') || '<div class="ms-empty">없음 — 목록이 전부 인용된 문헌입니다</div>'}</div>
+        <div class="ms-pane" data-pane="add">
+            <div class="ms-pane-note">본문에는 인용했는데 <b>문서 참고문헌 목록에 없습니다.</b> 목록에 넣으세요.</div>
+            <div class="ms-plist">${res.toAdd.map(cite).join('') || '<div class="ms-empty">없음 — 인용한 문헌이 목록에 모두 있습니다</div>'}</div>
         </div>
-
-        ${res.check.length ? `<div class="ms-group">
-            <div class="ms-gh ms-gh-check">🔍 <b>확인해 보세요</b> — 본문과 목록이 비슷한데 정확히 다릅니다 (${res.check.length})</div>
-            <div class="ms-list">${res.check.map(x => `<div class="ms-row">
-                <b>${x.kind === '철자' ? '철자 다름' : '연도 다름'}</b>
-                <span class="ms-sub">본문: ${escHtml(x.cite.name)} (${escHtml(x.cite.year + x.cite.suffix)}) &nbsp;·&nbsp; ${escHtml(x.cite.raw)}</span>
-                <span class="ms-sub">목록: ${escHtml(x.ref.name)} (${escHtml(x.ref.year + x.ref.suffix)}) &nbsp;·&nbsp; ${escHtml(x.ref.raw)}</span>
-            </div>`).join('')}</div>
-        </div>` : ''}
-
-        <div class="ms-group">
-            <div class="ms-gh ms-gh-miss">⚠️ 앱에 없는 인용 — 앱에 <b>논문을 추가</b>하셔야 참고문헌이 만들어집니다</div>
-            <div class="ms-list">${res.unknown.map(cite).join('') || '<div class="ms-empty">없음 — 인용한 문헌이 모두 앱에 있습니다</div>'}</div>
-            ${res.unknown.length ? '<div class="ms-warn">이름을 다르게 적으셨을 수도 있습니다. 눈으로 확인해 주세요.</div>' : ''}
+        <div class="ms-pane" data-pane="rm" hidden>
+            <div class="ms-pane-note">문서 목록에는 있는데 <b>본문에서 인용되지 않았습니다.</b> 목록에서 빼세요.</div>
+            <div class="ms-plist">${res.toRemove.map(cite).join('') || '<div class="ms-empty">없음 — 목록이 전부 인용된 문헌입니다</div>'}</div>
+        </div>
+        <div class="ms-pane" data-pane="ck" hidden>
+            <div class="ms-pane-note">본문과 목록이 <b>비슷한데 정확히 다릅니다.</b> 어느 쪽이 맞는지 확인해 고치세요.</div>
+            <div class="ms-plist">${res.check.map(pair).join('') || '<div class="ms-empty">없음</div>'}</div>
         </div>
 
         <div class="ms-foot">
-            <button type="button" class="btn-secondary" id="ms-copy" title="결과를 글자로 복사 — 문의할 때 붙여넣기">결과 복사</button>
+            <button type="button" class="btn-secondary" id="ms-copy" title="결과를 글자로 복사">결과 복사</button>
             <button type="button" class="btn-secondary" id="ms-back">다시 붙여넣기</button>
-            <button type="button" class="btn-primary" id="ms-apply">본문에 맞춰 목록 만들기 (${res.cited.length}편)</button>
         </div>`;
 
-    // 결과를 글자로 복사 — 왜 이렇게 나왔는지 물어볼 때 그대로 붙여넣을 수 있게
+    // 탭 전환 — 한 번에 한 묶음만 크게 본다
+    body.querySelectorAll('.ms-tab').forEach(t => t.addEventListener('click', () => {
+        body.querySelectorAll('.ms-tab').forEach(x => x.classList.toggle('active', x === t));
+        body.querySelectorAll('.ms-pane').forEach(pn => pn.hidden = pn.dataset.pane !== t.dataset.pane);
+    }));
+
     ov.querySelector('#ms-copy').onclick = async () => {
         const line = c => `  - ${c.name} (${c.year}${c.suffix})  |  ${c.raw}`;
         const txt = [
@@ -2071,40 +2041,16 @@ function renderManuscriptResult(ov, res) {
             `➕ 목록에 넣어야 할 것 (${res.toAdd.length})`,
             ...res.toAdd.map(line),
             ``,
-            `🔍 확인해 보세요 — 비슷한데 다름 (${res.check.length})`,
-            ...res.check.map(x => `  - [${x.kind}] 본문 ${x.cite.name}(${x.cite.year}${x.cite.suffix}) ↔ 목록 ${x.ref.name}(${x.ref.year}${x.ref.suffix})  |  ${x.cite.raw}`),
-            ``,
             `➖ 목록에서 빼야 할 것 (${res.toRemove.length})`,
             ...res.toRemove.map(line),
             ``,
-            `⚠️ 앱에 없는 인용 (${res.unknown.length})`,
-            ...res.unknown.map(line),
-            ``,
-            `[본문에서 찾은 인용 전체 ${res.cites.length}]`,
-            ...res.cites.map(line),
-            ``,
-            `[문서 목록에서 찾은 항목 전체 ${res.refEntries.length}]`,
-            ...res.refEntries.map(line),
+            `🔍 확인해 보세요 — 비슷한데 다름 (${res.check.length})`,
+            ...res.check.map(x => `  - [${x.kind}] 본문 ${x.cite.name}(${x.cite.year}${x.cite.suffix}) ↔ 목록 ${x.ref.name}(${x.ref.year}${x.ref.suffix})  |  ${x.cite.raw}`),
         ].join('\n');
         const ok = await copyToClipboard(txt);
-        showToast(ok ? '결과를 복사했습니다 — 붙여넣어 보여주세요' : '복사 실패', ok ? 'success' : 'error');
+        showToast(ok ? '결과를 복사했습니다' : '복사 실패', ok ? 'success' : 'error');
     };
     ov.querySelector('#ms-back').onclick = () => { ov.remove(); openManuscriptMatch(); };
-    ov.querySelector('#ms-apply').onclick = async () => {
-        const btn = ov.querySelector('#ms-apply');
-        btn.disabled = true; btn.textContent = '반영 중…';
-        const on = new Set(res.cited.map(p => p.id));
-        for (const p of state.papers) {
-            const want = on.has(p.id);
-            if (!!p.inReferences === want) continue;
-            p.inReferences = want;
-            await dbPut(STORE_PAPERS, p);
-        }
-        ov.remove();
-        renderContent();
-        // 앱은 한글 파일을 고칠 수 없다. 다음 단계를 반드시 알려준다.
-        showToast(`${res.cited.length}편이 선택됐습니다. 이제 「선택 항목 복사」로 한글의 참고문헌을 통째로 바꿔주세요.`, 'success');
-    };
 }
 
 // ── 태그/변인 뷰 ───────────────────────────────────────────
@@ -7396,7 +7342,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260818e';
+        const miniUrl = 'mini.html?v=20260818f';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {

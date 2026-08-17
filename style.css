@@ -3646,6 +3646,33 @@ body {
 .ms-empty { padding: 14px; text-align: center; color: var(--text-muted); font-size: 12.5px; }
 .ms-warn { font-size: 12px; color: var(--warning); padding: 8px 14px; border-top: 1px dashed var(--border); }
 
+
+/* 결과 탭 — 세 묶음을 나눠 보지 않고 한 번에 하나만 크게 본다 */
+.ms-tabs { display: flex; gap: 6px; flex-wrap: wrap; border-bottom: 2px solid var(--border); padding-bottom: 0; }
+.ms-tab {
+    font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 10px 16px; border: 0; background: transparent; color: var(--text-secondary);
+    border-bottom: 3px solid transparent; margin-bottom: -2px;
+}
+.ms-tab span {
+    font-size: 12px; font-weight: 800; padding: 1px 8px; border-radius: 999px;
+    background: var(--border); color: var(--text-secondary); font-variant-numeric: tabular-nums;
+}
+.ms-tab:hover { color: var(--text-primary); }
+.ms-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.ms-tab.active span { background: var(--accent); color: #fff; }
+
+.ms-pane { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.ms-pane-note { font-size: 13px; color: var(--text-secondary); }
+.ms-plist {
+    display: flex; flex-direction: column; gap: 4px;
+    border: 1px solid var(--border); border-radius: 10px; padding: 8px; background: var(--bg);
+}
+.ms-plist .ms-row { background: var(--surface); border: 1px solid var(--border-soft, var(--border)); }
+.ms-row-pair { display: flex; flex-direction: column; gap: 3px; }
+.ms-row-pair i { font-style: normal; font-weight: 700; color: var(--text-muted); margin-right: 4px; }
+
 /* ══ RIS 가져오기 — 저장 전 미리보기 ═══════════════════════════ */
 .ris-modal { max-width: 720px; width: 94%; }
 .ris-count { font-size: 13px; font-weight: 700; color: var(--accent); margin-left: 6px; }
