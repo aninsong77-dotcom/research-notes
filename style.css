@@ -3648,7 +3648,7 @@ body {
 
 
 /* 결과 탭 — 세 묶음을 나눠 보지 않고 한 번에 하나만 크게 본다 */
-.ms-tabs { display: flex; gap: 6px; flex-wrap: wrap; border-bottom: 2px solid var(--border); padding-bottom: 0; }
+.ms-tabs { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; border-bottom: 2px solid var(--border); padding-bottom: 0; }
 .ms-tab {
     font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
     display: inline-flex; align-items: center; gap: 7px;
@@ -3663,6 +3663,7 @@ body {
 .ms-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 .ms-tab.active span { background: var(--accent); color: #fff; }
 
+.ms-tabs-act { margin-left: auto; display: flex; gap: 6px; padding-bottom: 6px; }
 .ms-pane { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
 /* ⚠️ display:flex 는 hidden 속성을 무력화한다 → 속성 선택자로 명시해야 숨는다 */
 .ms-pane[hidden] { display: none; }

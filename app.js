@@ -2002,28 +2002,30 @@ function renderManuscriptResult(ov, res) {
              문서 목록 <b>${res.refEntries.length}편</b>${res.cutAt ? ` · 「${escHtml(res.cutAt)}」 아래를 목록으로 읽음` : ''}</div>`}
 
         <div class="ms-tabs" id="ms-tabs">
-            <button type="button" class="ms-tab active" data-pane="add">➕ 목록에 넣어야<span>${res.toAdd.length}</span></button>
-            <button type="button" class="ms-tab" data-pane="rm">➖ 목록에서 빼야<span>${res.toRemove.length}</span></button>
+            <button type="button" class="ms-tab active" data-pane="add">➕ 목록에 없음<span>${res.toAdd.length}</span></button>
+            <button type="button" class="ms-tab" data-pane="rm">➖ 인용 안 됨<span>${res.toRemove.length}</span></button>
             <button type="button" class="ms-tab" data-pane="ck">🔍 확인해 보세요<span>${res.check.length}</span></button>
+            <span class="ms-tabs-act">
+                <button type="button" class="btn-secondary" id="ms-copy" title="결과를 글자로 복사">결과 복사</button>
+                <button type="button" class="btn-secondary" id="ms-back">다시 붙여넣기</button>
+            </span>
         </div>
 
         <div class="ms-pane" data-pane="add">
-            <div class="ms-pane-note">본문에는 인용했는데 <b>문서 참고문헌 목록에 없습니다.</b> 목록에 넣으세요.</div>
+            <div class="ms-pane-note">본문에서 인용했는데 <b>참고문헌 목록에 없습니다.</b> APA 에서는 인용한 문헌이 목록에 반드시 있어야 하므로, 이쪽은 채워 넣으셔야 합니다.</div>
             <div class="ms-plist">${res.toAdd.map(cite).join('') || '<div class="ms-empty">없음 — 인용한 문헌이 목록에 모두 있습니다</div>'}</div>
         </div>
         <div class="ms-pane" data-pane="rm" hidden>
-            <div class="ms-pane-note">문서 목록에는 있는데 <b>본문에서 인용되지 않았습니다.</b> 목록에서 빼세요.</div>
+            <div class="ms-pane-note">목록에는 있는데 <b>본문에서 인용되지 않았습니다.</b>
+                APA 는 인용한 문헌만 참고문헌에 넣도록 하지만(읽기만 한 문헌은 「참고도서목록」),
+                국내 학위논문에서는 느슨하게 두는 경우도 있습니다. <b>보시고 판단하세요.</b></div>
             <div class="ms-plist">${res.toRemove.map(cite).join('') || '<div class="ms-empty">없음 — 목록이 전부 인용된 문헌입니다</div>'}</div>
         </div>
         <div class="ms-pane" data-pane="ck" hidden>
             <div class="ms-pane-note">본문과 목록이 <b>비슷한데 정확히 다릅니다.</b> 어느 쪽이 맞는지 확인해 고치세요.</div>
             <div class="ms-plist">${res.check.map(pair).join('') || '<div class="ms-empty">없음</div>'}</div>
         </div>
-
-        <div class="ms-foot">
-            <button type="button" class="btn-secondary" id="ms-copy" title="결과를 글자로 복사">결과 복사</button>
-            <button type="button" class="btn-secondary" id="ms-back">다시 붙여넣기</button>
-        </div>`;
+`;
 
     // 탭 전환 — 한 번에 한 묶음만 크게 본다
     body.querySelectorAll('.ms-tab').forEach(t => t.addEventListener('click', () => {
@@ -7342,7 +7344,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260818g';
+        const miniUrl = 'mini.html?v=20260818h';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
