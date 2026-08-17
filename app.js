@@ -1748,7 +1748,8 @@ function extractReferenceEntries(refsText) {
             if (/[가-힣]/.test(t)) { if (t.length >= 2 && t.length <= 5) allNames.add(t.toLowerCase()); }
             else if (t.length >= 3 && !/^(and|the|in|of|for|with|von|van|der)$/i.test(t)) allNames.add(t.toLowerCase());
         }
-        out.push({ name, allNames, year: m[2], suffix: m[3] || '', raw: c.slice(0, 90) + (c.length > 90 ? '…' : '') });
+        out.push({ name, allNames, year: m[2], suffix: m[3] || '', full: c,
+                   raw: c.slice(0, 90) + (c.length > 90 ? '…' : '') });
     }
     return out;
 }
@@ -1915,6 +1916,21 @@ function matchManuscript(bodyText, refsText) {
         }
         return true;
     });
+    // 번역서·국내 표기 대응 — 본문은 「아들러(1956)」, 목록은 「Adler, A. (1956)」처럼
+    // 같은 사람을 한글·영문으로 다르게 적는 경우가 실제 논문에 흔하다.
+    // 이름표를 따로 두지 않고 **목록 항목 안에 그 한글 이름이 그대로 적혀 있는지**로만 판단한다
+    // (번역서 항목은 한글 제목·역자 표기에 원저자의 한글 이름이 같이 들어 있다).
+    toAdd = toAdd.filter(c => {
+        if (!/[가-힣]/.test(c.name) || c.name.length < 2) return true;
+        for (const r of toRemove) {
+            if (r.year === c.year && String(r.full || '').includes(c.name)) {
+                check.push({ kind: '표기', cite: c, ref: r });
+                return false;
+            }
+        }
+        return true;
+    });
+
     const usedRefs = new Set(check.map(x => x.ref));
     toRemove = toRemove.filter(r => !usedRefs.has(r));
 
@@ -2040,10 +2056,10 @@ function renderManuscriptResult(ov, res) {
             `본문 인용 ${res.cites.length}개 / 문서 목록 ${res.refEntries.length}편`
             + ` / 목록 찾음:${res.hasRefs ? (res.cutAt || '따로 붙여넣음') : '못 찾음'}`,
             ``,
-            `➕ 목록에 넣어야 할 것 (${res.toAdd.length})`,
+            `➕ 목록에 없음 — 인용했는데 참고문헌에 빠졌음 (${res.toAdd.length})`,
             ...res.toAdd.map(line),
             ``,
-            `➖ 목록에서 빼야 할 것 (${res.toRemove.length})`,
+            `➖ 인용 안 됨 — 목록에는 있지만 본문에서 인용 안 됨 (${res.toRemove.length})`,
             ...res.toRemove.map(line),
             ``,
             `🔍 확인해 보세요 — 비슷한데 다름 (${res.check.length})`,
@@ -6711,7 +6727,11 @@ function autoBackup() {
 async function autoLoadPdfsFromBackup() {
     pushDebug('info', `PDF자동복원 시작 — 폴더핸들:${!!backupDirHandle} 논문수:${state.papers.length}`);
     if (!backupDirHandle) { pushDebug('info', 'PDF자동복원 중단: 폴더핸들 없음'); return; }
-    const missingList = state.papers.filter(p => !p.pdfData || !p.fullText);
+    // 폴더 연결(pdfFolderFile)·드라이브 링크(pdfLink)로 원본을 갖고 있는 논문은 복원 대상 아님.
+    // pdfData 는 예전 '복사해서 넣던' 방식의 흔적이라 폴더 연결 논문은 항상 비어 있다 —
+    // 이걸 안 걸러서 멀쩡한 논문까지 "복원 필요"로 잡히고 버튼이 헛뜨는 버그가 있었다.
+    const hasSource = p => !!(p.pdfData || p.pdfFolderFile || p.pdfLink);
+    const missingList = state.papers.filter(p => !hasSource(p) || !p.fullText);
     const missingMatList = state.materials.filter(m => !m.fileData);
     pushDebug('info', `복원필요논문: ${missingList.length}편 / 복원필요자료: ${missingMatList.length}개`);
     if (missingList.length === 0 && missingMatList.length === 0) { pushDebug('info', '자동복원 중단: 누락 없음'); return; }
@@ -7344,7 +7364,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260818h';
+        const miniUrl = 'mini.html?v=20260818i';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
