@@ -2049,6 +2049,12 @@ function openManuscriptMatch() {
                     <span class="ms-steps-note">앱은 한글 파일을 직접 고치지 못합니다 — 결과를 보고 목록은 직접 바꿔주세요.</span>
                 </p>
 
+                <div class="ms-filebar">
+                    <button type="button" class="btn-secondary" id="ms-pick-file">📄 논문 파일에서 읽기</button>
+                    <span class="ms-filehint" id="ms-filehint">PDF 를 고르면 본문과 참고문헌을 앱이 나눠 담습니다 (붙여넣기 대신)</span>
+                    <input type="file" id="ms-file" accept=".pdf,application/pdf" hidden>
+                </div>
+
                 <div class="ms-pair">
                     <div class="ms-cell">
                         <label class="ms-label" for="ms-input">① 논문 내용 <span>(참고문헌 앞까지)</span></label>
@@ -2093,6 +2099,37 @@ function openManuscriptMatch() {
         len2.classList.toggle('ms-hint-warn', !it);
     });
     setTimeout(() => ta1.focus(), 30);
+
+    // 논문 파일(PDF)에서 바로 읽어 두 칸에 나눠 담는다
+    const fileHint = ov.querySelector('#ms-filehint');
+    ov.querySelector('#ms-pick-file').onclick = () => ov.querySelector('#ms-file').click();
+    ov.querySelector('#ms-file').onchange = async e => {
+        const f = e.target.files?.[0];
+        e.target.value = '';
+        if (!f) return;
+        fileHint.textContent = '⏳ PDF 읽기 도구를 준비하는 중…';
+        if (!window.pdfjsLib && !(await deskWaitPdfjs())) {
+            fileHint.textContent = '⚠ PDF 읽기 도구를 못 불러왔습니다 — 인터넷 연결을 확인해 주세요';
+            return;
+        }
+        const text = await extractPdfTextAll(f, (i, n) => {
+            fileHint.textContent = `⏳ ${f.name} 읽는 중… ${i}/${n}쪽`;
+        });
+        if (!text) {
+            fileHint.textContent = '⚠ 글자를 못 뽑았습니다 — 그림으로 스캔된 PDF 일 수 있습니다';
+            return;
+        }
+        let sp = stripReferenceSection(text);
+        if (!sp.refs) sp = splitRefsLoose(text);   // 제목이 줄 혼자 없을 때
+        ta1.value = sp.body || text;
+        ed2.textContent = sp.refs || '';       // .ms-rich 는 pre-wrap 이라 줄바꿈이 그대로 보인다
+        ta1.dispatchEvent(new Event('input'));
+        ed2.dispatchEvent(new Event('input'));
+        fileHint.textContent = sp.refs
+            ? `✔ ${f.name} — 「${sp.cutAt}」 아래를 참고문헌 칸으로 나눠 담았습니다`
+            : `✔ ${f.name} — 「참고문헌」 제목을 못 찾아 전체를 본문 칸에 담았습니다`;
+        pushDebug('info', `본문맞추기 PDF 읽기 — ${f.name} 본문:${(sp.body||'').length}자 목록:${(sp.refs||'').length}자 기준:${sp.cutAt || '없음'}`);
+    };
 
     ov.querySelector('#ms-run').onclick = () => {
         if (!ta1.value.trim()) { showToast('논문 내용을 붙여넣어 주세요', 'warn'); ta1.focus(); return; }
@@ -6238,6 +6275,66 @@ async function extractPdfText(file) {
     }
 }
 
+// 「참고문헌」 제목이 줄 혼자 서 있지 않은 경우(PDF 에서 흔함)의 예비 분리.
+// stripReferenceSection 이 실패했을 때만 쓴다 — 뒤쪽에서, 바로 뒤에 연도 괄호가
+// 따라오는 자리만 목록 시작으로 인정한다(본문 중의 「참고문헌」 언급을 피하려고).
+function splitRefsLoose(text) {
+    const s = String(text || '');
+    const RE = /(참\s*고\s*문\s*헌|인\s*용\s*문\s*헌|References|REFERENCES|Bibliography)/gi;
+    let at = -1, len = 0, label = '';
+    let m;
+    while ((m = RE.exec(s))) {
+        if (m.index < s.length * 0.35) continue;
+        const after = s.slice(m.index + m[0].length, m.index + m[0].length + 300);
+        if (!/\(\s*\d{4}[a-z]?\s*\)/.test(after)) continue;
+        at = m.index; len = m[0].length; label = m[0].replace(/\s+/g, ' ').trim();
+    }
+    if (at < 0) return { body: s, refs: '', cutAt: null };
+    return { body: s.slice(0, at), refs: s.slice(at + len), cutAt: label };
+}
+
+// 논문 전체를 읽는다 — extractPdfText 는 40페이지에서 끊기므로 참고문헌(맨 뒤)을 못 본다.
+// 「본문과 참고문헌 맞추기」는 끝까지 읽어야 하므로 별도로 둔다.
+async function extractPdfTextAll(file, onProgress) {
+    if (!window.pdfjsLib) { pushDebug('warn', 'PDF.js 아직 로드 안 됨'); return ''; }
+    try {
+        const buf = await readFile(file);
+        const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
+        const out = [];
+        for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const content = await page.getTextContent();
+            // ⚠️ 줄을 살려야 한다. 페이지를 한 줄로 이어붙이면
+            //    ① 「참고문헌」 제목이 줄 혼자 있지 않아 못 찾고
+            //    ② 참고문헌 항목을 나눌 수 없다(전부 한 덩어리).
+            //    pdf.js 의 hasEOL 을 쓰고, 없으면 글자의 세로 위치 변화로 줄을 끊는다.
+            const lines = [];
+            let cur = '', lastY = null;
+            for (const it of content.items) {
+                const y = it.transform ? Math.round(it.transform[5]) : null;
+                if (lastY !== null && y !== null && Math.abs(y - lastY) > 2 && cur.trim()) {
+                    lines.push(cur.trim()); cur = '';
+                }
+                cur += it.str;
+                if (it.hasEOL && cur.trim()) { lines.push(cur.trim()); cur = ''; }
+                lastY = y;
+            }
+            if (cur.trim()) lines.push(cur.trim());
+            out.push(lines.join('\n'));
+            if (onProgress && (i % 5 === 0 || i === pdf.numPages)) {
+                onProgress(i, pdf.numPages);
+                await new Promise(r => setTimeout(r, 0));   // 화면이 멈춰 보이지 않게 양보
+            }
+        }
+        const text = out.join('\n').trim();
+        pushDebug('info', `PDF 전체 추출 — ${pdf.numPages}페이지 ${text.length}자`);
+        return text;
+    } catch (e) {
+        pushDebug('warn', 'PDF 전체 추출 실패: ' + e.message);
+        return '';
+    }
+}
+
 // PDF 추출 중 인디케이터 표시/숨김
 function _showPdfExtractingBadge(nearElId, show) {
     const BADGE_ID = 'pdf-extracting-badge';
@@ -7555,7 +7652,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260818n';
+        const miniUrl = 'mini.html?v=20260818p';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
