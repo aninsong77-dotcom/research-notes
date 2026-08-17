@@ -1183,6 +1183,9 @@ function renderReferences(container) {
             <button class="btn-ref-action" id="btn-export-refs">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:5px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>파일로 저장
             </button>
+            <button class="btn-ref-action btn-ms-open" id="btn-ms-open" title="한글 본문을 붙여넣어 실제로 인용한 문헌만 골라냅니다">
+                ✓ 본문과 맞추기
+            </button>
             <button class="btn-ref-select-all" id="btn-select-all">모두 선택</button>
             <button class="btn-ref-select-all" id="btn-deselect-all">모두 해제</button>
             <span class="ref-hint">체크한 논문만 복사/저장됩니다</span>
@@ -1220,6 +1223,7 @@ function renderReferences(container) {
     });
 
     // 모두 선택 / 해제
+    document.getElementById('btn-ms-open')?.addEventListener('click', openManuscriptMatch);
     document.getElementById('btn-select-all').addEventListener('click', async () => {
         for (const p of state.papers) {
             p.inReferences = true;
@@ -1678,6 +1682,181 @@ function formatInText(paper) {
                                                 : `${surname(people[0])} et al.`;
 
     return year ? `(${name}, ${year})` : `(${name})`;
+}
+
+// ══════════════════════════════════════════════════════════════
+// 본문과 참고문헌 맞추기
+// 한글(HWP)에는 조테로 같은 연동 플러그인이 없다. 대신 반대로 —
+// 본문을 통째로 붙여넣으면 앱이 인용을 찾아내 목록과 대조한다.
+// 문서에 표식을 심지 않으므로 원고가 깨끗하게 유지된다.
+// ══════════════════════════════════════════════════════════════
+
+// 본문에서 인용을 뽑는다 → [{name:'홍길동', year:'2020', suffix:'a', raw:'(홍길동, 2020a)'}]
+function extractCitations(text) {
+    const out = [];
+    const push = (name, year, suffix, raw) => {
+        name = String(name || '').replace(/\s+/g, ' ').trim()
+            .replace(/\s*(등|외|and others)\s*$/,'').replace(/\s*et\s+al\.?\s*$/i, '').trim();
+        if (name && year) out.push({ name, year, suffix: suffix || '', raw });
+    };
+
+    // ① 괄호형 — (홍길동, 2020) · (홍길동, 2020, p. 25) · (홍길동, 2020; 김철수, 2021)
+    for (const m of String(text || '').matchAll(/\(([^()\n]{2,300})\)/g)) {
+        const inner = m[1];
+        if (!/\d{4}/.test(inner)) continue;               // 연도가 없으면 인용이 아니다
+        for (const part of inner.split(/;/)) {
+            const ym = part.match(/\b(\d{4})([a-z])?\b/);
+            if (!ym) continue;
+            const name = part.slice(0, ym.index).replace(/[,\s]+$/, '');
+            push(name, ym[1], ym[2], `(${part.trim()})`);
+        }
+    }
+
+    // ② 서술형 — 홍길동(2020)은 … / Smith et al. (2014) found …
+    const NARR = /([가-힣]{2,6}(?:\s*(?:등|외))?|[A-Z][A-Za-z''\-]+(?:\s+(?:et\s+al\.|and\s+[A-Z][A-Za-z''\-]+))?)\s*\(\s*(\d{4})([a-z])?\s*[,)]/g;
+    for (const m of String(text || '').matchAll(NARR)) {
+        push(m[1], m[2], m[3], `${m[1]}(${m[2]}${m[3] || ''})`);
+    }
+    return out;
+}
+
+// 논문 하나가 그 인용과 같은 문헌인지 — 첫 저자의 성 + 연도(+a/b)로 판단
+function citationMatchesPaper(cite, paper) {
+    if (!paper.year || paper.year !== cite.year) return false;
+    const sfx = _apaSuffix[paper.id] || '';
+    if (cite.suffix && sfx && cite.suffix !== sfx) return false;
+
+    const people = splitAuthors(paper.authors);
+    if (!people.length) return false;
+    const first = apaAuthorName(people[0]);
+    const surname = first.split(',')[0].trim();          // 한국어는 이름 전체, 영문은 성
+    const cn = cite.name.replace(/\s/g, '');
+    const sn = surname.replace(/\s/g, '');
+    if (!sn) return false;
+    return cn === sn || cn.startsWith(sn) || sn.startsWith(cn);
+}
+
+// 본문 ↔ 저장된 논문 대조 결과
+function matchManuscript(text) {
+    const cites = extractCitations(text);
+    const papers = state.papers;
+    const cited = [], notCited = [], unknown = [];
+
+    papers.forEach(p => {
+        const hit = cites.find(c => citationMatchesPaper(c, p));
+        (hit ? cited : notCited).push(p);
+    });
+
+    // 앱에 없는 인용 — 같은 이름·연도끼리 한 번만
+    const seen = new Set();
+    cites.forEach(c => {
+        if (papers.some(p => citationMatchesPaper(c, p))) return;
+        const key = `${c.name}|${c.year}${c.suffix}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        unknown.push(c);
+    });
+    return { cites, cited, notCited, unknown };
+}
+
+// 「본문과 맞추기」 창 — 붙여넣기 → 대조 결과 → 확인 후 반영
+function openManuscriptMatch() {
+    const ov = document.createElement('div');
+    ov.className = 'modal-overlay ms-overlay';
+    ov.innerHTML = `
+        <div class="modal ms-modal">
+            <div class="modal-header">
+                <h2>본문과 참고문헌 맞추기</h2>
+                <button type="button" class="modal-close" id="ms-close" title="닫기">✕</button>
+            </div>
+            <div class="ms-body" id="ms-body">
+                <p class="ms-guide">
+                    한글에서 <b>본문 전체를 선택(Ctrl+A)해 복사(Ctrl+C)</b>한 뒤 아래에 붙여넣으세요.<br>
+                    앱이 인용을 찾아 참고문헌 목록과 대조합니다. <b>원고에는 아무것도 심지 않습니다.</b>
+                </p>
+                <textarea id="ms-input" class="ms-input" rows="10"
+                    placeholder="여기에 본문을 붙여넣으세요 (Ctrl+V)"></textarea>
+                <div class="ms-foot">
+                    <span class="ms-hint" id="ms-len"></span>
+                    <button type="button" class="btn-primary" id="ms-run">맞춰보기</button>
+                </div>
+            </div>
+        </div>`;
+    document.body.appendChild(ov);
+    const close = () => ov.remove();
+    ov.querySelector('#ms-close').onclick = close;
+    ov.addEventListener('click', e => { if (e.target === ov) close(); });
+
+    const ta = ov.querySelector('#ms-input');
+    const lenEl = ov.querySelector('#ms-len');
+    ta.addEventListener('input', () => {
+        const n = ta.value.length;
+        lenEl.textContent = n ? `${n.toLocaleString()}자` : '';
+    });
+    setTimeout(() => ta.focus(), 30);
+
+    ov.querySelector('#ms-run').onclick = () => {
+        const text = ta.value;
+        if (!text.trim()) { showToast('본문을 붙여넣어 주세요', 'warn'); ta.focus(); return; }
+        const res = matchManuscript(text);
+        pushDebug('info', `본문 맞추기 — 글자:${text.length} 인용:${res.cites.length} / 인용됨:${res.cited.length} 안됨:${res.notCited.length} 앱에없음:${res.unknown.length}`);
+        renderManuscriptResult(ov, res);
+    };
+}
+
+function renderManuscriptResult(ov, res) {
+    const row = p => `<div class="ms-row">
+        <b>${escHtml(p.title || '제목 없음')}</b>
+        <span class="ms-sub">${escHtml([p.authors, p.year].filter(Boolean).join(' · '))}</span>
+    </div>`;
+
+    const body = ov.querySelector('#ms-body');
+    body.innerHTML = `
+        <div class="ms-sum">
+            <span class="ms-chip ms-ok">본문에 인용됨 ${res.cited.length}편</span>
+            <span class="ms-chip ms-off">인용 안 됨 ${res.notCited.length}편</span>
+            <span class="ms-chip ms-miss">앱에 없는 인용 ${res.unknown.length}개</span>
+        </div>
+
+        <div class="ms-group">
+            <div class="ms-gh ms-gh-ok">✅ 본문에 인용됨 — 참고문헌에 <b>넣습니다</b></div>
+            <div class="ms-list">${res.cited.map(row).join('') || '<div class="ms-empty">없음</div>'}</div>
+        </div>
+
+        <div class="ms-group">
+            <div class="ms-gh ms-gh-off">⚠️ 인용 안 됨 — 참고문헌에서 <b>뺍니다</b> <span class="ms-note">(논문은 앱에 그대로 남습니다)</span></div>
+            <div class="ms-list">${res.notCited.map(row).join('') || '<div class="ms-empty">없음</div>'}</div>
+        </div>
+
+        <div class="ms-group">
+            <div class="ms-gh ms-gh-miss">❌ 앱에 없는 인용 — <b>직접 추가하셔야</b> 합니다</div>
+            <div class="ms-list">${
+                res.unknown.map(c => `<div class="ms-row"><b>${escHtml(c.name)} (${escHtml(c.year + c.suffix)})</b>
+                    <span class="ms-sub">본문 표기: ${escHtml(c.raw)}</span></div>`).join('')
+                || '<div class="ms-empty">없음 — 인용한 문헌이 모두 앱에 있습니다</div>'}</div>
+            ${res.unknown.length ? '<div class="ms-warn">이름을 다르게 적으셨거나 앱에 아직 안 넣은 논문입니다. 눈으로 확인해 주세요.</div>' : ''}
+        </div>
+
+        <div class="ms-foot">
+            <button type="button" class="btn-secondary" id="ms-back">다시 붙여넣기</button>
+            <button type="button" class="btn-primary" id="ms-apply">이대로 반영 (${res.cited.length}편 선택)</button>
+        </div>`;
+
+    ov.querySelector('#ms-back').onclick = () => { ov.remove(); openManuscriptMatch(); };
+    ov.querySelector('#ms-apply').onclick = async () => {
+        const btn = ov.querySelector('#ms-apply');
+        btn.disabled = true; btn.textContent = '반영 중…';
+        const on = new Set(res.cited.map(p => p.id));
+        for (const p of state.papers) {
+            const want = on.has(p.id);
+            if (!!p.inReferences === want) continue;
+            p.inReferences = want;
+            await dbPut(STORE_PAPERS, p);
+        }
+        ov.remove();
+        renderContent();
+        showToast(`참고문헌 목록을 맞췄습니다 — ${res.cited.length}편 선택됨`, 'success');
+    };
 }
 
 // ── 태그/변인 뷰 ───────────────────────────────────────────
@@ -6969,7 +7148,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260817s';
+        const miniUrl = 'mini.html?v=20260817t';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
