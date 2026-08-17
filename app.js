@@ -1788,7 +1788,11 @@ function apaCleanHtml(html) {
             const ital = child.tagName === 'I' || child.tagName === 'EM'
                       || /font-style\s*:\s*italic/i.test(st);
             if (ital) {
+                // ⚠️ 맨 <i> 로는 한글에서 기울임이 안 먹는다. 인라인 style 을 반드시 같이 실어야 한다.
+                //    참고문헌 복사(formatAPAParts 의 IT 함수)가 같은 이유로 style 을 붙이고 있다 —
+                //    그쪽은 되는데 이쪽은 안 됐던 원인이 바로 이 차이였다.
                 const rep = document.createElement('i');
+                rep.setAttribute('style', 'font-style:italic');
                 rep.innerHTML = child.innerHTML;
                 child.replaceWith(rep);
             } else {
@@ -1797,7 +1801,8 @@ function apaCleanHtml(html) {
         }
     };
     walk(d);
-    return d.innerHTML.replace(/<\/i>(\s*)<i>/g, '$1');
+    // 붙어 있는 기울임 덩어리는 하나로 합친다
+    return d.innerHTML.replace(/<\/i>(\s*)<i style="font-style:italic">/g, '$1');
 }
 
 function extractReferenceEntries(refsText, chunksIn) {
@@ -2070,9 +2075,13 @@ function openManuscriptMatch() {
     ta1.addEventListener('input', () => {
         len1.textContent = ta1.value.length ? `${ta1.value.length.toLocaleString()}자` : '';
     });
+    const countItalic = el => el.querySelectorAll('i, em, [style*="italic" i]').length;
     ed2.addEventListener('input', () => {
         const n = (ed2.textContent || '').length;
-        len2.textContent = n ? `${n.toLocaleString()}자 · 기울임 서식 살아 있음` : '기울임 서식이 그대로 살아 있는 칸입니다';
+        if (!n) { len2.textContent = '기울임 서식이 그대로 살아 있는 칸입니다'; return; }
+        const it = countItalic(ed2);
+        len2.textContent = `${n.toLocaleString()}자 · ` + (it ? `기울임 ${it}군데 살아 있음` : '⚠ 기울임이 안 들어왔습니다');
+        len2.classList.toggle('ms-hint-warn', !it);
     });
     setTimeout(() => ta1.focus(), 30);
 
@@ -2230,6 +2239,8 @@ function renderManuscriptResult(ov, res) {
         // 기울임만 넣고 문단 서식(내어쓰기·여백·글꼴)은 넣지 않는다 —
         // 넣으면 그 블록만 문서와 다른 모양이 되므로 한글이 커서 위치 서식을 물려받게 둔다.
         const html = `<div>${items.map(x => `<p>${x.html}</p>`).join('')}</div>`;
+        const itCount = (html.match(/<i style="font-style:italic">/g) || []).length;
+        pushDebug('info', `목록 복사 — ${items.length}편 / 기울임 ${itCount}군데 / html ${html.length}자`);
         const ok = await copyRich(html, items.map(x => x.text).join('\n\n'));
         showToast(ok ? `${items.length}편 복사됐습니다 — 한글에 붙여넣으면 기울임까지 들어갑니다.` : '복사 실패', ok ? 'success' : 'error');
     };
@@ -7530,7 +7541,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260818k';
+        const miniUrl = 'mini.html?v=20260818m';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
