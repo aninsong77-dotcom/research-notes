@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=20260817i">
+    <link rel="stylesheet" href="style.css?v=20260817j">
 </head>
 <body>
 
@@ -640,114 +640,194 @@
             <div class="help-scroll-wrap">
             <div class="modal-body" id="help-modal-body" style="padding:1.2rem 1.5rem 1.5rem;">
 
-                <div class="help-toc"><button type="button" class="help-toc-item" data-go="help-s1">처음 시작할 때</button><button type="button" class="help-toc-item" data-go="help-s2">논문 추가하기</button><button type="button" class="help-toc-item" data-go="help-s3">논문 읽으면서 정리하기</button><button type="button" class="help-toc-item" data-go="help-s4">기타 자료 저장</button><button type="button" class="help-toc-item" data-go="help-s5">연구모형 그리기</button><button type="button" class="help-toc-item" data-go="help-s6">연구 프로포절 작성</button><button type="button" class="help-toc-item" data-go="help-s7">참고문헌 자동 생성</button><button type="button" class="help-toc-item" data-go="help-s8">저장과 백업</button></div>
-
+                <div class="help-toc">
+                    <button type="button" class="help-toc-item" data-go="help-s1">시작하기</button>
+                    <button type="button" class="help-toc-item" data-go="help-s2">논문 넣기</button>
+                    <button type="button" class="help-toc-item" data-go="help-s3">읽고 필기하기</button>
+                    <button type="button" class="help-toc-item" data-go="help-s4">정리와 검색</button>
+                    <button type="button" class="help-toc-item" data-go="help-s5">인용과 참고문헌</button>
+                    <button type="button" class="help-toc-item" data-go="help-s6">생각 정리 도구</button>
+                    <button type="button" class="help-toc-item" data-go="help-s7">저장·백업·동기화</button>
+                    <button type="button" class="help-toc-item" data-go="help-s8">안 될 때</button>
+                    <button type="button" class="help-toc-item" data-go="help-s9">용어</button>
+                </div>
 
                 <div class="help-section help-blue" id="help-s1">
                     <div class="help-section-header">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
-                        처음 시작할 때
+                        1. 시작하기
                     </div>
                     <div class="help-section-body">
+                        처음 한 번만 준비하면 그다음부터는 손댈 일이 없습니다.<br><br>
                         <b>① 로그인</b> — 사이드바 맨 아래 「로그인하고 동기화」. PC와 웹이 같은 내용을 보게 됩니다.<br>
-                        <b>② 논문 폴더 지정</b> — 논문을 처음 넣을 때 「📁 폴더에서 연결」을 누르면 폴더 선택 창이 뜹니다. PDF를 모아두는 폴더를 고르세요. <b>한 번만</b> 하면 됩니다. (나중에 바꾸려면 그 창의 「다른 폴더 지정」)<br>
+                        <b>② 논문 폴더 지정</b> — 논문을 처음 넣을 때 「📁 폴더에서 연결」을 누르면 폴더 선택 창이 뜹니다. PDF를 모아두는 폴더를 고르세요. 바꾸려면 그 창의 「다른 폴더 지정」.<br>
                         <b>③ 백업 폴더 지정</b> — 「백업」을 한 번 누르고 폴더를 고르면, 이후 메모·발췌가 자동으로 저장됩니다.<br>
-                        <b>④ AI 키 연결</b> — AI 자동 분석을 쓰려면 「AI 설정」에 API 키를 넣으세요. 무료로 발급받을 수 있습니다.<br>
-                        <b>⑤ 프로젝트</b> — 연구 주제별로 논문·메모·모형을 완전히 나눠 관리합니다.
+                        <b>④ AI 키</b> — AI 자동 분석을 쓰려면 「AI 설정」에 Groq API 키를 넣으세요. 무료로 발급됩니다.<br>
+                        <b>⑤ 프로젝트</b> — 로고 아래 드롭다운. 연구 주제별로 논문·메모·모형이 완전히 나뉩니다.<br><br>
+                        <b>브라우저는 크롬을 쓰세요.</b> 폴더 연결이 크롬에서만 제대로 동작합니다.<br>
+                        <b>웹과 PC</b> 어느 쪽이든 같은 앱이고, 로그인하면 내용이 연동됩니다. 웹 쪽이 브라우저 보호를 받아 조금 더 안전합니다.
                     </div>
                 </div>
 
                 <div class="help-section help-teal" id="help-s2">
                     <div class="help-section-header">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                        논문 추가하기
+                        2. 논문 넣기
                     </div>
                     <div class="help-section-body">
-                        <b>① PDF를 내 논문 폴더에 넣어둡니다.</b> 앱은 파일을 복사하지 않고 그 폴더를 읽습니다.<br>
-                        <b>② 「논문 추가」 → 「📁 폴더에서 연결」</b>로 파일을 고릅니다. 목록에서 제목 일부만 쳐도 걸러집니다.<br>
-                        <b>③ 자동으로 채워집니다.</b> 앱이 본문에서 DOI(논문 고유번호)를 찾아 제목·저자·학술지·권·호·쪽을 가져옵니다.<br>
-                        <b>DOI가 없는 한국 논문·학위논문</b>은 RISS의 「인용하기」 글을 위쪽 칸에 붙여넣고 「자동 입력」을 누르세요. 자료 유형도 자동으로 잡힙니다.<br>
-                        <b>AI 분석</b>을 누르면 원문을 읽고 연구의 필요성·이론·변수·분석방법 등 13항목을 채워줍니다. (추측이므로 확인 필요)<br>
-                        ⚠️ <b>PDF 파일 이름을 바꾸거나 폴더에서 옮기지 마세요.</b> 앱이 이름으로 찾습니다.
+                        PDF는 <b>복사되지 않습니다.</b> 앱은 "내 폴더의 이 파일"이라는 이름만 기억하고, 열 때마다 폴더에서 읽습니다.<br><br>
+                        <b>기본 흐름</b><br>
+                        ① 도서관에서 받은 PDF를 <b>논문 폴더에 넣습니다</b><br>
+                        ② 「논문 추가」 → <b>「📁 폴더에서 연결」</b> → 목록에서 고르기 (제목 일부만 쳐도 걸러짐)<br>
+                        ③ 앱이 본문에서 <b>DOI를 찾아 제목·저자·학술지·권·호·쪽을 자동으로 채웁니다</b><br>
+                        ④ 빈 칸만 채우고 저장<br><br>
+                        <b>DOI가 없을 때 (한국 논문·학위논문)</b><br>
+                        RISS나 도서관의 「인용하기」 글을 복사해 논문 추가 창 위쪽 칸에 붙여넣고 <b>「자동 입력」</b>. 자료 유형도 자동으로 잡힙니다.<br><br>
+                        <b>자료 유형</b> — 참고문헌 형식이 이 유형에 따라 달라집니다. 논문 <b>수정</b> 창 맨 위에서 고릅니다.<br>
+                        · <b>학술지 논문</b> — 학술지명 · 권 · 호 · 쪽<br>
+                        · <b>학위논문</b> — 「논문 종류」에 <b>석사학위</b>/<b>박사학위</b>, 학술지명 칸에 <b>대학교 이름</b><br>
+                        · <b>단행본</b> — 출판사 · 판<br>
+                        · <b>책의 한 장</b> — 책 제목 · 편저자 · 출판사 · 쪽<br>
+                        · <b>번역서</b> — 역자 · 원저 출판연도 · 출판사<br>
+                        · <b>웹자료·보고서</b> — 발행기관 · 주소<br><br>
+                        ⚠️ <b>PDF 파일 이름을 바꾸거나 다른 폴더로 옮기지 마세요.</b> 앱이 이름으로 찾습니다. 끊겨도 메모·형광펜은 안 사라지고, 다시 연결하면 그대로 되살아납니다.
                     </div>
                 </div>
 
                 <div class="help-section help-purple" id="help-s3">
                     <div class="help-section-header">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-                        논문 읽으면서 정리하기
+                        3. 읽고 필기하기
                     </div>
                     <div class="help-section-body">
-                        「내 연구책상」에서 왼쪽에 PDF, 오른쪽에 메모가 나옵니다.<br>
-                        <b>PDF 문장을 드래그하면</b> 그 자리에 형광펜 4색이 뜹니다. 색을 누르면 <b>PDF에 형광펜이 그어지고 동시에 오른쪽에 발췌 카드가 생깁니다.</b> 쪽 번호는 자동입니다.<br>
-                        <b>형광펜을 클릭</b>하면 오른쪽 메모로, 발췌의 <b>「p.12」</b>를 누르면 그 쪽으로 이동합니다.<br>
-                        발췌 카드에서 <b>「프로포절로 보내기」</b>를 누르면 연구계획서 칸으로 옮겨집니다. 「수정」으로 고치고, 색으로 구분할 수 있습니다.<br>
-                        논문의 <b>변인</b>(독립·종속·매개 등)을 채워두면 같은 변인을 쓴 논문이 자동으로 묶여 보입니다.
+                        「내 연구책상」이 읽는 화면입니다. 왼쪽에 PDF, 오른쪽에 메모가 나옵니다.<br><br>
+                        <b>형광펜 — 드래그 한 번</b><br>
+                        ① PDF에서 <b>문장을 드래그</b>합니다<br>
+                        ② 손을 떼면 그 자리에 <b>색 네 개</b>와 「발췌 저장」이 뜹니다<br>
+                        ③ 색을 누르면 <b>PDF에 형광펜이 그어지고 동시에 오른쪽에 발췌 카드가 생깁니다</b><br>
+                        쪽 번호는 앱이 알아서 붙입니다. 복사·붙여넣기가 필요 없습니다.<br><br>
+                        <b>오가기</b><br>
+                        · <b>형광펜 클릭</b> → 오른쪽 해당 메모로 이동하며 반짝입니다<br>
+                        · 발췌 카드의 <b>「p.12」</b> → 그 쪽으로 이동 (확대율 유지)<br><br>
+                        <b>발췌 카드로 할 수 있는 것</b><br>
+                        · <b>프로포절로 보내기</b> — 연구계획서의 필요성·목적·이론배경·대상·방법·기대효과 칸으로<br>
+                        · <b>수정</b> — 그 자리에서 고치기 (Ctrl+Enter 저장, Esc 취소)<br>
+                        · <b>색·라벨</b> — 초록·키워드·변인·연구방법·시사점 등 20가지로 분류<br><br>
+                        <b>손으로 쓰는 메모</b> — 오른쪽 아래 칸에 적고 Ctrl+Enter. 연구책상 아무 데서나 <b>Ctrl+V</b>를 누르면 붙여넣은 글이 바로 그 칸에 들어갑니다.<br><br>
+                        <b>AI 분석</b> — 「AI 분석」을 누르면 원문을 읽고 <b>13항목</b>(연구의 필요성·선행연구 한계점·사용한 이론·연구대상자·연구모형·변수·분석방법·분석결과·시사점·한계점 등)을 채웁니다. AI는 추측하므로 반드시 확인하세요.
                     </div>
                 </div>
 
                 <div class="help-section help-amber" id="help-s4">
                     <div class="help-section-header">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-                        기타 자료 저장
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                        4. 정리와 검색
                     </div>
                     <div class="help-section-body">
-                        척도, 설문지, 참고 자료 등 논문 외의 자료도 따로 저장하고 필요할 때 꺼내 볼 수 있습니다.
+                        <b>검색</b> — 위쪽 검색창에 아무 낱말이나 치면 제목·저자·초록·메모까지 뒤집니다. 「전체단어」와 「키워드만」을 고를 수 있습니다.<br><br>
+                        <b>묶어 보기</b> — 논문 목록에서 <b>키워드 · 저자 · 주제(태그) · 변인 · 연구방법</b> 다섯 기준으로 묶어 볼 수 있습니다.<br><br>
+                        <b>관련 논문 자동 표시</b> — 논문을 열면 <b>같은 변인이나 태그를 쓴 다른 논문</b>이 아래에 자동으로 나옵니다. 변인을 성실히 입력할수록 잘 걸립니다.<br><br>
+                        <b>읽기 상태</b> — 논문마다 안 읽음·읽는 중·읽음을 표시해 진도를 관리합니다.
                     </div>
                 </div>
 
-                <div class="help-section help-coral" id="help-s5">
-                    <div class="help-section-header">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-                        연구모형 그리기
-                    </div>
-                    <div class="help-section-body">
-                        모형 스케치북에서 변인들을 도형으로 배치하고 화살표로 연결해 연구모형을 직접 그려볼 수 있습니다. 가설 번호도 선에 붙여서 한눈에 정리됩니다.
-                    </div>
-                </div>
-
-                <div class="help-section help-green" id="help-s6">
-                    <div class="help-section-header">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-                        연구 프로포절 작성
-                    </div>
-                    <div class="help-section-body">
-                        수집한 논문과 정리한 내용을 바탕으로 간단한 연구 프로포절 초안을 만들어볼 수 있습니다.
-                    </div>
-                </div>
-
-                <div class="help-section help-pink" id="help-s7">
+                <div class="help-section help-pink" id="help-s5">
                     <div class="help-section-header">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-                        참고문헌 자동 생성
+                        5. 인용과 참고문헌
                     </div>
                     <div class="help-section-body">
-                        <b>APA 7판</b>으로 자동 정리됩니다. 자료 유형(학술지 논문·학위논문·단행본·책의 장·번역서·웹자료)에 맞는 형식으로 나옵니다.<br>
-                        영문 저자는 <b>Smith, J., &amp; Jones, M.</b> 형태로 바뀌고, 학술지명·권은 <i>기울임</i>, 같은 저자가 같은 해에 낸 문헌은 <b>2020a·2020b</b>로 구분됩니다. 본문 인용도 같은 글자를 씁니다.<br>
-                        <b>쓰는 법</b> — ① 인용한 논문만 체크 → ② 「선택 항목 복사」 → ③ 한글에서 <b>Ctrl+Alt+V → 「HTML 형식」</b><br>
-                        ⚠️ 그냥 Ctrl+V 하면 기울임이 사라집니다. 꼭 「HTML 형식」으로 붙여넣으세요.<br>
-                        글 쓰면서 인용할 때는 사이드바 <b>「빠른 인용 창 열기」</b>가 편합니다. 한글 옆에 두고 검색해서 바로 복사할 수 있습니다.
+                        APA 7판을 따릅니다. 자료 유형에 맞는 형식이 자동으로 만들어집니다.<br><br>
+                        <b>두 가지를 구분하세요</b><br>
+                        · <b>본문 인용</b> — 문장 속 괄호. <b>(홍길동, 2020)</b>. 인용할 때마다 여러 번<br>
+                        · <b>참고문헌</b> — 논문 맨 뒤 목록. 홍길동 (2020). 제목. <i>학술지</i>, <i>12</i>(3), 45–67. 한 편당 한 줄<br><br>
+                        <b>글 쓰면서</b> — 사이드바 「빠른 인용 창 열기」. 작은 창을 한글 옆에 두고, 검색해서 「(저자, 연도)」나 「APA」를 누르면 복사됩니다.<br><br>
+                        <b>다 쓰고</b> — ① 「참고문헌」 화면 → ② 인용한 논문만 <b>체크</b> → ③ 「선택 항목 복사」 → ④ 한글에서 <b>Ctrl+Alt+V → 「HTML 형식」</b><br>
+                        ⚠️ 그냥 Ctrl+V 하면 <b>기울임이 사라집니다.</b> 꼭 「HTML 형식」으로 붙여넣으세요.<br><br>
+                        <b>앱이 자동으로 지키는 규칙</b><br>
+                        · 영문 저자를 <b>Smith, J., &amp; Jones, M.</b> 형태로 (한국어 이름은 그대로)<br>
+                        · 저자 수 규칙 — 2인 &amp;, 3~20인 나열, 21인 이상 축약<br>
+                        · 영문 제목을 <b>문장식</b>(첫 글자만 대문자)으로 — 나라·도시 이름은 보호<br>
+                        · 학술지명·권 <b>기울임</b>, 쪽 표시 45–67<br>
+                        · 같은 저자·같은 해가 둘이면 <b>2020a · 2020b</b> — 본문 인용과 목록이 같은 글자를 씁니다<br><br>
+                        사람 이름이 제목에 들어간 영어 논문만 소문자가 될 수 있습니다. 그때는 제목 칸에서 직접 고치세요.
                     </div>
                 </div>
 
-                <div class="help-section help-blue" id="help-s8">
+                <div class="help-section help-coral" id="help-s6">
+                    <div class="help-section-header">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                        6. 생각 정리 도구
+                    </div>
+                    <div class="help-section-body">
+                        <b>모형스케치북</b> — 변인과 화살표로 연구모형 그리기. 도형 추가 → 드래그로 이동 → 우클릭으로 화살표 연결 → 더블클릭으로 이름. 논문에 입력한 변인이 자동으로 후보에 뜹니다.<br><br>
+                        <b>마인드맵</b> — 생각을 나뭇가지로 펼치기.<br><br>
+                        <b>아이디어/메모</b> — 자유 메모와 할 일. 카드를 끌어 자유롭게 배치합니다.<br><br>
+                        <b>기타자료</b> — 척도·도서·웹자료·보고서 보관. 참고문헌 목록에는 나오지 않습니다.<br><br>
+                        <b>프로포절</b> — 연구책상 오른쪽 탭. 발췌를 보내 모은 연구계획서 초안이 쌓입니다.
+                    </div>
+                </div>
+
+                <div class="help-section help-green" id="help-s7">
                     <div class="help-section-header">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        저장과 백업
+                        7. 저장·백업·동기화
                     </div>
                     <div class="help-section-body">
-                        내 자료는 <b>네 곳</b>에 있습니다.<br>
+                        내 자료가 있는 <b>네 곳</b>입니다.<br>
                         <b>① 논문 폴더</b> — PDF 원본 (내가 관리)<br>
-                        <b>② 브라우저</b> — 앱이 읽고 쓰는 원본<br>
-                        <b>③ 백업 폴더</b> — 글자로 된 건 전부. 저장 1.5초 뒤 <b>자동</b>으로 써집니다 (PDF는 안 들어감)<br>
-                        <b>④ 클라우드</b> — 로그인 시 자동. PC와 웹이 같은 내용을 봅니다<br>
-                        메모·발췌·형광펜은 세 곳에 있어 안전합니다. <b>PDF는 논문 폴더 한 곳뿐</b>이니 그 폴더만 잘 두세요.<br>
-                        <b>「받음」</b>은 사고가 났을 때 백업 파일을 골라 되돌리는 버튼입니다.<br>
-                        ⚠️ <b>「모두 삭제」는 클라우드와 다른 기기에서도 함께 지웁니다.</b> 되돌릴 방법은 백업 파일뿐입니다.
+                        <b>② 브라우저</b> — 앱이 읽고 쓰는 원본, 작업 공간<br>
+                        <b>③ 백업 폴더</b> — 글자로 된 건 전부(메모·발췌·형광펜·분석·원문텍스트). 저장 1.5초 뒤 <b>자동</b>. PDF는 안 들어감<br>
+                        <b>④ 클라우드</b> — 글자로 된 건 전부. 로그인 시 자동. PC와 웹이 같은 내용을 봄<br><br>
+                        메모·발췌·형광펜은 <b>세 곳</b>에 있어 안전합니다. <b>PDF는 논문 폴더 한 곳뿐</b>이니 그 폴더만 잘 두세요.<br><br>
+                        <b>버튼 두 개</b><br>
+                        · <b>「백업」</b> — 브라우저 → 백업 폴더. 평소엔 자동이라 누를 일이 없습니다(폴더를 처음 정할 때만)<br>
+                        · <b>「받음」</b> — 백업 폴더 → 브라우저. 사고가 났을 때 <b>연구노트_최신백업.json</b>을 골라 되돌립니다<br><br>
+                        <b>새 컴퓨터·외장하드에서 쓰기</b><br>
+                        ① 웹 주소를 열고 로그인 → ② 논문·메모·발췌가 저절로 내려옴 → ③ 외장하드 연결하고 <b>논문 폴더만 한 번 지정</b>. 「받음」은 누를 필요 없습니다.<br><br>
+                        ⚠️ <b>「모두 삭제」는 클라우드와 다른 기기에서도 함께 지웁니다.</b> 되돌릴 방법은 백업 파일뿐입니다. <b>로그아웃</b>하면 이 기기의 자료가 지워집니다(다시 로그인하면 클라우드에서 복원).
                     </div>
                 </div>
 
-            </div>
+                <div class="help-section help-amber" id="help-s8">
+                    <div class="help-section-header">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                        8. 안 될 때
+                    </div>
+                    <div class="help-section-body">
+                        <b>고쳤다는데 화면이 그대로예요</b><br>
+                        <b>Ctrl+Shift+R</b>(강력 새로고침). 그래도 안 되면 크롬을 완전히 껐다 켜세요. 빠른 인용 창은 직접 닫았다가 다시 열어야 합니다.<br><br>
+                        <b>PDF가 안 열려요</b><br>
+                        파일 이름이 바뀌었거나 폴더에서 빠졌을 가능성이 큽니다. 논문을 열어 「📁 폴더에서 연결」로 다시 이어주세요. 브라우저를 껐다 켠 뒤라면 폴더 접근 허용 창이 한 번 뜹니다.<br><br>
+                        <b>붙여넣으면 기울임이 없어요</b><br>
+                        한글에서 <b>Ctrl+Alt+V → 「HTML 형식」</b>을 고르세요. 「텍스트」를 고르면 서식이 버려집니다.<br><br>
+                        <b>참고문헌에 「저자 미상」이 나와요</b><br>
+                        그 논문의 저자·연도 칸이 비어 있습니다. 채우거나, DOI가 있으면 넣고 「자동 불러오기」. 참고문헌에서 <b>체크를 해제</b>하면 목록에서 빠집니다.<br><br>
+                        <b>PDF에서 DOI를 못 찾아요</b><br>
+                        그 논문에 DOI가 없거나(한국 논문·학위논문에 흔합니다), 글자가 아니라 사진으로 스캔된 PDF입니다. RISS 인용 붙여넣기나 직접 입력을 쓰세요.<br><br>
+                        <b>그 밖에 이상해요</b><br>
+                        사이드바 <b>🐞 디버그</b>를 눌러 로그를 복사해 두면 원인을 찾을 수 있습니다.
+                    </div>
+                </div>
+
+                <div class="help-section help-blue" id="help-s9">
+                    <div class="help-section-header">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                        9. 용어
+                    </div>
+                    <div class="help-section-body">
+                        <b>DOI</b> — 논문마다 붙은 고유번호. 이 번호로 서지정보를 받아옵니다<br>
+                        <b>발췌</b> — PDF에서 뽑아 오른쪽에 모아둔 문장 조각<br>
+                        <b>변인</b> — 연구에서 다루는 개념(자기효능감, 학업성취 등). 관련 논문을 잇는 열쇠<br>
+                        <b>프로포절</b> — 연구계획서 초안. 발췌를 보내 모읍니다<br>
+                        <b>폴더 연결</b> — PDF를 복사하지 않고 내 폴더의 파일을 가리키는 방식<br>
+                        <b>동기화</b> — PC와 웹이 같은 내용을 보게 맞추는 것 (로그인 필요)<br>
+                        <b>APA 7판</b> — 심리·교육 분야 표준 인용 양식<br>
+                        <b>RISS</b> — 국내 학술자료 통합 검색 사이트. 「인용하기」 글을 붙여넣어 자동 입력할 수 있습니다
+                    </div>
+                </div>
+
+                </div>
             <div class="help-scroll-hint" id="help-scroll-hint">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                 스크롤하여 더 보기
@@ -808,8 +888,8 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
 
-    <script src="mindmap.js?v=20260817i"></script>
-    <script src="app.js?v=20260817i"></script>
-    <script src="auth.js?v=20260817i"></script>
+    <script src="mindmap.js?v=20260817j"></script>
+    <script src="app.js?v=20260817j"></script>
+    <script src="auth.js?v=20260817j"></script>
 </body>
 </html>
