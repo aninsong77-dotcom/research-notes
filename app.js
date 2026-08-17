@@ -1692,6 +1692,27 @@ function formatInText(paper) {
 // 문서에 표식을 심지 않으므로 원고가 깨끗하게 유지된다.
 // ══════════════════════════════════════════════════════════════
 
+// 붙여넣은 글에서 「참고문헌」 목록 부분을 잘라낸다.
+// 목록의 "홍길동 (2020). 제목…" 이 서술형 인용과 똑같이 생겨서, 그대로 두면
+// 인용하지 않은 문헌까지 "인용됨"으로 잡힌다. 그래서 Ctrl+A 로 전체를 붙여넣어도 되게 만든다.
+// 반환: { body, cutAt }  — cutAt 이 null 이면 잘라낸 게 없다.
+function stripReferenceSection(text) {
+    const s = String(text || '');
+    const lines = s.split(/\r?\n/);
+    const HEAD = /^\s*(?:[<\[【]?\s*)?(?:참\s*고\s*문\s*헌|인\s*용\s*문\s*헌|References?|REFERENCES|Bibliography)(?:\s*[>\]】]?)\s*$/i;
+
+    // 뒤에서부터 찾는다 — 앞쪽 목차에 있는 「참고문헌」에 걸리지 않게.
+    // 그 아래에 실제 목록으로 보이는 줄이 2개 이상 있을 때만 자른다.
+    let cut = -1;
+    for (let i = lines.length - 1; i >= 0; i--) {
+        if (!HEAD.test(lines[i])) continue;
+        const after = lines.slice(i + 1).filter(l => l.trim()).length;
+        if (after >= 2) { cut = i; break; }
+    }
+    if (cut < 0) return { body: s, cutAt: null };
+    return { body: lines.slice(0, cut).join('\n'), cutAt: lines[cut].trim() };
+}
+
 // 본문에서 인용을 뽑는다 → [{name:'홍길동', year:'2020', suffix:'a', raw:'(홍길동, 2020a)'}]
 function extractCitations(text) {
     const out = [];
@@ -1739,7 +1760,8 @@ function citationMatchesPaper(cite, paper) {
 
 // 본문 ↔ 저장된 논문 대조 결과
 function matchManuscript(text) {
-    const cites = extractCitations(text);
+    const { body, cutAt } = stripReferenceSection(text);
+    const cites = extractCitations(body);
     const papers = state.papers;
     const cited = [], notCited = [], unknown = [];
 
@@ -1757,7 +1779,7 @@ function matchManuscript(text) {
         seen.add(key);
         unknown.push(c);
     });
-    return { cites, cited, notCited, unknown };
+    return { cites, cited, notCited, unknown, cutAt };
 }
 
 // 「본문과 맞추기」 창 — 붙여넣기 → 대조 결과 → 확인 후 반영
@@ -1776,7 +1798,8 @@ function openManuscriptMatch() {
                     앱이 인용을 찾아 참고문헌 목록과 대조합니다. <b>원고에는 아무것도 심지 않습니다.</b><br>
                     <span class="ms-steps">① 본문 붙여넣기 → ② 맞춰보기 → ③ 반영 →
                     <b>④ 「선택 항목 복사」로 한글에 다시 붙여넣기</b></span><br>
-                    <span class="ms-steps-note">앱은 한글 파일을 직접 고치지 못합니다. ④는 직접 하셔야 합니다.</span>
+                    <span class="ms-steps-note">앱은 한글 파일을 직접 고치지 못합니다. ④는 직접 하셔야 합니다.<br>
+                    Ctrl+A 로 전체를 복사하셔도 됩니다 — 뒤쪽 「참고문헌」 목록은 앱이 알아서 빼고 셉니다.</span>
                 </p>
                 <textarea id="ms-input" class="ms-input" rows="10"
                     placeholder="여기에 본문을 붙여넣으세요 (Ctrl+V)"></textarea>
@@ -1816,6 +1839,7 @@ function renderManuscriptResult(ov, res) {
 
     const body = ov.querySelector('#ms-body');
     body.innerHTML = `
+        ${res.cutAt ? `<div class="ms-cut">「${escHtml(res.cutAt)}」 아래는 참고문헌 목록으로 보고 <b>빼고 계산</b>했습니다.</div>` : ''}
         <div class="ms-sum">
             <span class="ms-chip ms-ok">본문에 인용됨 ${res.cited.length}편</span>
             <span class="ms-chip ms-off">인용 안 됨 ${res.notCited.length}편</span>
@@ -7153,7 +7177,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260817w';
+        const miniUrl = 'mini.html?v=20260817x';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
