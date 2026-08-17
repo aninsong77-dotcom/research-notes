@@ -1252,10 +1252,10 @@ function renderReferences(container) {
         if (!picked.length) { showToast('선택된 논문이 없습니다. 포함할 논문을 체크하세요.', 'error'); return; }
         const parts = picked.map(formatAPAParts);
         const text = parts.map(p => p.text).join('\n\n');
-        // 기울임만 싣는다. 문단 서식(내어쓰기·여백·글꼴)을 넣으면 한글에 붙일 때
-        // 그 블록만 문서와 다른 모양이 되므로, 한글이 커서 위치 서식을 물려받게 둔다.
+        // 기울임 + 내어쓰기(APA 필수, 0.5인치=36pt)만 싣는다. 글꼴·글자크기는 싣지 않아
+        // 문서의 글자 모양은 그대로 두고 한글이 커서 위치 서식을 물려받게 한다.
         const html = `<div>${parts.map(p =>
-            `<p>${p.html}</p>`).join('')}</div>`;
+            `<p style="text-indent:-36pt;margin-left:36pt">${p.html}</p>`).join('')}</div>`;
         const ok = await copyRich(html, text);
         showToast(ok ? `${picked.length}편 복사됐습니다 — 한글/워드에 붙여넣으면 기울임까지 들어갑니다.` : '복사 실패', ok ? 'success' : 'error');
     });
@@ -1725,7 +1725,7 @@ function refChunksFromText(refsText) {
     const parts = String(refsText || '')
         .split(/\n\s*\n/).flatMap(b => b.split(/\n(?=\S)/))   // 빈 줄 또는 줄 시작이 글자인 곳
         .map(x => x.replace(/\s+/g, ' ').trim()).filter(Boolean);
-    return mergeRefChunks(parts.map(t => ({ text: t, html: escHtml(t) })));
+    return mergeRefChunks(cutAtRefEnd(parts.map(t => ({ text: t, html: escHtml(t) }))));
 }
 
 // 서식 보존 칸(contenteditable)에서 줄 단위로 뽑는다. 한글에서 붙여넣으면
@@ -1759,7 +1759,7 @@ function refChunksFromEditor(el) {
     };
     eat(el);
     flush();
-    return mergeRefChunks(flat.map(h => ({ text: htmlToPlain(h), html: h })));
+    return mergeRefChunks(cutAtRefEnd(flat.map(h => ({ text: htmlToPlain(h), html: h }))));
 }
 
 function htmlToPlain(html) {
@@ -2103,7 +2103,7 @@ function matchManuscript(bodyText, refsText, refChunksIn) {
     // 서식 보존 칸에서 왔으면 그 조각을 그대로 쓴다(기울임을 살려 목록을 다시 조립하려고).
     let refChunks = (refChunksIn && refChunksIn.length) ? refChunksIn : refChunksFromText(refs);
     // 조각으로 받은 경우에도 목록 끝을 넘어간 것은 버린다
-    const endAt = refChunks.findIndex(c => /^(부\s*록|국문\s*초록|영문\s*초록|Abstract|ABSTRACT|감사의\s*글|설\s*문\s*지)/.test(c.text));
+    const endAt = refChunks.findIndex(c => REF_END_LINE.test(c.text));
     if (endAt > 0) refChunks = refChunks.slice(0, endAt);
     const refEntries = extractReferenceEntries(refs, refChunks);
 
@@ -2490,6 +2490,7 @@ function renderManuscriptResult(ov, res) {
         btn.textContent = '✔ 넣었습니다';
         btn.disabled = true;
         leftAdd--; tabCount('add', leftAdd);
+        tabCount('fix', fixRowsEl().length);
         updateCount();
         showToast(made.from === '내 논문에서 가져옴'
             ? '내 논문 정보로 완성해 넣었습니다' : '뼈대를 넣었습니다 — 「고쳐진 목록」에서 채워주세요',
@@ -2539,7 +2540,10 @@ function renderManuscriptResult(ov, res) {
         // 「참고문헌」 화면의 복사(btn-copy-all-refs)와 **똑같은 모양**으로 싣는다.
         // 기울임만 넣고 문단 서식(내어쓰기·여백·글꼴)은 넣지 않는다 —
         // 넣으면 그 블록만 문서와 다른 모양이 되므로 한글이 커서 위치 서식을 물려받게 둔다.
-        const html = `<div>${items.map(x => `<p>${x.html}</p>`).join('')}</div>`;
+        // APA 는 둘째 줄부터 0.5인치(36pt) 내어쓰기가 필수다. 원본 논문에도 들어가 있다.
+        // 글꼴·글자크기는 여전히 싣지 않으므로 문서의 글자 모양은 바뀌지 않는다.
+        const HANG = 'text-indent:-36pt;margin-left:36pt';
+        const html = `<div>${items.map(x => `<p style="${HANG}">${x.html}</p>`).join('')}</div>`;
         const itCount = (html.match(/<i style="font-style:italic">/g) || []).length;
         pushDebug('info', `목록 복사 — ${items.length}편 / 기울임 ${itCount}군데 / html ${html.length}자`);
         const ok = await copyRich(html, items.map(x => x.text).join('\n\n'));
@@ -6529,6 +6533,16 @@ async function extractPdfText(file) {
     }
 }
 
+// 목록의 끝(부록·초록·감사의 글)을 **이어붙이기 전에** 잘라낸다.
+// 이어붙인 뒤에 자르면 이미 마지막 항목에 붙어버려 소용이 없다 — 실제로 그랬다.
+// JS 의 단어경계는 영문·숫자만 단어로 보므로 「부 록」처럼 한글로 끝나면
+// 매칭에 실패한다 — 이 때문에 부록이 안 잘렸다. 뒤 글자 검사로 바꾼다.
+const REF_END_LINE = /^[-\s\d\u2013]*(부\s*록|국문\s*초록|영문\s*초록|초\s*록|Abstract|ABSTRACT|감사의\s*글|설\s*문\s*지|Appendix|APPENDIX)(?![가-힣A-Za-z])/;
+function cutAtRefEnd(items) {
+    const at = items.findIndex((x, i) => i > 1 && REF_END_LINE.test(x.text));
+    return at > 0 ? items.slice(0, at) : items;
+}
+
 // 참고문헌 목록의 **끝**을 찾아 뒤를 버린다.
 // 부록·설문지·초록·감사의 글에는 연도 괄호가 없어서, 이어지는 줄로 오인돼
 // 마지막 항목에 통째로 붙는 일이 실제로 있었다(설문지 30문항까지 딸려 들어갔다).
@@ -7925,7 +7939,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260818u';
+        const miniUrl = 'mini.html?v=20260818v';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
