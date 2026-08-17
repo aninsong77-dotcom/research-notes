@@ -6448,14 +6448,23 @@ async function clearCurrentProject() {
 
 async function wipeAllData() {
     if (!confirm('모든 프로젝트의 모든 데이터(논문·자료·메모·모형)를 완전히 삭제하고\n처음 상태로 되돌립니다. 되돌릴 수 없어요.\n\n계속할까요?')) return;
-    if (!confirm('정말 전부 삭제할까요?\n(백업 파일이 있으면 "받음"으로 복구할 수 있어요)')) return;
+    if (typeof currentUser !== 'undefined' && currentUser
+        && !confirm('로그인 중입니다.\n클라우드와 다른 기기(웹·PC)에서도 함께 삭제됩니다.\n\n계속할까요?')) return;
+    if (!confirm('정말 전부 삭제할까요?\n\n※ 「백업」 버튼으로 만든 파일에는 PDF가 없습니다.\n   PDF까지 되살리려면 「내보내기」 파일이 필요합니다.')) return;
 
+    const synced = (typeof currentUser !== 'undefined' && !!currentUser);
     suppressAutoBackup = true;
     try {
+        // ⚠️ dbClearStore(통째 비우기)만 쓰면 클라우드가 안 지워져서, 새로고침 때
+        //    동기화로 전부 되살아난다. 그래서 항목마다 dbDelete 로 지운다 —
+        //    dbDelete 는 후킹돼 있어 Firestore 삭제 + 삭제기록(tombstone)까지 남긴다.
         for (const store of [STORE_PAPERS, STORE_MATERIALS, STORE_NOTES, STORE_MINDMAPS, STORE_PROPOSALS, STORE_PROJECTS]) {
-            await dbClearStore(store);
+            const all = await dbGetAll(store);
+            for (const item of all) await dbDelete(store, item.id);
+            await dbClearStore(store);   // id 없는 잔여 항목까지 정리
         }
         localStorage.removeItem('currentProjectId');
+        pushDebug('info', `전체 삭제 완료 — 클라우드:${synced ? '함께 삭제됨' : '해당없음(비로그인)'}`);
     } finally { suppressAutoBackup = false; }
 
     showToast('모든 데이터를 삭제했습니다. 새로고침합니다…', 'success');
@@ -6645,7 +6654,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260817d';
+        const miniUrl = 'mini.html?v=20260817e';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
