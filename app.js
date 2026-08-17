@@ -6633,17 +6633,6 @@ function bindEvents() {
     // 검색 모드 토글(키워드만 / 전체단어 / RISS)
     document.querySelectorAll('#search-mode-toggle .sm-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            // RISS 단추는 검색이 아니라 "인용문 붙여넣기" 입구다.
-            // 예전엔 눌러도 아무 일도 안 해서 검색되는 줄 오해하기 쉬웠다.
-            if (btn.dataset.mode === 'riss') {
-                openForm(null, 'edit');
-                setTimeout(() => {
-                    const box = document.getElementById('riss-input');
-                    if (box) { box.focus(); box.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
-                }, 120);
-                showToast('RISS에서 「인용하기」 글을 복사해 여기에 붙여넣고 「자동 입력」을 누르세요', 'info');
-                return;
-            }
             document.querySelectorAll('#search-mode-toggle .sm-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             state.searchMode = btn.dataset.mode;
@@ -6656,7 +6645,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260817c';
+        const miniUrl = 'mini.html?v=20260817d';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
