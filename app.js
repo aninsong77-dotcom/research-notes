@@ -1785,6 +1785,51 @@ function mergeRefChunks(chunks) {
 // 한글 문서의 폰트·글자크기·줄간격이 바뀌지 않도록 **기울임만 남기고** 서식을 전부 벗긴다.
 // 한글에서 복사해 온 글에는 font-family·font-size 가 span 으로 딸려 오는데,
 // 그걸 그대로 다시 붙여넣으면 문서 서식이 덮어써진다.
+// 글자만 있는 참고문헌 한 줄에 APA 기울임을 **앱이 직접 만들어** 입힌다.
+// PDF 에는 기울임 정보가 없으므로 원본에서 가져올 수 없다 — 형태를 보고 만들어야 한다.
+// 참고문헌 화면(formatAPAParts)은 칸을 이미 갖고 있어 규칙을 바로 쓰지만,
+// 여기는 완성된 한 줄이라 칸을 먼저 되찾아야 한다. 그 되찾는 부분이 이 함수다.
+//   · 학술지 논문 → 「학술지명, 권」 (호·쪽은 기울임 아님)
+//   · 학위논문·책  → 제목
+//   · 판단이 안 서면 손대지 않는다(틀린 기울임보다 없는 게 낫다)
+function apaAutoItalic(text) {
+    const t = String(text || '').replace(/\s+/g, ' ').trim();
+    if (!t) return '';
+    const wrap = (a, b) => escHtml(t.slice(0, a))
+        + '<i style="font-style:italic">' + escHtml(t.slice(a, b)) + '</i>'
+        + escHtml(t.slice(b));
+
+    // ① 학술지 논문 — 「… 제목. 학술지명, 권(호), 쪽-쪽.」
+    //    학술지명에는 마침표·쉼표가 없다는 점을 이용해 뒤에서부터 찾는다.
+    const JR = /([^.,;()]{2,80}),\s*(\d+)\s*(?:\(\s*[^)]{1,20}\s*\))?\s*,\s*(?:[Pp]{1,2}\.?\s*)?\d+(?:\s*[-–~]\s*\d+)?/g;
+    let hit = null, m;
+    while ((m = JR.exec(t))) hit = m;
+    // 신문기사·웹자료의 날짜(「… 2022, 5, 1 자료 얻음」)를 학술지명·권·쪽으로
+    // 잘못 읽는 일이 실제로 있었다 → 학술지명일 수 없는 신호가 있으면 버린다.
+    const NOT_JOURNAL = /https?:|www\.|홈페이지|신문|뉴스|얻음|인출|검색일|Retrieved|\d{4}\s*$|["'\u201c\u201d]/;
+    if (hit && NOT_JOURNAL.test(hit[1])) hit = null;
+    if (hit) {
+        const seg = hit[0], journal = hit[1], vol = hit[2];
+        const volEnd = seg.indexOf(vol, journal.length) + vol.length;
+        // 앞의 공백은 기울임에서 뺀다
+        const lead = journal.length - journal.replace(/^\s+/, '').length;
+        return wrap(hit.index + lead, hit.index + volEnd);
+    }
+
+    // ② 학위논문·책 — 제목이 기울임. 「저자 (연도). 제목. 기관/출판사.」
+    const THESIS = /(석사|박사)\s*학위\s*논문|석사논문|박사논문|thesis|dissertation/i;
+    const BOOK   = /(서울|경기|파주|고양|대구|부산|인천|광주|대전)\s*:|학지사|출판사|Press\b|Publish|Routledge|Sage|Guilford|Wiley|Norton|Basic Books/i;
+    const my = t.match(/\(\s*\d{4}[a-z]?\s*\)\s*\.?\s*/);
+    if (my && (THESIS.test(t) || BOOK.test(t))) {
+        const start = my.index + my[0].length;
+        const rest = t.slice(start);
+        const dot = rest.search(/\.(\s|$)/);
+        if (dot > 1) return wrap(start, start + dot);
+    }
+
+    return escHtml(t);   // 판단 불가 — 원문 그대로
+}
+
 function apaCleanHtml(html) {
     const d = document.createElement('div');
     d.innerHTML = String(html || '');
@@ -2200,6 +2245,7 @@ function renderManuscriptResult(ov, res) {
         <div class="ms-pane" data-pane="fix" hidden>
             <div class="ms-pane-note">
                 붙여넣은 목록 <b>그대로</b>입니다. <b>뺄 항목에 체크</b>하고, 글자는 <b>직접 눌러 고칠 수도</b> 있습니다.
+                기울임이 없는 원본(PDF 등)이면 <b>「✨ APA 기울임 입히기」</b>로 앱이 만들어 넣습니다.
                 다 되면 아래 복사 버튼으로 논문에 붙여넣으세요.
                 <span class="ms-steps-note">
                     복사한 뒤 한글에서 <b>Ctrl+Alt+V → HTML 형식</b>으로 붙여넣으면 <b>기울임이 그대로 들어갑니다.</b>
@@ -2208,6 +2254,8 @@ function renderManuscriptResult(ov, res) {
                 </span>
             </div>
             <div class="ms-fixbar">
+                <button type="button" class="btn-secondary" id="ms-fix-ital">✨ APA 기울임 입히기</button>
+                <button type="button" class="btn-secondary" id="ms-fix-undo">되돌리기</button>
                 <button type="button" class="btn-secondary" id="ms-fix-un">인용 안 된 것 모두 체크</button>
                 <button type="button" class="btn-secondary" id="ms-fix-clr">체크 모두 풀기</button>
                 <span class="ms-fixcount" id="ms-fixcount"></span>
@@ -2256,6 +2304,28 @@ function renderManuscriptResult(ov, res) {
         e.target.closest('.ms-fixrow').classList.toggle('off', e.target.checked);
         updateCount();
     });
+    // PDF 처럼 기울임이 없는 원본에도 APA 기울임을 앱이 만들어 넣는다
+    body.querySelector('#ms-fix-ital').onclick = () => {
+        let n = 0;
+        fixRowsEl().forEach(r => {
+            const el = r.querySelector('.ms-fixtext');
+            if (el.dataset.orig == null) el.dataset.orig = el.innerHTML;   // 되돌리기용
+            const html = apaAutoItalic(el.textContent || '');
+            el.innerHTML = html;
+            if (html.includes('<i ')) n++;
+        });
+        showToast(n ? `${n}편에 기울임을 입혔습니다 — 눈으로 확인해 주세요` : '기울임을 넣을 곳을 못 찾았습니다', n ? 'success' : 'warn');
+        pushDebug('info', `APA 기울임 자동 — ${n}/${fixRowsEl().length}편`);
+    };
+    body.querySelector('#ms-fix-undo').onclick = () => {
+        let n = 0;
+        fixRowsEl().forEach(r => {
+            const el = r.querySelector('.ms-fixtext');
+            if (el.dataset.orig != null) { el.innerHTML = el.dataset.orig; delete el.dataset.orig; n++; }
+        });
+        showToast(n ? '원래 글자로 되돌렸습니다' : '되돌릴 것이 없습니다', 'info');
+    };
+
     body.querySelector('#ms-fix-un').onclick = () => {
         fixRowsEl().forEach(r => {
             const on = r.classList.contains('un');
@@ -7652,7 +7722,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260818p';
+        const miniUrl = 'mini.html?v=20260818q';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
