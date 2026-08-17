@@ -1851,7 +1851,38 @@ function apaTidyEntry(text) {
     // ③ 끝 마침표
     if (!/[.\]\u3011]$/.test(t)) { t += '.'; tags.push('마침표'); }
 
-    // ④ 기울임
+    // ④ 영문 저자 목록 — 마지막 저자 앞에 & (APA 필수)
+    //    형태가 「성, 이니셜.」 나열로 **깔끔한 것만** 손댄다. 「Slaney, Robert B and Ashby…」
+    //    처럼 흐트러진 것은 건드리면 저자명을 망가뜨리므로 그대로 둔다.
+    const my0 = t.match(/\(\s*\d{4}[a-z]?\s*\)/);
+    if (my0 && my0.index > 3) {
+        // 끝 마침표는 이니셜의 일부다 — 떼어내면 형태 검사에 걸려 저자 & 를 못 넣는다
+        const block = t.slice(0, my0.index).trim().replace(/,\s*$/, '');
+        const CLEAN = /^[A-Z][A-Za-z\u2019'\-]+,\s*(?:[A-Z]\.\s*)+(?:,\s*[A-Z][A-Za-z\u2019'\-]+,\s*(?:[A-Z]\.\s*)+)+$/;
+        if (!/&/.test(block) && !/[가-힣]/.test(block) && CLEAN.test(block + ' ')) {
+            const authors = block.split(/,\s*(?=[A-Z][A-Za-z\u2019'\-]+,)/).map(x => x.trim());
+            if (authors.length >= 2) {
+                const joined = authors.slice(0, -1).join(', ') + ', & ' + authors[authors.length - 1];
+                t = (joined + ' ' + t.slice(my0.index)).replace(/\s+/g, ' ').trim();
+                tags.push('저자 &');
+            }
+        }
+    }
+
+    // ⑤ 영문 제목은 첫 글자만 대문자 (APA sentence case). 고유명사는 APA_PROPER 로 지킨다.
+    const my1 = t.match(/\(\s*\d{4}[a-z]?\s*\)\s*\.?\s*/);
+    if (my1 && !/[가-힣]/.test(t)) {
+        const st = my1.index + my1[0].length;
+        const rest = t.slice(st);
+        const dot = rest.search(/\.(\s|$)/);
+        if (dot > 3) {
+            const title = rest.slice(0, dot);
+            const sc = toSentenceCase(title);
+            if (sc !== title) { t = t.slice(0, st) + sc + t.slice(st + dot); tags.push('제목 대소문자'); }
+        }
+    }
+
+    // ⑥ 기울임
     const html = apaAutoItalic(t);
     if (html.includes('<i ')) tags.push('기울임');
 
@@ -2293,12 +2324,14 @@ function renderManuscriptResult(ov, res) {
                 딱지를 누르면 <b>원문과 견줘</b> 볼 수 있고, 글자는 직접 눌러 고칠 수 있습니다.
                 다 되면 아래 복사 버튼으로 논문에 붙여넣으세요.
                 <span class="ms-steps-note">
-                    복사한 뒤 한글에서 <b>Ctrl+Alt+V → HTML 형식</b>으로 붙여넣으면 <b>기울임이 그대로 들어갑니다.</b>
+                    복사한 뒤 한글에서 <b>Ctrl+V</b> → 「HTML 문서 붙이기」 창이 뜨면 <b>「원본 형식 유지」</b>를
+                    고르세요. 기울임이 그대로 들어갑니다 (「텍스트 형식으로 붙이기」는 기울임이 사라집니다).
                     「참고문헌」 화면의 복사 버튼과 <b>똑같은 방식</b>이라 폰트·글자크기는 앱이 건드리지 않고
                     한글이 커서 위치의 서식을 물려받습니다.
                 </span>
             </div>
             <div class="ms-fixbar">
+                <button type="button" class="btn-secondary" id="ms-fix-sort">가나다·알파벳 순 정렬</button>
                 <button type="button" class="btn-secondary" id="ms-fix-undo">원문으로 되돌리기</button>
                 <button type="button" class="btn-secondary" id="ms-fix-un">인용 안 된 것 모두 체크</button>
                 <button type="button" class="btn-secondary" id="ms-fix-clr">체크 모두 풀기</button>
@@ -2355,6 +2388,20 @@ function renderManuscriptResult(ov, res) {
         const d = tags.parentElement.querySelector('.ms-fixdiff');
         if (d) d.hidden = !d.hidden;
     });
+
+    // APA 정렬 — 국문 가나다 먼저, 영문 알파벳 나중. 순서가 크게 바뀌므로 버튼으로 둔다.
+    body.querySelector('#ms-fix-sort').onclick = () => {
+        const rows = fixRowsEl();
+        const key = r => (r.querySelector('.ms-fixtext').textContent || '').trim();
+        const isKo = x => /^[가-힣]/.test(x);
+        rows.sort((a, b) => {
+            const ka = key(a), kb = key(b);
+            if (isKo(ka) !== isKo(kb)) return isKo(ka) ? -1 : 1;
+            return ka.localeCompare(kb, 'ko');
+        });
+        rows.forEach(r => fixList.appendChild(r));
+        showToast(`${rows.length}편을 국문 가나다 → 영문 알파벳 순으로 정렬했습니다`, 'success');
+    };
 
     // 앱이 고친 것을 전부 원문으로 되돌린다
     body.querySelector('#ms-fix-undo').onclick = () => {
@@ -7594,7 +7641,7 @@ const GUIDE_TOPICS = [
     { q: '자료 메뉴는요?',
       a: '「자료」는 논문이 아닌 자료를 보관해요 — 척도·도서·웹자료·보고서·강의자료 등.\n파일도 첨부할 수 있어요.' },
     { q: '참고문헌은요?',
-      a: 'APA 7판 참고문헌을 자동으로 만들어요. 자료 유형(학술지·학위논문·단행본·책의 장·번역서·웹자료)에 맞는 형식으로 나와요.\n\n① 인용한 논문만 체크 → ② 「선택 항목 복사」 → ③ 한글에서 Ctrl+Alt+V → 「HTML 형식」 고르기\n\n⚠️ 그냥 Ctrl+V 하면 학술지명 기울임이 사라져요.' },
+      a: 'APA 7판 참고문헌을 자동으로 만들어요. 자료 유형(학술지·학위논문·단행본·책의 장·번역서·웹자료)에 맞는 형식으로 나와요.\n\n① 인용한 논문만 체크 → ② 「선택 항목 복사」 → ③ 한글에서 Ctrl+V → 「HTML 문서 붙이기」 창에서 「원본 형식 유지」 고르기\n\n⚠️ 「텍스트 형식으로 붙이기」를 고르면 학술지명 기울임이 사라져요.\n한글 버전에 따라 창이 안 뜨면 Ctrl+Alt+V 로 「HTML 형식」을 고르면 돼요.' },
     { q: '자료는 어디에 저장되나요?',
       a: '네 곳이에요.\n\n① 내 논문 폴더 — PDF 원본. 내가 관리해요.\n② 브라우저 내부 — 앱이 실제로 읽고 쓰는 원본. 작업 공간이에요.\n③ 백업 폴더 — 글자로 된 건 전부(메모·발췌·형광펜·분석·원문텍스트). 저장 1.5초 뒤 자동으로 써져요. PDF 파일은 안 들어가요.\n④ 클라우드(로그인 시) — 글자로 된 건 전부. PC와 웹이 같은 내용을 봐요.\n\n메모·발췌·형광펜은 세 곳에 있어 안전해요. PDF는 논문 폴더 한 곳뿐이니 그 폴더만 잘 두면 돼요.' },
     { q: '백업 폴더는 어떻게 설정해요?',
@@ -7764,7 +7811,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260818r';
+        const miniUrl = 'mini.html?v=20260818s';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
