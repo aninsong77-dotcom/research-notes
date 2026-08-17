@@ -1649,6 +1649,7 @@ body {
 .toast-success { background: var(--success); }
 .toast-error { background: var(--danger); }
 .toast-info { background: var(--accent); }
+.toast-warn { background: var(--warning); }
 @keyframes slideUp {
     from { transform: translateY(16px); opacity: 0; }
     to { transform: translateY(0); opacity: 1; }

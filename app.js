@@ -125,19 +125,57 @@ function dbGet(store, id) {
     });
 }
 
+// 저장 공간이 차오르면 미리 알린다 — 꽉 차서 저장이 실패하기 전에.
+// 하루에 한 번만 띄운다(매번 뜨면 성가시다).
+async function checkStorageRoom() {
+    try {
+        if (!navigator.storage?.estimate) return;
+        const { usage = 0, quota = 0 } = await navigator.storage.estimate();
+        if (!quota) return;
+        const pct = usage / quota;
+        const mb = n => (n / 1048576).toFixed(0);
+        pushDebug('info', `저장 공간 — ${mb(usage)}MB / ${mb(quota)}MB (${Math.round(pct * 100)}%)`);
+        if (pct < 0.8) return;
+
+        const today = new Date().toISOString().slice(0, 10);
+        if (localStorage.getItem('storageWarnedOn') === today) return;
+        localStorage.setItem('storageWarnedOn', today);
+        showToast(`저장 공간이 ${Math.round(pct * 100)}% 찼습니다 (${mb(usage)}MB / ${mb(quota)}MB). `
+                + `PDF를 「폴더에서 연결」로 바꾸면 크게 줄어듭니다.`, 'warn');
+    } catch (err) {
+        pushDebug('info', `저장 공간 확인 불가: ${err.message}`);
+    }
+}
+
+// 저장 실패를 사용자에게 알린다.
+// 예전엔 실패해도 디버그 로그에만 남아서, 저장된 줄 알았는데 아닌 상태가 될 수 있었다.
+function reportDbError(store, err) {
+    const name = err?.name || '';
+    const msg  = err?.message || String(err || '');
+    const quota = name === 'QuotaExceededError' || /quota|storage/i.test(msg);
+    pushDebug('error', `저장 실패 (${store}): ${name} ${msg}`);
+    showToast(quota
+        ? '저장 공간이 부족해 저장하지 못했습니다. 「내 데이터」에서 사용량을 확인해 주세요.'
+        : '저장하지 못했습니다 — 🐞 디버그 로그를 확인해 주세요.', 'error');
+}
+
 function dbPut(store, item) {
     return new Promise((resolve, reject) => {
-        const req = db.transaction(store, 'readwrite').objectStore(store).put(item);
-        req.onsuccess = () => { resolve(); maybeAutoBackup(store); };
-        req.onerror = () => reject(req.error);
+        try {
+            const req = db.transaction(store, 'readwrite').objectStore(store).put(item);
+            req.onsuccess = () => { resolve(); maybeAutoBackup(store); };
+            req.onerror = () => { reportDbError(store, req.error); reject(req.error); };
+        } catch (err) { reportDbError(store, err); reject(err); }
     });
 }
 
 function dbDelete(store, id) {
     return new Promise((resolve, reject) => {
-        const req = db.transaction(store, 'readwrite').objectStore(store).delete(id);
-        req.onsuccess = () => { resolve(); maybeAutoBackup(store); };
-        req.onerror = () => reject(req.error);
+        try {
+            const req = db.transaction(store, 'readwrite').objectStore(store).delete(id);
+            req.onsuccess = () => { resolve(); maybeAutoBackup(store); };
+            req.onerror = () => { reportDbError(store, req.error); reject(req.error); };
+        } catch (err) { reportDbError(store, err); reject(err); }
     });
 }
 
@@ -6931,7 +6969,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260817r';
+        const miniUrl = 'mini.html?v=20260817s';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
@@ -8017,6 +8055,7 @@ async function init() {
     await requestPersistentStorage();
     await loadBackupHandle();
     await loadPaperDirHandle();   // 논문 PDF 폴더(복사 없이 읽기)
+    checkStorageRoom();           // 저장 공간이 차오르면 미리 알림
 
     await initProjects();
     await loadData();
