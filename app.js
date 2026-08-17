@@ -1709,8 +1709,42 @@ function stripReferenceSection(text) {
         const after = lines.slice(i + 1).filter(l => l.trim()).length;
         if (after >= 2) { cut = i; break; }
     }
-    if (cut < 0) return { body: s, cutAt: null };
-    return { body: lines.slice(0, cut).join('\n'), cutAt: lines[cut].trim() };
+    if (cut < 0) return { body: s, refs: '', cutAt: null };
+    return {
+        body: lines.slice(0, cut).join('\n'),
+        refs: lines.slice(cut + 1).join('\n'),
+        cutAt: lines[cut].trim(),
+    };
+}
+
+// 문서 끝 참고문헌 목록에서 항목을 뽑는다 → [{name:'홍길동', year:'2020', raw:'홍길동, 김철수 (2020). …'}]
+// 한 항목은 "저자 (연도). 제목…" 이고, 저자가 여럿이면 **첫 저자**를 쓴다(본문 인용과 맞추려고).
+function extractReferenceEntries(refsText) {
+    const out = [];
+    // 연도 괄호가 나오는 지점을 기준으로 항목을 자른다
+    const chunks = String(refsText || '')
+        .split(/\n\s*\n/).flatMap(b => b.split(/\n(?=\S)/))   // 빈 줄 또는 줄 시작이 글자인 곳
+        .map(x => x.replace(/\s+/g, ' ').trim()).filter(Boolean);
+
+    for (const c of chunks) {
+        const m = c.match(/^(.{1,120}?)\s*\(\s*(\d{4})([a-z])?\s*\)/);
+        if (!m) continue;
+        const people = splitAuthors(m[1]);
+        if (!people.length) continue;
+        const first = apaAuthorName(people[0]);
+        const name = first.split(',')[0].trim();
+        if (!name) continue;
+        out.push({ name, year: m[2], suffix: m[3] || '', raw: c.slice(0, 90) + (c.length > 90 ? '…' : '') });
+    }
+    return out;
+}
+
+// 두 항목(인용·목록)이 같은 문헌인지 — 이름 + 연도(+a/b)
+function sameCitation(a, b) {
+    if (a.year !== b.year) return false;
+    if (a.suffix && b.suffix && a.suffix !== b.suffix) return false;
+    const x = a.name.replace(/\s/g, ''), y = b.name.replace(/\s/g, '');
+    return x === y || x.startsWith(y) || y.startsWith(x);
 }
 
 // 본문에서 인용을 뽑는다 → [{name:'홍길동', year:'2020', suffix:'a', raw:'(홍길동, 2020a)'}]
@@ -1760,26 +1794,29 @@ function citationMatchesPaper(cite, paper) {
 
 // 본문 ↔ 저장된 논문 대조 결과
 function matchManuscript(text) {
-    const { body, cutAt } = stripReferenceSection(text);
-    const cites = extractCitations(body);
+    const { body, refs, cutAt } = stripReferenceSection(text);
     const papers = state.papers;
-    const cited = [], notCited = [], unknown = [];
 
-    papers.forEach(p => {
-        const hit = cites.find(c => citationMatchesPaper(c, p));
-        (hit ? cited : notCited).push(p);
-    });
+    // ① 본문에서 뽑은 인용 (같은 문헌 중복 제거)
+    const cites = [];
+    for (const c of extractCitations(body)) {
+        if (!cites.some(x => sameCitation(x, c))) cites.push(c);
+    }
+    // ② 문서 끝 참고문헌 목록에서 뽑은 항목
+    const refEntries = extractReferenceEntries(refs);
 
-    // 앱에 없는 인용 — 같은 이름·연도끼리 한 번만
-    const seen = new Set();
-    cites.forEach(c => {
-        if (papers.some(p => citationMatchesPaper(c, p))) return;
-        const key = `${c.name}|${c.year}${c.suffix}`;
-        if (seen.has(key)) return;
-        seen.add(key);
-        unknown.push(c);
-    });
-    return { cites, cited, notCited, unknown, cutAt };
+    // ③ 본문 ↔ 문서 목록 대조 — 이게 핵심
+    const toAdd    = cites.filter(c => !refEntries.some(r => sameCitation(c, r)));   // 목록에 넣어야 함
+    const toRemove = refEntries.filter(r => !cites.some(c => sameCitation(c, r)));   // 목록에서 빼야 함
+
+    // ④ 앱에 저장된 논문 ↔ 본문 인용 — 「반영」에 쓸 체크 상태
+    const cited = [], notCited = [];
+    papers.forEach(p => (cites.some(c => citationMatchesPaper(c, p)) ? cited : notCited).push(p));
+
+    // ⑤ 본문에 인용했는데 앱에도 없는 것 — 직접 추가해야 함
+    const unknown = cites.filter(c => !papers.some(p => citationMatchesPaper(c, p)));
+
+    return { cites, refEntries, toAdd, toRemove, cited, notCited, unknown, cutAt, hasRefs: !!refs.trim() };
 }
 
 // 「본문과 맞추기」 창 — 붙여넣기 → 대조 결과 → 확인 후 반영
@@ -1799,7 +1836,7 @@ function openManuscriptMatch() {
                     <span class="ms-steps">① 본문 붙여넣기 → ② 맞춰보기 → ③ 반영 →
                     <b>④ 「선택 항목 복사」로 한글에 다시 붙여넣기</b></span><br>
                     <span class="ms-steps-note">앱은 한글 파일을 직접 고치지 못합니다. ④는 직접 하셔야 합니다.<br>
-                    Ctrl+A 로 전체를 복사하셔도 됩니다 — 뒤쪽 「참고문헌」 목록은 앱이 알아서 빼고 셉니다.</span>
+                    <b>Ctrl+A 로 전체를 복사하세요</b> — 본문과 뒤쪽 참고문헌 목록을 앱이 나눠서 서로 대조합니다.</span>
                 </p>
                 <textarea id="ms-input" class="ms-input" rows="10"
                     placeholder="여기에 본문을 붙여넣으세요 (Ctrl+V)"></textarea>
@@ -1832,42 +1869,45 @@ function openManuscriptMatch() {
 }
 
 function renderManuscriptResult(ov, res) {
-    const row = p => `<div class="ms-row">
-        <b>${escHtml(p.title || '제목 없음')}</b>
-        <span class="ms-sub">${escHtml([p.authors, p.year].filter(Boolean).join(' · '))}</span>
-    </div>`;
+    const cite = c => `<div class="ms-row"><b>${escHtml(c.name)} (${escHtml(c.year + c.suffix)})</b>
+        <span class="ms-sub">${escHtml(c.raw)}</span></div>`;
 
     const body = ov.querySelector('#ms-body');
+    const noRefs = !res.hasRefs;
+
     body.innerHTML = `
-        ${res.cutAt ? `<div class="ms-cut">「${escHtml(res.cutAt)}」 아래는 참고문헌 목록으로 보고 <b>빼고 계산</b>했습니다.</div>` : ''}
         <div class="ms-sum">
-            <span class="ms-chip ms-ok">본문에 인용됨 ${res.cited.length}편</span>
-            <span class="ms-chip ms-off">인용 안 됨 ${res.notCited.length}편</span>
-            <span class="ms-chip ms-miss">앱에 없는 인용 ${res.unknown.length}개</span>
+            <span class="ms-chip ms-plain">본문 인용 ${res.cites.length}개</span>
+            <span class="ms-chip ms-plain">문서 목록 ${res.refEntries.length}편</span>
+            <span class="ms-chip ms-ok">넣어야 함 ${res.toAdd.length}</span>
+            <span class="ms-chip ms-off">빼야 함 ${res.toRemove.length}</span>
+        </div>
+
+        ${noRefs ? `<div class="ms-cut ms-cut-warn">
+            문서 끝에서 <b>참고문헌 목록을 찾지 못했습니다.</b>
+            제목 줄이 「참고문헌」·「References」 같은 낱말 하나로만 되어 있어야 알아봅니다.
+            지금은 본문 인용만 셌습니다.</div>`
+          : `<div class="ms-cut">「${escHtml(res.cutAt)}」 아래를 문서의 참고문헌 목록으로 읽었습니다.</div>`}
+
+        <div class="ms-group">
+            <div class="ms-gh ms-gh-ok">➕ 목록에 <b>넣어야</b> 할 것 — 본문엔 인용했는데 목록에 없음</div>
+            <div class="ms-list">${res.toAdd.map(cite).join('') || '<div class="ms-empty">없음 — 인용한 문헌이 목록에 모두 있습니다</div>'}</div>
         </div>
 
         <div class="ms-group">
-            <div class="ms-gh ms-gh-ok">✅ 본문에 인용됨 — 참고문헌에 <b>넣습니다</b></div>
-            <div class="ms-list">${res.cited.map(row).join('') || '<div class="ms-empty">없음</div>'}</div>
+            <div class="ms-gh ms-gh-off">➖ 목록에서 <b>빼야</b> 할 것 — 목록엔 있는데 본문에 인용 안 됨</div>
+            <div class="ms-list">${res.toRemove.map(cite).join('') || '<div class="ms-empty">없음 — 목록이 전부 인용된 문헌입니다</div>'}</div>
         </div>
 
         <div class="ms-group">
-            <div class="ms-gh ms-gh-off">⚠️ 인용 안 됨 — 참고문헌에서 <b>뺍니다</b> <span class="ms-note">(논문은 앱에 그대로 남습니다)</span></div>
-            <div class="ms-list">${res.notCited.map(row).join('') || '<div class="ms-empty">없음</div>'}</div>
-        </div>
-
-        <div class="ms-group">
-            <div class="ms-gh ms-gh-miss">❌ 앱에 없는 인용 — <b>직접 추가하셔야</b> 합니다</div>
-            <div class="ms-list">${
-                res.unknown.map(c => `<div class="ms-row"><b>${escHtml(c.name)} (${escHtml(c.year + c.suffix)})</b>
-                    <span class="ms-sub">본문 표기: ${escHtml(c.raw)}</span></div>`).join('')
-                || '<div class="ms-empty">없음 — 인용한 문헌이 모두 앱에 있습니다</div>'}</div>
-            ${res.unknown.length ? '<div class="ms-warn">이름을 다르게 적으셨거나 앱에 아직 안 넣은 논문입니다. 눈으로 확인해 주세요.</div>' : ''}
+            <div class="ms-gh ms-gh-miss">⚠️ 앱에 없는 인용 — 앱에 <b>논문을 추가</b>하셔야 참고문헌이 만들어집니다</div>
+            <div class="ms-list">${res.unknown.map(cite).join('') || '<div class="ms-empty">없음 — 인용한 문헌이 모두 앱에 있습니다</div>'}</div>
+            ${res.unknown.length ? '<div class="ms-warn">이름을 다르게 적으셨을 수도 있습니다. 눈으로 확인해 주세요.</div>' : ''}
         </div>
 
         <div class="ms-foot">
             <button type="button" class="btn-secondary" id="ms-back">다시 붙여넣기</button>
-            <button type="button" class="btn-primary" id="ms-apply">이대로 반영 (${res.cited.length}편 선택)</button>
+            <button type="button" class="btn-primary" id="ms-apply">본문에 맞춰 목록 만들기 (${res.cited.length}편)</button>
         </div>`;
 
     ov.querySelector('#ms-back').onclick = () => { ov.remove(); openManuscriptMatch(); };
@@ -1884,7 +1924,7 @@ function renderManuscriptResult(ov, res) {
         ov.remove();
         renderContent();
         // 앱은 한글 파일을 고칠 수 없다. 다음 단계를 반드시 알려준다.
-        showToast(`${res.cited.length}편이 선택됐습니다. 이제 「선택 항목 복사」로 한글의 참고문헌 자리에 붙여넣으세요.`, 'success');
+        showToast(`${res.cited.length}편이 선택됐습니다. 이제 「선택 항목 복사」로 한글의 참고문헌을 통째로 바꿔주세요.`, 'success');
     };
 }
 
@@ -7177,7 +7217,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260817x';
+        const miniUrl = 'mini.html?v=20260817y';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
