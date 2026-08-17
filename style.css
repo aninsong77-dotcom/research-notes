@@ -3586,13 +3586,26 @@ body {
 
 /* ══ 본문과 참고문헌 맞추기 ════════════════════════════════════ */
 .btn-ms-open { border-color: var(--accent-mid) !important; background: var(--accent-light) !important; color: var(--accent) !important; font-weight: 700; }
-.ms-modal { max-width: 760px; width: 94%; }
+/* 화면을 거의 다 쓴다 — 목록이 길어 작은 창에서는 보기 불편하다.
+   창 높이를 고정하고 본문만 스크롤시켜, 제목줄(닫기 ✕)이 늘 보이게 한다. */
+.ms-modal {
+    max-width: 1240px; width: 96%;
+    height: 92vh; max-height: 92vh;
+    display: flex; flex-direction: column;
+}
+.ms-modal .modal-header {
+    flex-shrink: 0; position: sticky; top: 0; z-index: 5;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding-bottom: 14px; margin-bottom: 0;
+}
+.ms-body { flex: 1; min-height: 0; overflow-y: auto; }
+.ms-foot { flex-shrink: 0; }
 .ms-body { padding: 14px 22px 20px; display: flex; flex-direction: column; gap: 14px; }
 .ms-guide { font-size: 13.5px; line-height: 1.7; color: var(--text-secondary); margin: 0; }
 .ms-steps { display:inline-block; margin-top:6px; font-size:12.5px; color:var(--accent); }
 .ms-steps-note { font-size:11.5px; color:var(--text-muted); }
 .ms-input {
-    width: 100%; resize: vertical; min-height: 200px;
+    width: 100%; resize: vertical; min-height: 26vh;
     font-family: inherit; font-size: 13px; line-height: 1.6;
     padding: 12px 14px; border: 1.5px solid var(--border); border-radius: 10px;
     color: var(--text-primary); background: var(--surface);
@@ -3602,7 +3615,7 @@ body {
 .ms-cell { display:flex; flex-direction:column; gap:5px; min-width:0; }
 .ms-label { font-size:12.5px; font-weight:700; color:var(--text-primary); }
 .ms-label span { font-weight:400; color:var(--text-muted); font-size:11.5px; }
-.ms-cell .ms-input { min-height:150px; }
+.ms-cell .ms-input { min-height:24vh; }
 .ms-cell .ms-hint { margin:0; text-align:right; }
 .ms-tip { font-size:12px; color:var(--text-secondary); background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:9px 12px; }
 @media (max-width:700px) { .ms-pair { grid-template-columns:1fr; } }
@@ -3626,7 +3639,7 @@ body {
 .ms-gh-check { color: var(--accent); }
 .ms-chk { background: var(--accent-light); color: var(--accent); }
 .ms-note { font-weight: 400; font-size: 11.5px; color: var(--text-muted); }
-.ms-list { max-height: 190px; overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 3px; }
+.ms-list { max-height: 34vh; overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 3px; }
 .ms-row { padding: 7px 10px; border-radius: 7px; background: var(--surface-2, var(--bg)); }
 .ms-row b { font-size: 13px; display: block; line-height: 1.5; }
 .ms-sub { font-size: 11.5px; color: var(--text-muted); }
