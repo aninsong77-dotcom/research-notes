@@ -1776,6 +1776,9 @@ function mergeRefChunks(chunks) {
         const isHead = /\(\s*\d{4}[a-z]?\s*\)/.test(ch.text);
         if (!out.length || isHead) { out.push({ text: ch.text, html: ch.html }); continue; }
         const prev = out[out.length - 1];
+        // 참고문헌 한 항목은 길어도 400자를 넘지 않는다. 넘으면 이어지는 줄이 아니라
+        // 목록이 끝난 뒤의 다른 글이므로 붙이지 않는다(부록이 딸려 들어가던 사고 방지).
+        if (prev.text.length > 400) { out.push({ text: ch.text, html: ch.html }); continue; }
         prev.text = (prev.text + ' ' + ch.text).trim();
         prev.html = prev.html + ' ' + ch.html;
     }
@@ -2096,8 +2099,12 @@ function matchManuscript(bodyText, refsText, refChunksIn) {
         if (!cites.some(x => sameCitation(x, c))) cites.push(c);
     }
     // ② 문서 끝 참고문헌 목록에서 뽑은 항목
+    refs = trimAfterRefs(refs);   // 부록·초록·감사의 글은 목록이 아니다
     // 서식 보존 칸에서 왔으면 그 조각을 그대로 쓴다(기울임을 살려 목록을 다시 조립하려고).
-    const refChunks = (refChunksIn && refChunksIn.length) ? refChunksIn : refChunksFromText(refs);
+    let refChunks = (refChunksIn && refChunksIn.length) ? refChunksIn : refChunksFromText(refs);
+    // 조각으로 받은 경우에도 목록 끝을 넘어간 것은 버린다
+    const endAt = refChunks.findIndex(c => /^(부\s*록|국문\s*초록|영문\s*초록|Abstract|ABSTRACT|감사의\s*글|설\s*문\s*지)/.test(c.text));
+    if (endAt > 0) refChunks = refChunks.slice(0, endAt);
     const refEntries = extractReferenceEntries(refs, refChunks);
 
     // ③ 본문 ↔ 문서 목록 대조 — 이게 핵심
@@ -2263,16 +2270,24 @@ function renderManuscriptResult(ov, res) {
     // 앱이 못 읽은 줄까지 그대로 실어야 목록을 다시 만들 때 글이 사라지지 않는다.
     const unCited = new Set(res.toRemove.map(r => r.ci).filter(i => i != null));
     let nFixed = 0, nKept = 0;
-    const fixRows = (res.refChunks || []).map((ch, i) => {
+    // APA 는 국문 가나다 → 영문 알파벳 순이 표준이므로 고정값으로 정렬해 둔다.
+    const sorted = (res.refChunks || []).map((ch, i) => ({ ch, i }))
+        .sort((a, b) => {
+            const ka = a.ch.text.trim(), kb = b.ch.text.trim();
+            const koA = /^[가-힣]/.test(ka), koB = /^[가-힣]/.test(kb);
+            if (koA !== koB) return koA ? -1 : 1;
+            return ka.localeCompare(kb, 'ko');
+        });
+    const fixRows = sorted.map(({ ch, i }) => {
         // 원본에 이미 기울임이 있으면(한글 파일에서 온 경우) 그것을 존중하고 손대지 않는다
         const hasIt = /<(i|em)\b|font-style\s*:\s*italic/i.test(ch.html);
         const tidy = apaTidyEntry(ch.text);
         const html = hasIt ? ch.html : tidy.html;
         const tags = hasIt ? ['원본 서식 유지'] : tidy.tags;
         if (tags.length && tags[0] !== '원본 서식 유지') nFixed++; else if (!hasIt) nKept++;
-        const tagHtml = tags.length
-            ? tags.map(x => `<span class="ms-tag">${escHtml(x)}</span>`).join('')
-            : '<span class="ms-tag off">손 안 댐</span>';
+        const tagHtml = tags.length && tags[0] !== '원본 서식 유지'
+            ? `<span class="ms-tag" title="${escHtml(tags.join(' · '))} — 눌러서 원문 보기">고침</span>`
+            : '';
         return `<div class="ms-fixrow${unCited.has(i) ? ' un' : ''}" data-i="${i}">
             <label class="ms-fixchk" title="이 항목을 목록에서 뺍니다"><input type="checkbox" data-i="${i}"></label>
             <div class="ms-fixmain">
@@ -2320,8 +2335,8 @@ function renderManuscriptResult(ov, res) {
         <div class="ms-pane" data-pane="fix" hidden>
             <div class="ms-pane-note">
                 붙여넣은 목록 <b>그대로</b>입니다. <b>뺄 항목에 체크</b>하고, 글자는 <b>직접 눌러 고칠 수도</b> 있습니다.
-                <b>APA 서식은 이미 적용해 두었습니다</b> — 각 줄 아래 딱지가 무엇을 고쳤는지 알려줍니다.
-                딱지를 누르면 <b>원문과 견줘</b> 볼 수 있고, 글자는 직접 눌러 고칠 수 있습니다.
+                <b>APA 서식을 적용하고 가나다·알파벳 순으로 정렬해 두었습니다.</b>
+                글자는 직접 눌러 고칠 수 있고, <span class="ms-tag">고침</span> 을 누르면 원문과 견줘 볼 수 있습니다.
                 다 되면 아래 복사 버튼으로 논문에 붙여넣으세요.
                 <span class="ms-steps-note">
                     복사한 뒤 한글에서 <b>Ctrl+V</b> → 「HTML 문서 붙이기」 창이 뜨면 <b>「원본 형식 유지」</b>를
@@ -2330,11 +2345,10 @@ function renderManuscriptResult(ov, res) {
                     한글이 커서 위치의 서식을 물려받습니다.
                 </span>
             </div>
+            <div class="ms-fixnote" id="ms-fixnote"></div>
             <div class="ms-fixbar">
-                <button type="button" class="btn-secondary" id="ms-fix-sort">가나다·알파벳 순 정렬</button>
-                <button type="button" class="btn-secondary" id="ms-fix-undo">원문으로 되돌리기</button>
-                <button type="button" class="btn-secondary" id="ms-fix-un">인용 안 된 것 모두 체크</button>
-                <button type="button" class="btn-secondary" id="ms-fix-clr">체크 모두 풀기</button>
+                <button type="button" class="btn-secondary" id="ms-fix-un">인용 안 된 것 모두 빼기</button>
+                <button type="button" class="btn-secondary" id="ms-fix-clr">전부 되살리기</button>
                 <span class="ms-fixcount" id="ms-fixcount"></span>
                 <button type="button" class="btn-primary" id="ms-fix-rich">목록 복사 (기울임 포함)</button>
             </div>
@@ -2371,9 +2385,14 @@ function renderManuscriptResult(ov, res) {
     const fixList = body.querySelector('#ms-fixlist');
     const fixCount = body.querySelector('#ms-fixcount');
     const fixRowsEl = () => [...fixList.querySelectorAll('.ms-fixrow')];
+    const fixNote = body.querySelector('#ms-fixnote');
     const updateCount = () => {
         const rows = fixRowsEl();
         const out = rows.filter(r => !r.querySelector('input').checked).length;
+        const unLeft = rows.filter(r => r.classList.contains('un') && !r.querySelector('input').checked).length;
+        fixNote.innerHTML = unLeft
+            ? `본문에서 인용되지 않은 <b>${unLeft}편이 아직 목록에 들어 있습니다</b> (주황색 줄). 빼려면 왼쪽 칸을 체크하세요.`
+            : (res.toRemove.length ? `인용 안 된 ${res.toRemove.length}편을 <b>모두 뺐습니다.</b>` : '');
         fixCount.textContent = `남는 항목 ${out}편 (${rows.length - out}편 뺌) · APA 서식 고침 ${nFixed}편 · 손 안 댐 ${nKept}편`;
     };
     fixList.addEventListener('change', e => {
@@ -2389,31 +2408,6 @@ function renderManuscriptResult(ov, res) {
         if (d) d.hidden = !d.hidden;
     });
 
-    // APA 정렬 — 국문 가나다 먼저, 영문 알파벳 나중. 순서가 크게 바뀌므로 버튼으로 둔다.
-    body.querySelector('#ms-fix-sort').onclick = () => {
-        const rows = fixRowsEl();
-        const key = r => (r.querySelector('.ms-fixtext').textContent || '').trim();
-        const isKo = x => /^[가-힣]/.test(x);
-        rows.sort((a, b) => {
-            const ka = key(a), kb = key(b);
-            if (isKo(ka) !== isKo(kb)) return isKo(ka) ? -1 : 1;
-            return ka.localeCompare(kb, 'ko');
-        });
-        rows.forEach(r => fixList.appendChild(r));
-        showToast(`${rows.length}편을 국문 가나다 → 영문 알파벳 순으로 정렬했습니다`, 'success');
-    };
-
-    // 앱이 고친 것을 전부 원문으로 되돌린다
-    body.querySelector('#ms-fix-undo').onclick = () => {
-        fixRowsEl().forEach(r => {
-            const el = r.querySelector('.ms-fixtext');
-            const d = r.querySelector('.ms-fixdiff');
-            const orig = d ? (d.textContent || '').replace(/^\s*원문\s*/, '') : '';
-            if (orig) el.textContent = orig;
-            r.querySelectorAll('.ms-tag').forEach(x => x.remove());
-        });
-        showToast('원문 그대로 되돌렸습니다', 'info');
-    };
 
     body.querySelector('#ms-fix-un').onclick = () => {
         fixRowsEl().forEach(r => {
@@ -6434,6 +6428,20 @@ async function extractPdfText(file) {
     }
 }
 
+// 참고문헌 목록의 **끝**을 찾아 뒤를 버린다.
+// 부록·설문지·초록·감사의 글에는 연도 괄호가 없어서, 이어지는 줄로 오인돼
+// 마지막 항목에 통째로 붙는 일이 실제로 있었다(설문지 30문항까지 딸려 들어갔다).
+function trimAfterRefs(refsText) {
+    const s = String(refsText || '');
+    const RE = /(부\s*록|국문\s*초록|영문\s*초록|Abstract|ABSTRACT|감사의\s*글|설\s*문\s*지|Appendix|APPENDIX)/g;
+    let m;
+    while ((m = RE.exec(s))) {
+        if (m.index < 200) continue;    // 목록이 어느 정도 나온 뒤여야 경계로 본다
+        return s.slice(0, m.index).replace(/\s*[-\u2013]\s*\d{1,3}\s*[-\u2013]?\s*$/, '');
+    }
+    return s;
+}
+
 // 「참고문헌」 제목이 줄 혼자 서 있지 않은 경우(PDF 에서 흔함)의 예비 분리.
 // stripReferenceSection 이 실패했을 때만 쓴다 — 뒤쪽에서, 바로 뒤에 연도 괄호가
 // 따라오는 자리만 목록 시작으로 인정한다(본문 중의 「참고문헌」 언급을 피하려고).
@@ -6479,7 +6487,12 @@ async function extractPdfTextAll(file, onProgress) {
                 lastY = y;
             }
             if (cur.trim()) lines.push(cur.trim());
-            out.push(lines.join('\n'));
+            // PDF 쪽번호 흔적을 지운다 — 「- 102 -」 「자기개념명- 80」 처럼 글에 섞여 들어온다.
+            // 쪽 범위(309-330)는 대시 뒤에 공백이 없으므로 건드리지 않는다.
+            out.push(lines
+                .map(l => l.replace(/\s*-\s*\d{1,3}\s*-\s*$/, '').replace(/-\s+\d{1,3}\s*$/, '').trim())
+                .filter(l => l && !/^-?\s*\d{1,3}\s*-?$/.test(l))
+                .join('\n'));
             if (onProgress && (i % 5 === 0 || i === pdf.numPages)) {
                 onProgress(i, pdf.numPages);
                 await new Promise(r => setTimeout(r, 0));   // 화면이 멈춰 보이지 않게 양보
@@ -7811,7 +7824,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260818s';
+        const miniUrl = 'mini.html?v=20260818t';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
