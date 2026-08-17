@@ -6653,6 +6653,20 @@ function bindEvents() {
             setTimeout(() => sec.classList.remove('help-jump'), 1300);
         }));
 
+    // 스크롤에 따라 지금 보고 있는 항목을 목차에 표시 (위키처럼 위치를 알 수 있게)
+    const helpScroller = document.querySelector('#modal-help .modal');
+    if (helpScroller) {
+        helpScroller.addEventListener('scroll', () => {
+            const top = helpScroller.getBoundingClientRect().top + 80;
+            let cur = null;
+            document.querySelectorAll('.help-section').forEach(sec => {
+                if (sec.getBoundingClientRect().top <= top) cur = sec.id;
+            });
+            document.querySelectorAll('.help-toc-item').forEach(b =>
+                b.classList.toggle('on', b.dataset.go === cur));
+        }, { passive: true });
+    }
+
     document.getElementById('btn-help-guide').addEventListener('click', () => {
         document.getElementById('modal-help').style.display = 'flex';
         const hint = document.getElementById('help-scroll-hint');
@@ -6687,7 +6701,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260817j';
+        const miniUrl = 'mini.html?v=20260817k';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
