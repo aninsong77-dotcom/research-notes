@@ -72,9 +72,14 @@ function parseRefEntry(text) {
     if (THESIS.test(rest)) {
         out.itemType = 'thesis';
         out.degree = /박사/.test(rest) ? '박사학위논문' : '석사학위논문';
-        // "○○대학교 대학원 석사학위논문" 에서 학위 표기를 뗀 나머지가 소속기관
-        out.source = _clean(rest.replace(/\s*(석사|박사)?\s*학위\s*논문\s*\.?$/i, '')
-            .replace(/thesis|dissertation/i, ''));
+        // 학위 표기는 "○○대학교 대학원 석사학위논문"(뒤)·"석사학위논문, ○○대학교"(앞)
+        // 둘 다 나온다 — 끝(`$`)에만 있다고 가정하면 앞에 오는 경우를 못 걷어내
+        // 소속기관 칸에 학위 표기가 그대로 남고, 조립기가 학위 표기를 또 붙여
+        // "…한동대학교. 석사학위논문."처럼 중복되는 사고가 있었다. 위치 무관하게 지운다.
+        out.source = _clean(rest.replace(/(석사|박사)?\s*학위\s*논문/i, '')
+            .replace(/thesis|dissertation/i, '')
+            .replace(/^[,\s]+|[,\s]+$/g, '')
+            .replace(/\.$/, ''));
         out.confidence = out.authors ? 'high' : 'low';
         return out;
     }
