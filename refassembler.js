@@ -45,7 +45,9 @@ function emphasize(text, lang, style) {
     const t = escHtml(text);
     if (!rule) return t;
     if (rule === 'italic') return `<i style="font-style:italic">${t}</i>`;
-    if (rule.font) return `<span style="font-family:'${rule.font}'">${t}</span>`;
+    // class="ref-emph" 는 앱이 만든 강조라는 표시다 — apaCleanHtml 이 이 표시가 있는
+    // font-family 만 남기고, 한글에서 붙여넣기로 딸려온 다른 font-family 는 걸러낸다.
+    if (rule.font) return `<span class="ref-emph" style="font-family:'${rule.font}'">${t}</span>`;
     return t;
 }
 
@@ -87,21 +89,26 @@ function assembleRef(entry, style) {
     const authors = joinAuthors(e.authors, e.lang, style);
     const yr = `(${e.year}${e.yearSuffix})`;
 
+    // 강조 구간의 글자 위치(plain text 기준)를 함께 돌려준다 — 화면에서 색으로
+    // 바뀐 부분을 표시할 때, 강조(기울임/고딕) 위치와 겹치지 않게 다루려고 필요하다.
     if (e.itemType === 'journal') {
         const sourceName = e.lang === 'en' ? titleCaseSource(e.source) : e.source;
-        const src = emphasize(`${sourceName}, ${e.volume}`, e.lang, style);
+        const emphPlain = `${sourceName}, ${e.volume}`;
+        const src = emphasize(emphPlain, e.lang, style);
         const issue = e.issue ? `(${escHtml(e.issue)})` : '';
         const pages = e.pages.replace(/-/g, style.pageDash);
         const html = `${escHtml(authors)} ${yr}. ${escHtml(e.title)}. ${src}${issue}, ${escHtml(pages)}.`;
-        const text = `${authors} ${yr}. ${e.title}. ${sourceName}, ${e.volume}${issue}, ${pages}.`;
-        return { html, text };
+        const prefix = `${authors} ${yr}. ${e.title}. `;
+        const text = prefix + `${emphPlain}${issue}, ${pages}.`;
+        return { html, text, emphStart: prefix.length, emphEnd: prefix.length + emphPlain.length };
     }
 
     if (e.itemType === 'book') {
         const title = emphasize(e.title, e.lang, style);
         const html = `${escHtml(authors)} ${yr}. ${title}. ${escHtml(e.source)}.`;
-        const text = `${authors} ${yr}. ${e.title}. ${e.source}.`;
-        return { html, text };
+        const prefix = `${authors} ${yr}. `;
+        const text = prefix + `${e.title}. ${e.source}.`;
+        return { html, text, emphStart: prefix.length, emphEnd: prefix.length + e.title.length };
     }
 
     if (e.itemType === 'thesis') {
@@ -110,12 +117,63 @@ function assembleRef(entry, style) {
             ? `[${e.degree}, ${e.source}]`
             : `${e.source} ${e.degree}`;
         const html = `${escHtml(authors)} ${yr}. ${title}. ${escHtml(tail)}.`;
-        const text = `${authors} ${yr}. ${e.title}. ${tail}.`;
-        return { html, text };
+        const prefix = `${authors} ${yr}. `;
+        const text = prefix + `${e.title}. ${tail}.`;
+        return { html, text, emphStart: prefix.length, emphEnd: prefix.length + e.title.length };
     }
 
     return null;   // 조립할 수 없는 유형 — 호출 쪽에서 원문 유지
 }
 
+// ── 화면 표시용 — 무엇이 바뀌었는지 색으로 보여준다 (복사할 땐 apaCleanHtml 이 지운다) ──
+// 낱말 단위 LCS 비교. 참고문헌 한 줄(길어야 300자 안팎)이라 O(n·m) 표로도 충분하다.
+// 공백으로만 나누면 "13(2),"처럼 숫자+괄호+쉼표가 한 덩어리가 되어, 그 안에서
+// 강조 경계(권 번호까지만 고딕/기울임)가 지나가면 토큰 전체가 엉뚱한 쪽으로 쏠린다
+// (실제로 "13"이 고딕에서 빠지는 사고가 있었다) — 글자·숫자·기호를 따로 쪼갠다.
+function _tokenize(s) { return String(s || '').match(/[\p{L}\p{N}]+|[^\s\p{L}\p{N}]+|\s+/gu) || []; }
+
+function diffWords(a, b) {
+    const ta = _tokenize(a), tb = _tokenize(b);
+    const n = ta.length, m = tb.length;
+    const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+    for (let i = n - 1; i >= 0; i--)
+        for (let j = m - 1; j >= 0; j--)
+            dp[i][j] = ta[i] === tb[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    const out = [];
+    let i = 0, j = 0;
+    while (i < n && j < m) {
+        if (ta[i] === tb[j]) { out.push({ type: 'equal', text: tb[j] }); i++; j++; }
+        else if (dp[i + 1][j] >= dp[i][j + 1]) { out.push({ type: 'del', text: ta[i] }); i++; }
+        else { out.push({ type: 'ins', text: tb[j] }); j++; }
+    }
+    while (i < n) out.push({ type: 'del', text: ta[i++] });
+    while (j < m) out.push({ type: 'ins', text: tb[j++] });
+    return out;
+}
+
+// 원문(origText)과 조립 결과(asm.text)를 낱말 단위로 비교해, 원문과 달라진 부분만
+// <span class="ms-diffnew"> 로 감싼다. 강조(기울임/고딕) 위치는 asm.emphStart~emphEnd 로
+// 넘겨받아 그대로 유지한다 — 색 표시와 강조가 겹쳐도 둘 다 살아 있어야 한다.
+function renderDiffHtml(origText, asm) {
+    if (!asm || asm.emphStart == null || !asm.text) return asm ? asm.html : '';
+    const m = asm.html.match(/<span class="ref-emph"[^>]*>/);
+    const OPEN = m ? m[0] : '<i style="font-style:italic">';
+    const CLOSE = m ? '</span>' : '</i>';
+
+    const diff = diffWords(origText, asm.text).filter(t => t.type !== 'del');
+    let pos = 0, out = '', emphOn = false;
+    for (const tok of diff) {
+        const start = pos, end = pos + tok.text.length;
+        pos = end;
+        const mid = (start + end) / 2;
+        const wantEmph = mid >= asm.emphStart && mid < asm.emphEnd;
+        if (wantEmph !== emphOn) { out += emphOn ? CLOSE : OPEN; emphOn = wantEmph; }
+        const esc = escHtml(tok.text);
+        out += tok.type === 'ins' ? `<span class="ms-diffnew">${esc}</span>` : esc;
+    }
+    if (emphOn) out += CLOSE;
+    return out;
+}
+
 if (typeof module !== 'undefined')
-    module.exports = { assembleRef, getStyle, STYLE_APA, STYLE_KAPP, joinAuthors, emphasize };
+    module.exports = { assembleRef, getStyle, STYLE_APA, STYLE_KAPP, joinAuthors, emphasize, diffWords, renderDiffHtml };

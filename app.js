@@ -1803,12 +1803,22 @@ function apaCleanHtml(html) {
             const st = child.getAttribute('style') || '';
             const ital = child.tagName === 'I' || child.tagName === 'EM'
                       || /font-style\s*:\s*italic/i.test(st);
+            // ⚠️ 국문 강조(맑은 고딕)도 살려야 한다. 다만 font-family 는 한글에서 붙여넣은
+            //    글에도 흔히 딸려 있으므로, class="ref-emph" 로 **앱이 만든 것만** 가려낸다
+            //    (전에는 이 구분이 없어서 국문 강조가 조용히 사라지고 있었다).
+            const fontM = child.tagName === 'SPAN' && child.classList.contains('ref-emph')
+                ? st.match(/font-family\s*:\s*([^;]+)/i) : null;
             if (ital) {
                 // ⚠️ 맨 <i> 로는 한글에서 기울임이 안 먹는다. 인라인 style 을 반드시 같이 실어야 한다.
                 //    참고문헌 복사(formatAPAParts 의 IT 함수)가 같은 이유로 style 을 붙이고 있다 —
                 //    그쪽은 되는데 이쪽은 안 됐던 원인이 바로 이 차이였다.
                 const rep = document.createElement('i');
                 rep.setAttribute('style', 'font-style:italic');
+                rep.innerHTML = child.innerHTML;
+                child.replaceWith(rep);
+            } else if (fontM) {
+                const rep = document.createElement('span');
+                rep.setAttribute('style', `font-family:${fontM[1].trim()}`);
                 rep.innerHTML = child.innerHTML;
                 child.replaceWith(rep);
             } else {
@@ -2233,7 +2243,9 @@ function renderManuscriptResult(ov, res) {
             if (entry.confidence === 'high') {
                 const asm = assembleRef(entry, refStyle);
                 if (asm) {
-                    html = asm.html;
+                    // 바뀐 낱말만 다른 색으로 보여준다 — 복사할 땐 apaCleanHtml 이 그 색을 지운다
+                    // (색 span 은 기울임·고딕이 아니므로 자동으로 벗겨져 검정 글씨로 나간다).
+                    html = renderDiffHtml(ch.text, asm);
                     nFixed++;
                     tagHtml = `<span class="ms-tag" title="${escHtml(refStyle.name)} 형식으로 조립함 — 눌러서 원문 보기">고침</span>`;
                 }
@@ -2307,6 +2319,7 @@ function renderManuscriptResult(ov, res) {
             </div>
             <div class="ms-pane-note">
                 <span class="ms-tag" title="자동 조립됨">고침</span> = 저자·제목·학술지를 <b>칸으로 나눠 규정대로 다시 조립</b>했습니다.
+                <span class="ms-diffnew">이 색 글자</span>는 원문과 달라진 부분입니다(눈으로 확인용 — <b>복사하면 검정 글씨</b>로 나갑니다).
                 <span class="ms-tag off" title="자신 없어 손대지 않음">확인 필요</span> = 형태를 정확히 못 읽어 <b>원문 그대로 두었습니다</b> — 직접 확인해 주세요.
                 <b>뺄 항목에 체크</b>하고, 글자는 <b>직접 눌러 고칠 수도</b> 있습니다.
                 다른 탭에서 <b>「＋ 목록에 넣기」·「본문이 맞음」</b>을 누르면 그 결과가 여기로 들어옵니다.
@@ -2326,9 +2339,17 @@ function renderManuscriptResult(ov, res) {
                 <button type="button" class="btn-secondary" id="ms-fix-un">인용 안 된 것 모두 빼기</button>
                 <button type="button" class="btn-secondary" id="ms-fix-clr">전부 되살리기</button>
                 <span class="ms-fixcount" id="ms-fixcount"></span>
+                <button type="button" class="btn-secondary" id="ms-fix-preview">📄 실제 모양 미리보기</button>
                 <button type="button" class="btn-primary" id="ms-fix-rich">목록 복사 (기울임 포함)</button>
             </div>
             <div class="ms-plist ms-fixlist" id="ms-fixlist">${fixRows || '<div class="ms-empty">붙여넣은 목록이 없습니다</div>'}</div>
+            <div class="ms-previewwrap" id="ms-previewwrap" hidden>
+                <div class="ms-previewbar">
+                    한글에 붙여넣을 때 <b>실제로 실리는 모양</b>입니다 — 복사해서 확인하지 않아도 여기서 바로 보입니다.
+                    (다만 <b>한글이 이 서식을 그대로 받아들이는지는 별개</b>입니다 — 마지막엔 꼭 한 번 붙여넣어 확인하세요.)
+                </div>
+                <div class="ms-previewpage" id="ms-previewpage"></div>
+            </div>
         </div>
 `;
 
@@ -2370,7 +2391,11 @@ function renderManuscriptResult(ov, res) {
             ? `본문에서 인용되지 않은 <b>${unLeft}편이 아직 목록에 들어 있습니다</b> (주황색 줄). 빼려면 왼쪽 칸을 체크하세요.`
             : (res.toRemove.length ? `인용 안 된 ${res.toRemove.length}편을 <b>모두 뺐습니다.</b>` : '');
         fixCount.textContent = `남는 항목 ${out}편 (${rows.length - out}편 뺌) · APA 서식 고침 ${nFixed}편 · 손 안 댐 ${nKept}편`;
+        refreshPreview();
     };
+    fixList.addEventListener('input', e => {
+        if (e.target.closest('.ms-fixtext')) refreshPreview();
+    });
     fixList.addEventListener('change', e => {
         if (e.target.type !== 'checkbox') return;
         e.target.closest('.ms-fixrow').classList.toggle('off', e.target.checked);
@@ -2415,6 +2440,9 @@ function renderManuscriptResult(ov, res) {
         if (sp) sp.textContent = n;
     };
     let leftAdd = res.toAdd.length, leftCk = res.check.length;
+    // collectFix 는 아래쪽에서 정의되므로, 그 전에 호출되지 않도록 자리만 미리 잡아둔다
+    // (updateCount 가 먼저 정의·호출되는데, 그 안에서 미리보기를 새로고칠 수 있어야 하기 때문).
+    let refreshPreview = () => {};
 
     // ── 「목록에 없음」 → 완성본 목록에 넣기 (다시 누르면 되돌린다) ──
     const addedRows = new Map();
@@ -2528,19 +2556,34 @@ function renderManuscriptResult(ov, res) {
         })
         .filter(x => x.text);
 
+    // APA 는 둘째 줄부터 0.5인치 내어쓰기가 필수다. 복사와 미리보기가 항상 같은 값을 쓰도록
+    // 한 곳에서만 정한다 — 실제로 한글이 이 값을 받아들이는지는 아직 확인 전이다.
+    const HANG = 'margin-left:.5in;text-indent:-.5in';
+    const buildHtml = items => `<div>${items.map(x => `<p style="${HANG}">${x.html}</p>`).join('')}</div>`;
+
+    // 「실제 모양 미리보기」 — 복사해서 한글에 붙여보지 않아도, 우리가 만드는 HTML 이
+    // 브라우저에서 어떻게 그려지는지 바로 보여준다. 붙여넣기까지 매번 거치지 않아도 된다.
+    // (다만 이건 우리 코드가 옳게 만들었는지 확인일 뿐, 한글이 이 서식을 실제로
+    //  받아들이는지는 별개 문제다 — 그건 여전히 한 번은 직접 붙여넣어 봐야 안다.)
+    const previewWrap = body.querySelector('#ms-previewwrap');
+    const previewPage = body.querySelector('#ms-previewpage');
+    const previewBtn = body.querySelector('#ms-fix-preview');
+    refreshPreview = () => {
+        if (previewWrap.hidden) return;
+        previewPage.innerHTML = buildHtml(collectFix());
+    };
+    previewBtn.onclick = () => {
+        previewWrap.hidden = !previewWrap.hidden;
+        previewBtn.textContent = previewWrap.hidden ? '📄 실제 모양 미리보기' : '📄 미리보기 닫기';
+        if (!previewWrap.hidden) refreshPreview();
+    };
+
     body.querySelector('#ms-fix-rich').onclick = async () => {
         const items = collectFix();
         if (!items.length) { showToast('남은 항목이 없습니다', 'warn'); return; }
         const blanks = fixList.querySelectorAll('.ms-fixrow:not(.off) .ms-blank').length;
         if (blanks && !confirm('아직 채우지 않은 빈칸이 ' + blanks + '군데 있습니다. 그대로 복사할까요?')) return;
-        // 「참고문헌」 화면의 복사(btn-copy-all-refs)와 **똑같은 모양**으로 싣는다.
-        // 기울임만 넣고 문단 서식(내어쓰기·여백·글꼴)은 넣지 않는다 —
-        // 넣으면 그 블록만 문서와 다른 모양이 되므로 한글이 커서 위치 서식을 물려받게 둔다.
-        // APA 는 둘째 줄부터 0.5인치 내어쓰기가 필수다. 원본 논문에도 들어가 있다.
-        // pt 단위로는 한글이 무시했으므로 워드가 쓰는 인치 표기로 바꿔 본다.
-        // 글꼴·글자크기는 여전히 싣지 않으므로 문서의 글자 모양은 바뀌지 않는다.
-        const HANG = 'margin-left:.5in;text-indent:-.5in';
-        const html = `<div>${items.map(x => `<p style="${HANG}">${x.html}</p>`).join('')}</div>`;
+        const html = buildHtml(items);
         const itCount = (html.match(/<i style="font-style:italic">/g) || []).length;
         pushDebug('info', `목록 복사 — ${items.length}편 / 기울임 ${itCount}군데 / html ${html.length}자`);
         const ok = await copyRich(html, items.map(x => x.text).join('\n\n'));
@@ -7963,7 +8006,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260819e';
+        const miniUrl = 'mini.html?v=20260819f';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {

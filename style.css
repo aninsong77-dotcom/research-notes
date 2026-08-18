@@ -3696,6 +3696,15 @@ body {
     border: 1.5px solid var(--border); background: var(--surface); color: var(--text-primary);
 }
 .ms-stylehint { font-size: 11.5px; color: var(--text-muted); }
+.ms-diffnew { color: #d1483a; font-weight: 700; }   /* 화면에서만 보이는 색 — 복사하면 apaCleanHtml 이 지운다 */
+.ms-previewwrap { border: 1px dashed var(--border); border-radius: 10px; padding: 10px; margin-top: 6px; }
+.ms-previewbar { font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; }
+.ms-previewpage {
+    background: #fff; color: #111; padding: 24px 28px; border-radius: 4px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.15); font-size: 13.5px; line-height: 1.7;
+    max-height: 50vh; overflow-y: auto;
+}
+.ms-previewpage p { margin: 0 0 10px; }
 .ms-fixnote { font-size: 12.5px; color: var(--text-secondary);
     background: var(--bg); border-left: 3px solid var(--warning); border-radius: 0 7px 7px 0; padding: 7px 11px; }
 .ms-fixnote:empty { display: none; }
