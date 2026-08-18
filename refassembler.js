@@ -104,9 +104,9 @@ const STYLE_APA = {
     thesisBrackets: true,   // [석사학위논문, 대학명]
 };
 
-// 한국심리학회지: 상담 및 심리치료 (docsPlan/참고문헌-파서/규정.md, 사용자 제공 원본)
+// 한국상담심리학회 — 학회지 「상담 및 심리치료」 (docsPlan/참고문헌-파서/규정.md, 사용자 제공 원본)
 const STYLE_KAPP = {
-    name: '한국심리학회(상담및심리치료)',
+    name: '한국상담심리학회(상담및심리치료)',
     pageDash: '-',                                  // 규정 예시가 하이픈
     hangingIndent: { css: 'margin-left:2em;text-indent:-2em' },  // 4칸(대략 2em)
     authorSepKo: ', ', authorSepKo2: ', ', authorLastKo: ', ',
