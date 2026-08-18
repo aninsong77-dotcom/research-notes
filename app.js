@@ -1452,30 +1452,6 @@ const APA_PROPER = new Set([
     'christian','christianity','buddhist','buddhism','muslim','islam','confucian',
 ]);
 
-// APA 는 **학술지명**만 Title Case 로 쓴다(논문 제목은 sentence case — toSentenceCase).
-// 관사·전치사·접속사는 소문자로 두되, 첫 낱말과 콜론 뒤 첫 낱말은 대문자.
-const TC_MINOR = new Set(['a','an','and','as','at','but','by','for','from','in','into','nor',
-    'of','on','or','over','per','so','the','to','up','via','with','yet','vs']);
-function toTitleCase(str) {
-    const s = String(str || '');
-    if (!s || /[가-힣]/.test(s)) return s;   // 한글 학술지명은 그대로
-    let capNext = true;
-    return s.split(/(\s+)/).map(tok => {
-        if (/^\s+$/.test(tok)) return tok;
-        const bare = tok.replace(/[^A-Za-z0-9'-]/g, '');
-        const letters = tok.replace(/[^A-Za-z]/g, '');
-        const isAcronym = letters.length > 1 && letters === letters.toUpperCase();  // JAMA
-        const isMixed = /[a-z][A-Z]/.test(tok);                                     // eLife
-        let out;
-        if (isAcronym || isMixed) out = tok;
-        else if (!capNext && TC_MINOR.has(bare.toLowerCase())) out = tok.toLowerCase();
-        else out = tok.replace(/[A-Za-z]/, ch => ch.toUpperCase()).replace(/([A-Za-z])(\w*)/,
-            (all, f, rest) => f + rest.toLowerCase());
-        capNext = /[:;?!]$/.test(tok);
-        return out;
-    }).join('');
-}
-
 function toSentenceCase(str) {
     const s = String(str || '').trim();
     if (!s || /[가-힣]/.test(s)) return s;   // 한글 제목은 그대로
@@ -1817,150 +1793,6 @@ function mergeRefChunks(chunks) {
 // 한글 문서의 폰트·글자크기·줄간격이 바뀌지 않도록 **기울임만 남기고** 서식을 전부 벗긴다.
 // 한글에서 복사해 온 글에는 font-family·font-size 가 span 으로 딸려 오는데,
 // 그걸 그대로 다시 붙여넣으면 문서 서식이 덮어써진다.
-// 글자만 있는 참고문헌 한 줄에 APA 기울임을 **앱이 직접 만들어** 입힌다.
-// PDF 에는 기울임 정보가 없으므로 원본에서 가져올 수 없다 — 형태를 보고 만들어야 한다.
-// 참고문헌 화면(formatAPAParts)은 칸을 이미 갖고 있어 규칙을 바로 쓰지만,
-// 여기는 완성된 한 줄이라 칸을 먼저 되찾아야 한다. 그 되찾는 부분이 이 함수다.
-//   · 학술지 논문 → 「학술지명, 권」 (호·쪽은 기울임 아님)
-//   · 학위논문·책  → 제목
-//   · 판단이 안 서면 손대지 않는다(틀린 기울임보다 없는 게 낫다)
-function apaAutoItalic(text) {
-    const t = String(text || '').replace(/\s+/g, ' ').trim();
-    if (!t) return '';
-    const wrap = (a, b) => escHtml(t.slice(0, a))
-        + '<i style="font-style:italic">' + escHtml(t.slice(a, b)) + '</i>'
-        + escHtml(t.slice(b));
-
-    // ① 학술지 논문 — 「… 제목. 학술지명, 권(호), 쪽-쪽.」
-    //    학술지명에는 마침표·쉼표가 없다는 점을 이용해 뒤에서부터 찾는다.
-    //    호 뒤의 쉼표는 빠져 있는 논문도 많다(「31(2) 232-242.」) → 쉼표를 선택으로 둔다.
-    const JR = /([^.,;()]{2,60}),\s*(\d+)\s*(?:\(\s*[^)]{1,20}\s*\))?\s*,?\s*(?:[Pp]{1,2}\.?\s*)?\d+(?:\s*[-–~]\s*\d+)?/g;
-    let hit = null, m;
-    while ((m = JR.exec(t))) hit = m;
-    // 신문기사·웹자료의 날짜(「… 2022, 5, 1 자료 얻음」)를 학술지명·권·쪽으로
-    // 잘못 읽는 일이 실제로 있었다 → 학술지명일 수 없는 신호가 있으면 버린다.
-    const NOT_JOURNAL = /https?:|www\.|홈페이지|신문|뉴스|얻음|인출|검색일|Retrieved|\d{4}\s*$|["'\u201c\u201d]/;
-    if (hit && NOT_JOURNAL.test(hit[1])) hit = null;
-    if (hit) {
-        const seg = hit[0], journal = hit[1], vol = hit[2];
-        const volEnd = seg.indexOf(vol, journal.length) + vol.length;
-        // 앞의 공백은 기울임에서 뺀다
-        const lead = journal.length - journal.replace(/^\s+/, '').length;
-        return wrap(hit.index + lead, hit.index + volEnd);
-    }
-
-    // ② 학위논문·책 — 제목이 기울임. 「저자 (연도). 제목. 기관/출판사.」
-    const THESIS = /(석사|박사)\s*학위\s*논문|석사논문|박사논문|thesis|dissertation/i;
-    // 책의 결정적 신호는 맨 끝의 「발행지: 출판사.」 다. 출판사 이름을 나열하는 방식은
-    // 끝이 없어서(Erlbaum 을 몰라 Vondracek 1986 을 놓쳤다) **형태**로 잡는다.
-    //   「Hillsdale, NJ: Erlbaum.」 「서울: 학지사.」 「New York: Norton.」
-    const BOOK = /(?:^|\.\s)[^.]{2,40}:\s*[^.]{2,40}\.\s*$|(?:서울|경기|파주|고양|대구|부산|인천|광주|대전)\s*:|학지사|출판사|Press\b|Publish|Routledge|Sage|Guilford|Wiley|Norton|Erlbaum|Academic|Books\b/i;
-    const my = t.match(/\(\s*\d{4}[a-z]?\s*\)\s*\.?\s*/);
-    if (my && (THESIS.test(t) || BOOK.test(t))) {
-        const start = my.index + my[0].length;
-        const rest = t.slice(start);
-        const dot = rest.search(/\.(\s|$)/);
-        if (dot > 1) return wrap(start, start + dot);
-    }
-
-    return escHtml(t);   // 판단 불가 — 원문 그대로
-}
-
-// 참고문헌 한 줄에 APA 서식을 적용한다. 무엇을 고쳤는지 tags 로 함께 돌려줘서
-// 화면에 표시할 수 있게 한다 — 학교 양식과 어긋날 수 있으므로 반드시 보여야 한다.
-// 여기서 하는 것은 **형태만 보면 확실한 것**뿐이다. 자료 유형 판별·영문 제목
-// 대소문자·연도 접미사(2020a/b)는 틀리면 피해가 크므로 손대지 않는다.
-function apaTidyEntry(text) {
-    const orig = String(text || '').replace(/\s+/g, ' ').trim();
-    if (!orig) return { html: '', text: '', tags: [], orig: '' };
-    let t = orig;
-    const tags = [];
-
-    // ① 이니셜 앞 띄어쓰기 — "Miyake,K." → "Miyake, K."
-    let a = t.replace(/,(?=[A-Z]\.)/g, ', ');
-    a = a.replace(/\b([A-Z])\.([A-Z])\./g, '$1. $2.');   // "R.O." → "R. O."
-    if (a !== t) { t = a; tags.push('띄어쓰기'); }
-
-    // ② 쪽 범위는 엔대시 — "309-330." → "309–330."  (맨 끝의 쪽 자리만 건드린다)
-    //     DOI·URL 이 뒤에 붙으면 쪽이 문장 끝이 아니므로 마지막 쪽 범위를 찾아 바꾼다.
-    {
-        const PG = /,\s*(?:[Pp]{1,2}\.\s*)?(\d+)\s*[-~]\s*(\d+)/g;
-        let lp = null, pm;
-        while ((pm = PG.exec(t))) lp = pm;
-        if (lp) {
-            const rep = ', ' + lp[1] + '\u2013' + lp[2];
-            if (rep !== lp[0]) {
-                t = t.slice(0, lp.index) + rep + t.slice(lp.index + lp[0].length);
-                tags.push('쪽 \u2013');
-            }
-        }
-    }
-
-    // ②-2 DOI 는 링크 형태로 — APA 7 은 「https://doi.org/10.xxxx/yyy」 만 인정한다
-    const dd = t.replace(/\b(?:doi\s*:\s*|https?:\/\/(?:dx\.)?doi\.org\/)\s*(10\.\d{4,9}\/\S+?)\.?\s*$/i,
-        'https://doi.org/$1');
-    if (dd !== t) { t = dd; tags.push('DOI'); }
-
-    // ③ 끝 마침표 — 단 DOI·URL 로 끝나는 항목에는 APA 가 마침표를 붙이지 않는다.
-    if (/https?:\/\/\S+$/.test(t)) { /* 그대로 둔다 */ }
-    else     if (!/[.\]\u3011]$/.test(t)) { t += '.'; tags.push('마침표'); }
-
-    // ③-2 영문 학술지명은 Title Case (APA 필수) — 제목은 sentence case 지만 학술지명은 다르다.
-    //     "Journal of counseling psychology" → "Journal of Counseling Psychology"
-    {
-        const JR2 = /([^.,;()]{2,60}),\s*(\d+)\s*(?:\(\s*[^)]{1,20}\s*\))?\s*,?\s*(?:[Pp]{1,2}\.?\s*)?\d+/g;
-        let last = null, mm;
-        while ((mm = JR2.exec(t))) last = mm;
-        if (last && !/[가-힣]/.test(last[1]) && /[A-Za-z]/.test(last[1])) {
-            const raw = last[1];
-            const tc = toTitleCase(raw);
-            if (tc !== raw) {
-                t = t.slice(0, last.index) + tc + t.slice(last.index + raw.length);
-                tags.push('학술지명 대소문자');
-            }
-        }
-    }
-
-    // ④ 영문 저자 목록 — 마지막 저자 앞에 & (APA 필수)
-    //    형태가 「성, 이니셜.」 나열로 **깔끔한 것만** 손댄다. 「Slaney, Robert B and Ashby…」
-    //    처럼 흐트러진 것은 건드리면 저자명을 망가뜨리므로 그대로 둔다.
-    const my0 = t.match(/\(\s*\d{4}[a-z]?\s*\)/);
-    if (my0 && my0.index > 3) {
-        // 끝 마침표는 이니셜의 일부다 — 떼어내면 형태 검사에 걸려 저자 & 를 못 넣는다
-        const block = t.slice(0, my0.index).trim().replace(/,\s*$/, '');
-        const CLEAN = /^[A-Z][A-Za-z\u2019'\-]+,\s*(?:[A-Z]\.\s*)+(?:,\s*[A-Z][A-Za-z\u2019'\-]+,\s*(?:[A-Z]\.\s*)+)+$/;
-        if (!/&/.test(block) && !/[가-힣]/.test(block) && CLEAN.test(block + ' ')) {
-            const authors = block.split(/,\s*(?=[A-Z][A-Za-z\u2019'\-]+,)/).map(x => x.trim());
-            if (authors.length >= 2) {
-                const joined = authors.slice(0, -1).join(', ') + ', & ' + authors[authors.length - 1];
-                t = (joined + ' ' + t.slice(my0.index)).replace(/\s+/g, ' ').trim();
-                tags.push('저자 &');
-            }
-        }
-    }
-
-    // ⑤ 영문 제목은 첫 글자만 대문자 (APA sentence case). 고유명사는 APA_PROPER 로 지킨다.
-    const my1 = t.match(/\(\s*\d{4}[a-z]?\s*\)\s*\.?\s*/);
-    if (my1 && !/[가-힣]/.test(t)) {
-        const st = my1.index + my1[0].length;
-        const rest = t.slice(st);
-        const dot = rest.search(/\.(\s|$)/);
-        // 마침표가 문장 끝에만 있으면 그것은 제목이 아니다 — 원문에 마침표가 버진 항목을
-        // sentence case 로 바꾸면 학술지명·고유명사까지 소문자로 만들어 **원문보다 나빠진다**.
-        if (dot > 3 && dot < rest.length - 10) {
-            const title = rest.slice(0, dot);
-            const sc = toSentenceCase(title);
-            if (sc !== title) { t = t.slice(0, st) + sc + t.slice(st + dot); tags.push('제목 대소문자'); }
-        }
-    }
-
-    // ⑥ 기울임
-    const html = apaAutoItalic(t);
-    if (html.includes('<i ')) tags.push('기울임');
-
-    return { html, text: t, tags, orig };
-}
-
 function apaCleanHtml(html) {
     const d = document.createElement('div');
     d.innerHTML = String(html || '');
@@ -2389,16 +2221,32 @@ function renderManuscriptResult(ov, res) {
             if (koA !== koB) return koA ? -1 : 1;
             return ka.localeCompare(kb, 'ko');
         });
+    const refStyle = getStyle(state.refStyleChoice || 'kapp');
     const fixRows = sorted.map(({ ch, i }) => {
         // 원본에 이미 기울임이 있으면(한글 파일에서 온 경우) 그것을 존중하고 손대지 않는다
         const hasIt = /<(i|em)\b|font-style\s*:\s*italic/i.test(ch.html);
-        const tidy = apaTidyEntry(ch.text);
-        const html = hasIt ? ch.html : tidy.html;
-        const tags = hasIt ? ['원본 서식 유지'] : tidy.tags;
-        if (tags.length && tags[0] !== '원본 서식 유지') nFixed++; else if (!hasIt) nKept++;
-        const tagHtml = tags.length && tags[0] !== '원본 서식 유지'
-            ? `<span class="ms-tag" title="${escHtml(tags.join(' · '))} — 눌러서 원문 보기">고침</span>`
-            : '';
+        let html = ch.html, tagHtml = '';
+        if (hasIt) {
+            tagHtml = '';   // 원본 서식 유지 — 딱지 없음(손 안 댄 상태이므로)
+        } else {
+            const entry = parseRefEntry(ch.text);
+            if (entry.confidence === 'high') {
+                const asm = assembleRef(entry, refStyle);
+                if (asm) {
+                    html = asm.html;
+                    nFixed++;
+                    tagHtml = `<span class="ms-tag" title="${escHtml(refStyle.name)} 형식으로 조립함 — 눌러서 원문 보기">고침</span>`;
+                }
+            }
+            if (!tagHtml) {
+                // 자신 없어서 손대지 않은 경우 — 왜 손 안 댔는지 이유를 함께 보여준다
+                nKept++;
+                const why = !entry.authors ? '저자 형태를 못 알아봄'
+                    : entry.itemType === 'unknown' ? '자료 유형을 못 알아봄'
+                    : '원문 마침표·구두점 확인 필요';
+                tagHtml = `<span class="ms-tag off" title="${escHtml(why)} — 직접 확인해 주세요">확인 필요</span>`;
+            }
+        }
         // 연도 괄호가 없는 줄은 참고문헌이 아니다(영문 초록 제목·게재정보·쪽머리말 등).
         // 지우지는 않는다 — 앱이 잘못 봤을 수도 있으니 보여주고 **미리 빼둔** 상태로 둔다.
         const notRef = !/\(\s*(19|20)\d{2}[a-z]?\s*\)/.test(ch.text);
@@ -2408,7 +2256,7 @@ function renderManuscriptResult(ov, res) {
             <div class="ms-fixmain">
                 <div class="ms-fixtext" contenteditable="true" spellcheck="false">${html}</div>
                 <div class="ms-fixtags" title="눌러서 원문과 견주기">${tagHtml}</div>
-                <div class="ms-fixdiff" hidden><b>원문</b> ${escHtml(tidy.orig)}</div>
+                <div class="ms-fixdiff" hidden><b>원문</b> ${escHtml(ch.text)}</div>
             </div>
             ${notRef ? '<span class="ms-fixbadge">참고문헌 아님 · 빼둠</span>'
                      : (unCited.has(i) ? '<span class="ms-fixbadge">인용 없음</span>' : '')}
@@ -2449,10 +2297,18 @@ function renderManuscriptResult(ov, res) {
             <div class="ms-plist" id="ms-cklist">${res.check.map(pairPick).join('') || '<div class="ms-empty">없음</div>'}</div>
         </div>
         <div class="ms-pane" data-pane="fix" hidden>
+            <div class="ms-stylebar">
+                <label>기준 양식</label>
+                <select id="ms-style-pick">
+                    <option value="kapp"${(state.refStyleChoice || 'kapp') === 'kapp' ? ' selected' : ''}>한국심리학회지: 상담 및 심리치료</option>
+                    <option value="apa"${state.refStyleChoice === 'apa' ? ' selected' : ''}>APA 7판</option>
+                </select>
+                <span class="ms-stylehint">골라둔 문헌은 이 양식으로 다시 조립됩니다</span>
+            </div>
             <div class="ms-pane-note">
-                붙여넣은 목록 <b>그대로</b>입니다. <b>뺄 항목에 체크</b>하고, 글자는 <b>직접 눌러 고칠 수도</b> 있습니다.
-                <b>APA 서식을 적용하고 가나다·알파벳 순으로 정렬해 두었습니다.</b>
-                글자는 직접 눌러 고칠 수 있고, <span class="ms-tag">고침</span> 을 누르면 원문과 견줘 볼 수 있습니다.
+                <span class="ms-tag" title="자동 조립됨">고침</span> = 저자·제목·학술지를 <b>칸으로 나눠 규정대로 다시 조립</b>했습니다.
+                <span class="ms-tag off" title="자신 없어 손대지 않음">확인 필요</span> = 형태를 정확히 못 읽어 <b>원문 그대로 두었습니다</b> — 직접 확인해 주세요.
+                <b>뺄 항목에 체크</b>하고, 글자는 <b>직접 눌러 고칠 수도</b> 있습니다.
                 다른 탭에서 <b>「＋ 목록에 넣기」·「본문이 맞음」</b>을 누르면 그 결과가 여기로 들어옵니다.
                 다 되면 아래 복사 버튼으로 논문에 붙여넣으세요.
                 <span class="ms-steps-note">
@@ -2542,6 +2398,17 @@ function renderManuscriptResult(ov, res) {
         updateCount();
     };
     updateCount();
+
+    // 양식을 바꾸면 목록 전체를 그 양식으로 다시 조립한다.
+    // (넣기·확인 처리는 다시 골라야 한다 — 조립 결과가 통째로 바뀌므로.)
+    const styleSel = body.querySelector('#ms-style-pick');
+    if (styleSel) styleSel.addEventListener('change', () => {
+        state.refStyleChoice = styleSel.value;
+        showToast(`${getStyle(styleSel.value).name} 양식으로 다시 조립합니다`, 'info');
+        renderManuscriptResult(ov, res);
+        const fixTab = ov.querySelector('.ms-tab[data-pane="fix"]');
+        if (fixTab) fixTab.click();   // 다시 그리면 첫 탭으로 돌아가므로 「고쳐진 목록」에 머문다
+    });
 
     const tabCount = (pane, n) => {
         const sp = body.querySelector(`.ms-tab[data-pane="${pane}"] span`);
@@ -8096,7 +7963,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260819d';
+        const miniUrl = 'mini.html?v=20260819e';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
