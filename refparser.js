@@ -65,7 +65,7 @@ function parseRefEntry(text) {
     rest = _clean(rest.slice(dot + 1));
 
     // ── 유형 판별 ──
-    const THESIS = /(석사|박사)\s*학위\s*논문|thesis|dissertation/i;
+    const THESIS = /(석사|박사)\s*학위\s*논\s*문|thesis|dissertation/i;
     const DOI = rest.match(/\b(?:doi\s*:\s*|https?:\/\/(?:dx\.)?doi\.org\/)\s*(10\.\d{4,9}\/\S+?)\.?\s*$/i);
     if (DOI) { out.doi = DOI[1]; rest = _clean(rest.slice(0, DOI.index)); }
 
@@ -76,7 +76,7 @@ function parseRefEntry(text) {
         // 둘 다 나온다 — 끝(`$`)에만 있다고 가정하면 앞에 오는 경우를 못 걷어내
         // 소속기관 칸에 학위 표기가 그대로 남고, 조립기가 학위 표기를 또 붙여
         // "…한동대학교. 석사학위논문."처럼 중복되는 사고가 있었다. 위치 무관하게 지운다.
-        out.source = _clean(rest.replace(/(석사|박사)?\s*학위\s*논문/i, '')
+        out.source = _clean(rest.replace(/(석사|박사)?\s*학위\s*논\s*문/i, '')
             .replace(/thesis|dissertation/i, '')
             .replace(/^[,\s]+|[,\s]+$/g, '')
             .replace(/\.$/, ''));
