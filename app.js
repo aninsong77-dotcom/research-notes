@@ -2383,6 +2383,12 @@ function renderManuscriptResult(ov, res) {
     const fixCount = body.querySelector('#ms-fixcount');
     const fixRowsEl = () => [...fixList.querySelectorAll('.ms-fixrow')];
     const fixNote = body.querySelector('#ms-fixnote');
+    // ⚠️ updateCount 가 이 함수를 부르므로, updateCount() 가 실제로 호출되기 전에
+    //    반드시 먼저 초기화돼 있어야 한다 — 뒤에서 `let refreshPreview = ...` 로 다시
+    //    선언했더니 그 사이(updateCount(); 최초 호출)에서 "초기화 전 접근" 오류가 나서
+    //    스크립트가 그 자리에서 멈췄고, 그 아래 있던 양식 선택·미리보기·목록 넣기 연결이
+    //    전부 실행되지 못했다. 실제 사고 원인.
+    let refreshPreview = () => {};
     const updateCount = () => {
         const rows = fixRowsEl();
         const out = rows.filter(r => !r.querySelector('input').checked).length;
@@ -2440,9 +2446,6 @@ function renderManuscriptResult(ov, res) {
         if (sp) sp.textContent = n;
     };
     let leftAdd = res.toAdd.length, leftCk = res.check.length;
-    // collectFix 는 아래쪽에서 정의되므로, 그 전에 호출되지 않도록 자리만 미리 잡아둔다
-    // (updateCount 가 먼저 정의·호출되는데, 그 안에서 미리보기를 새로고칠 수 있어야 하기 때문).
-    let refreshPreview = () => {};
 
     // ── 「목록에 없음」 → 완성본 목록에 넣기 (다시 누르면 되돌린다) ──
     const addedRows = new Map();
@@ -8006,7 +8009,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260819f';
+        const miniUrl = 'mini.html?v=20260819g';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {

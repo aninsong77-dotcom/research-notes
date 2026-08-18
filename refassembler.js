@@ -160,7 +160,12 @@ function renderDiffHtml(origText, asm) {
     const OPEN = m ? m[0] : '<i style="font-style:italic">';
     const CLOSE = m ? '</span>' : '</i>';
 
-    const diff = diffWords(origText, asm.text).filter(t => t.type !== 'del');
+    // ⚠️ 원문(줄바꿈이 낳은 이중 공백 등)과 조립 결과(공백 한 칸으로 다듬어짐)를 그대로
+    //    비교하면 띄어쓰기 한 칸 한 칸이 전부 "달라짐"으로 잡힌다 — 실제로 그랬다.
+    //    눈에는 안 보이는 차이라 사용자에겐 "다르지 않은데 빨갛다"로 보인다.
+    //    parseRefEntry 도 처음에 공백을 이렇게 다듬으므로 같은 기준으로 맞춘다.
+    const normOrig = String(origText || '').replace(/\s+/g, ' ').trim();
+    const diff = diffWords(normOrig, asm.text).filter(t => t.type !== 'del');
     let pos = 0, out = '', emphOn = false;
     for (const tok of diff) {
         const start = pos, end = pos + tok.text.length;
