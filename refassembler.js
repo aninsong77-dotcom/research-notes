@@ -25,6 +25,45 @@ function titleCaseSource(str) {
     }).join('');
 }
 
+// 논문·책·학위논문 제목은 Title Case 가 아니라 Sentence case (규정.md §D — [학회] ②:
+// "제목은 첫 단어만 대문자로 표기하고, 나머지는 모두 소문자로"). 예전 apaTidyEntry 에
+// 있던 규칙인데 파서를 새로 짤 때 옮기지 않아 빠져 있었다 — 여기서 되살린다.
+// 고유명사 목록은 app.js 의 APA_PROPER 와 같은 항목을 옮겨왔다(app.js 보다 먼저
+// 실려도 동작해야 하므로 여기 자체에 둔다 — titleCaseSource 와 같은 이유).
+const _PROPER_NOUNS = new Set([
+    'korea','korean','china','chinese','japan','japanese','taiwan','vietnam',
+    'america','american','europe','european','asia','asian','africa','african',
+    'australia','australian','britain','british','england','english','france','french',
+    'germany','german','spain','spanish','italy','italian','russia','russian',
+    'india','indian','canada','canadian','mexico','brazil','netherlands','sweden','norway','finland',
+    'seoul','busan','tokyo','beijing','shanghai','london','paris','berlin','york','washington',
+    'january','february','march','april','may','june','july',
+    'august','september','october','november','december',
+    'monday','tuesday','wednesday','thursday','friday','saturday','sunday',
+    'covid','covid-19','hiv','aids','oecd','unesco','who','un',
+    'facebook','instagram','twitter','youtube','google','tiktok','kakaotalk',
+    'christian','christianity','buddhist','buddhism','muslim','islam','confucian',
+]);
+function sentenceCaseTitle(str) {
+    const s = String(str || '').trim();
+    if (!s || /[가-힣]/.test(s)) return s;   // 국문 제목은 규정에 대소문자 규칙이 없다
+    let capNext = true;
+    return s.split(/(\s+)/).map(tok => {
+        if (/^\s+$/.test(tok)) return tok;
+        const bare = tok.replace(/[^A-Za-z0-9-]/g, '');
+        const letters = tok.replace(/[^A-Za-z]/g, '');
+        const isAcronym = letters.length > 1 && letters === letters.toUpperCase();  // APA, PTSD
+        const isMixed = /[a-z][A-Z]/.test(tok);                                      // iPhone
+        const isProper = _PROPER_NOUNS.has(bare.toLowerCase());
+        let out;
+        if (isAcronym || isMixed) out = tok;
+        else if (isProper || capNext) out = tok.charAt(0).toUpperCase() + tok.slice(1).toLowerCase();
+        else out = tok.toLowerCase();
+        capNext = /[:.?!]$/.test(tok);   // 콜론·마침표 뒤는 다시 대문자
+        return out;
+    }).join('');
+}
+
 function escHtml(x) {
     return String(x == null ? '' : x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -35,7 +74,9 @@ function joinAuthors(list, lang, style) {
     if (list.length === 1) return list[0];
     const sep = lang === 'ko' ? style.authorSepKo : ', ';
     const last = lang === 'ko' ? style.authorLastKo : ', & ';
-    if (list.length === 2) return list.join(lang === 'ko' ? style.authorSepKo2 : last.replace(', ', ' & '));
+    // ⚠️ ', & '.replace(', ',' & ') 는 ' & & ' 가 되어 & 이 겹치는 버그가 있었다
+    //    (', & ' 안의 ', ' 를 ' & ' 로 바꾸면 뒤에 남은 '& ' 와 합쳐진다).
+    if (list.length === 2) return list.join(lang === 'ko' ? style.authorSepKo2 : ' & ');
     return list.slice(0, -1).join(sep) + last + list[list.length - 1];
 }
 
@@ -91,35 +132,39 @@ function assembleRef(entry, style) {
 
     // 강조 구간의 글자 위치(plain text 기준)를 함께 돌려준다 — 화면에서 색으로
     // 바뀐 부분을 표시할 때, 강조(기울임/고딕) 위치와 겹치지 않게 다루려고 필요하다.
+    // 논문·책·학위논문 제목은 sentence case (규정.md §D). 한글 제목은 함수 안에서
+    // 그대로 통과한다. 대소문자만 바뀌므로 글자수는 변하지 않아 emphStart/End 계산에 영향 없다.
+    const titleText = sentenceCaseTitle(e.title);
+
     if (e.itemType === 'journal') {
         const sourceName = e.lang === 'en' ? titleCaseSource(e.source) : e.source;
         const emphPlain = `${sourceName}, ${e.volume}`;
         const src = emphasize(emphPlain, e.lang, style);
         const issue = e.issue ? `(${escHtml(e.issue)})` : '';
         const pages = e.pages.replace(/-/g, style.pageDash);
-        const html = `${escHtml(authors)} ${yr}. ${escHtml(e.title)}. ${src}${issue}, ${escHtml(pages)}.`;
-        const prefix = `${authors} ${yr}. ${e.title}. `;
+        const html = `${escHtml(authors)} ${yr}. ${escHtml(titleText)}. ${src}${issue}, ${escHtml(pages)}.`;
+        const prefix = `${authors} ${yr}. ${titleText}. `;
         const text = prefix + `${emphPlain}${issue}, ${pages}.`;
         return { html, text, emphStart: prefix.length, emphEnd: prefix.length + emphPlain.length };
     }
 
     if (e.itemType === 'book') {
-        const title = emphasize(e.title, e.lang, style);
+        const title = emphasize(titleText, e.lang, style);
         const html = `${escHtml(authors)} ${yr}. ${title}. ${escHtml(e.source)}.`;
         const prefix = `${authors} ${yr}. `;
-        const text = prefix + `${e.title}. ${e.source}.`;
-        return { html, text, emphStart: prefix.length, emphEnd: prefix.length + e.title.length };
+        const text = prefix + `${titleText}. ${e.source}.`;
+        return { html, text, emphStart: prefix.length, emphEnd: prefix.length + titleText.length };
     }
 
     if (e.itemType === 'thesis') {
-        const title = emphasize(e.title, e.lang, style);
+        const title = emphasize(titleText, e.lang, style);
         const tail = style.thesisBrackets
             ? `[${e.degree}, ${e.source}]`
             : `${e.source} ${e.degree}`;
         const html = `${escHtml(authors)} ${yr}. ${title}. ${escHtml(tail)}.`;
         const prefix = `${authors} ${yr}. `;
-        const text = prefix + `${e.title}. ${tail}.`;
-        return { html, text, emphStart: prefix.length, emphEnd: prefix.length + e.title.length };
+        const text = prefix + `${titleText}. ${tail}.`;
+        return { html, text, emphStart: prefix.length, emphEnd: prefix.length + titleText.length };
     }
 
     return null;   // 조립할 수 없는 유형 — 호출 쪽에서 원문 유지
@@ -181,4 +226,4 @@ function renderDiffHtml(origText, asm) {
 }
 
 if (typeof module !== 'undefined')
-    module.exports = { assembleRef, getStyle, STYLE_APA, STYLE_KAPP, joinAuthors, emphasize, diffWords, renderDiffHtml };
+    module.exports = { assembleRef, getStyle, STYLE_APA, STYLE_KAPP, joinAuthors, emphasize, diffWords, renderDiffHtml, sentenceCaseTitle, titleCaseSource };

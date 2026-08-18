@@ -1817,7 +1817,11 @@ function apaCleanHtml(html) {
                 rep.innerHTML = child.innerHTML;
                 child.replaceWith(rep);
             } else if (fontM) {
+                // ⚠️ class="ref-emph" 를 안 붙이면 htmlToRuns(hwpxwriter.js) 가 "앱이 만든
+                //    강조"라는 표시를 못 찾아 평문(charPr 7)으로 떨어뜨린다 — 실제로 국문
+                //    고딕 강조가 hwpx 에서 전부 사라지는 사고로 확인됐다(2026-08-18).
                 const rep = document.createElement('span');
+                rep.setAttribute('class', 'ref-emph');
                 rep.setAttribute('style', `font-family:${fontM[1].trim()}`);
                 rep.innerHTML = child.innerHTML;
                 child.replaceWith(rep);
@@ -8015,7 +8019,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260819h';
+        const miniUrl = 'mini.html?v=20260819i';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
