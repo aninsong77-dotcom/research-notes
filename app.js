@@ -2323,15 +2323,13 @@ function renderManuscriptResult(ov, res) {
                 <span class="ms-tag off" title="자신 없어 손대지 않음">확인 필요</span> = 형태를 정확히 못 읽어 <b>원문 그대로 두었습니다</b> — 직접 확인해 주세요.
                 <b>뺄 항목에 체크</b>하고, 글자는 <b>직접 눌러 고칠 수도</b> 있습니다.
                 다른 탭에서 <b>「＋ 목록에 넣기」·「본문이 맞음」</b>을 누르면 그 결과가 여기로 들어옵니다.
-                다 되면 아래 복사 버튼으로 논문에 붙여넣으세요.
+                다 되면 아래 <b>「hwpx 파일로 저장」</b>을 누르세요.
                 <span class="ms-steps-note">
-                    복사한 뒤 한글에서 <b>Ctrl+V</b> → 「HTML 문서 붙이기」 창이 뜨면 <b>「원본 형식 유지」</b>를
-                    고르세요. 기울임이 그대로 들어갑니다 (「텍스트 형식으로 붙이기」는 기울임이 사라집니다).
-                    <b>둘째 줄 들여쓰기(내어쓰기)가 안 들어갔으면</b> 붙여넣은 부분을 선택하고
-                    <b>Alt+T</b>(문단 모양) → 「들여쓰기/내어쓰기」에서 <b>내어쓰기</b>를 한 번 지정하세요.
-                    한글 버전에 따라 앱이 보낸 문단 여백을 무시합니다.
-                    「참고문헌」 화면의 복사 버튼과 <b>똑같은 방식</b>이라 폰트·글자크기는 앱이 건드리지 않고
-                    한글이 커서 위치의 서식을 물려받습니다.
+                    <b>복사-붙여넣기 대신 진짜 한글 파일(.hwpx)을 만듭니다</b> — 한글이 클립보드 서식(특히
+                    문단 내어쓰기)을 제대로 받지 않는 것을 확인했기 때문입니다. 저장한 파일을 한글에서
+                    <b>그냥 여세요</b>(파일 → 불러오기). 내어쓰기·기울임·고딕 강조가 이미 적용된 채로 열립니다.
+                    거기서 목록을 <b>통째로 복사해</b> 실제 논문 파일에 붙여넣으세요 — 한글끼리의 복사라
+                    서식이 안전하게 넘어갑니다.
                 </span>
             </div>
             <div class="ms-fixnote" id="ms-fixnote"></div>
@@ -2340,13 +2338,14 @@ function renderManuscriptResult(ov, res) {
                 <button type="button" class="btn-secondary" id="ms-fix-clr">전부 되살리기</button>
                 <span class="ms-fixcount" id="ms-fixcount"></span>
                 <button type="button" class="btn-secondary" id="ms-fix-preview">📄 실제 모양 미리보기</button>
-                <button type="button" class="btn-primary" id="ms-fix-rich">목록 복사 (기울임 포함)</button>
+                <button type="button" class="btn-primary" id="ms-fix-hwpx">💾 hwpx 파일로 저장</button>
             </div>
             <div class="ms-plist ms-fixlist" id="ms-fixlist">${fixRows || '<div class="ms-empty">붙여넣은 목록이 없습니다</div>'}</div>
             <div class="ms-previewwrap" id="ms-previewwrap" hidden>
                 <div class="ms-previewbar">
-                    한글에 붙여넣을 때 <b>실제로 실리는 모양</b>입니다 — 복사해서 확인하지 않아도 여기서 바로 보입니다.
-                    (다만 <b>한글이 이 서식을 그대로 받아들이는지는 별개</b>입니다 — 마지막엔 꼭 한 번 붙여넣어 확인하세요.)
+                    저장될 <b>글자 내용과 강조(기울임·고딕)</b>가 이렇게 들어갑니다 — 여기서 미리 확인하세요.
+                    (내어쓰기는 hwpx 파일 안에 직접 정확한 값으로 넣으므로, 여기 미리보기 폭과는
+                    다르게 보일 수 있습니다 — 실제 폭은 한글 문서 설정을 따릅니다.)
                 </div>
                 <div class="ms-previewpage" id="ms-previewpage"></div>
             </div>
@@ -2581,16 +2580,23 @@ function renderManuscriptResult(ov, res) {
         if (!previewWrap.hidden) refreshPreview();
     };
 
-    body.querySelector('#ms-fix-rich').onclick = async () => {
+    // 클립보드 복사는 한글이 문단 서식(내어쓰기)을 안 받는 것으로 확인돼 없앴다.
+    // 대신 처음부터 올바른 문단 스타일이 박힌 진짜 hwpx 파일을 만든다 — 클립보드를
+    // 거치지 않으므로 "한글이 서식을 받아들이는지" 자체가 문제되지 않는다.
+    body.querySelector('#ms-fix-hwpx').onclick = () => {
         const items = collectFix();
         if (!items.length) { showToast('남은 항목이 없습니다', 'warn'); return; }
         const blanks = fixList.querySelectorAll('.ms-fixrow:not(.off) .ms-blank').length;
-        if (blanks && !confirm('아직 채우지 않은 빈칸이 ' + blanks + '군데 있습니다. 그대로 복사할까요?')) return;
-        const html = buildHtml(items);
-        const itCount = (html.match(/<i style="font-style:italic">/g) || []).length;
-        pushDebug('info', `목록 복사 — ${items.length}편 / 기울임 ${itCount}군데 / html ${html.length}자`);
-        const ok = await copyRich(html, items.map(x => x.text).join('\n\n'));
-        showToast(ok ? `${items.length}편 복사됐습니다 — 한글에 붙여넣으면 기울임까지 들어갑니다.` : '복사 실패', ok ? 'success' : 'error');
+        if (blanks && !confirm('아직 채우지 않은 빈칸이 ' + blanks + '군데 있습니다. 그대로 저장할까요?')) return;
+        try {
+            const blob = buildHwpxBlob(items, state.refStyleChoice || 'kapp');
+            download(blob, '참고문헌_목록.hwpx', 'application/octet-stream');
+            pushDebug('info', `hwpx 저장 — ${items.length}편 / ${blob.length}바이트`);
+            showToast(`${items.length}편을 hwpx 파일로 저장했습니다 — 한글에서 열어 확인해 주세요`, 'success');
+        } catch (e) {
+            pushDebug('warn', 'hwpx 생성 실패: ' + e.message);
+            showToast('hwpx 파일 생성에 실패했습니다', 'error');
+        }
     };
 
     ov.querySelector('#ms-back').onclick = () => { ov.remove(); openManuscriptMatch(); };
@@ -8009,7 +8015,7 @@ function bindEvents() {
     document.getElementById('btn-open-mini').addEventListener('click', () => {
         // ?v= 를 붙여야 mini.html 을 고쳐도 크롬이 옛 것을 캐시로 쓰지 않는다.
         // 창이 이미 열려 있으면 focus 만 하면 옛 코드가 그대로 떠 있으므로 주소를 다시 넣어 새로 읽힌다.
-        const miniUrl = 'mini.html?v=20260819g';
+        const miniUrl = 'mini.html?v=20260819h';
         // file:// 에서는 열린 창의 주소를 밖에서 바꾸는 게 막힐 수 있다.
         // 그래서 주소 바꾸기가 안 되면 창을 닫고 새로 연다(그래야 고친 코드가 읽힌다).
         if (_miniWin && !_miniWin.closed) {
