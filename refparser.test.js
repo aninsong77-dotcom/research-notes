@@ -134,20 +134,33 @@ test('기관 저자(영문) — 현재는 저자로 인식 못 함 (알려진 �
     assert.equal(e.confidence, 'low');
 });
 
-test.skip('기관 저자(국문, 5자 초과) — 아직 미지원. known-issues.md #1 참고', () => {
-    // refparser.js:35 국문 저자 판별이 [가-힣]{2,5}로 5자 제한 — "한국교육개발원"(7자) 등
-    // 상담·교육심리 분야에 흔한 기관명이 자동 조립되지 않는다. 고치기 전까지 skip.
+test('기관 저자(국문, 5자 초과) — 정상 인식 (2026-08-28 수리, known-issues.md #1)', () => {
     const e = parseRefEntry('한국교육개발원 (2020). 기관 저자 예시 연구. 정책연구, 3(1), 1-20.');
+    assert.equal(e.confidence, 'high');
+    assert.deepEqual(e.authors, ['한국교육개발원']);
+});
+
+test('공동 기관 저자(국문 2곳) — 정상 인식', () => {
+    const e = parseRefEntry('여성가족부, 보건복지부 (2019). 공동 기관 저자 예시. 정책연구, 4(2), 10-25.');
+    assert.deepEqual(e.authors, ['여성가족부', '보건복지부']);
+});
+
+test('사람 이름(5자 이하) — 기관 판별 추가 후에도 회귀 없이 정상 처리', () => {
+    const e = parseRefEntry('홍길동 (2020). 회귀 확인용. 상담학연구, 1(1), 1-5.');
+    assert.deepEqual(e.authors, ['홍길동']);
     assert.equal(e.confidence, 'high');
 });
 
-test.skip('영문 박사학위논문("Doctoral dissertation") — degree가 항상 석사로 나오는 버그. known-issues.md #2', () => {
-    // refparser.js:74 `out.degree = /박사/.test(rest) ? '박사학위논문' : '석사학위논문'` 가
-    // 국문 "박사"만 검사해서, 영문 "Doctoral dissertation"은 항상 석사로 잘못 표시된다.
-    // 게다가 source도 "Doctoral , Harvard University"처럼 콤마가 남아 깨진다.
+test('영문 박사학위논문("Doctoral dissertation") — degree·source 정상 인식 (2026-08-28 수리, known-issues.md #2)', () => {
     const e = parseRefEntry('Smith, J. (2015). Examining resilience in adolescents. Doctoral dissertation, Harvard University.');
     assert.equal(e.degree, '박사학위논문');
     assert.equal(e.source, 'Harvard University');
+});
+
+test('영문 석사학위논문("Master\'s thesis") — degree 정상 인식', () => {
+    const e = parseRefEntry("Lee, K. (2012). A study on adolescent anxiety. Master's thesis, Yonsei University.");
+    assert.equal(e.degree, '석사학위논문');
+    assert.equal(e.source, 'Yonsei University');
 });
 
 // ══════════════════════════════════════════════════════════
@@ -180,13 +193,16 @@ test('영문 단행본 — 어느 스타일이든 강조는 이탤릭', () => {
     assert.match(a.html, /font-style:italic/);
 });
 
-test.skip('영문 단행본 — 출판사명이 Title Case로 안 바뀌는 버그. known-issues.md #3', () => {
-    // refassembler.js:151~156 book 분기는 학술지 분기(140줄)와 달리 titleCaseSource()를
-    // 안 거쳐서, 원문이 소문자 출판사명이면 그대로 소문자로 나간다. 규정.md §D는
-    // "출판사는 각 단어 첫 글자 대문자"를 요구하므로 이건 규정 위반이다.
+test('영문 단행본 — 출판사명 Title Case 적용 (2026-08-28 수리, known-issues.md #3)', () => {
     const e = parseRefEntry('Kline, R. B. (1998). Principles. the guilford press.');
     const a = assembleRef(e, STYLE_KAPP);
     assert.match(a.text, /The Guilford Press/);
+});
+
+test('국문 단행본 — 출판사명은 원문 그대로(Title Case 적용 안 됨)', () => {
+    const e = parseRefEntry('조성호 (2000). 경계선 성격장애. 학지사.');
+    const a = assembleRef(e, STYLE_KAPP);
+    assert.match(a.text, /학지사\.$/);
 });
 
 test('국문 학위논문 — KAPP 스타일은 대괄호 없이 "대학 학위" 형태 (규정.md §C-3)', () => {

@@ -32,7 +32,12 @@ function _parseAuthors(block, lang) {
     }
     // 국문 — "홍길동, 김철수" 콤마 나열 (끝 마침표는 있어도 무방하니 마저 뗀다)
     const parts = raw.replace(/\.$/, '').split(/[,，]/).map(_clean).filter(Boolean);
-    const allKo = parts.every(p => /^[가-힣]{2,5}(\([가-힣]+\))?$/.test(p));
+    const isPerson = p => /^[가-힣]{2,5}(\([가-힣]+\))?$/.test(p);
+    // 기관 저자(known-issues.md #1) — "한국교육개발원"(7자) 같은 상담·교육심리 분야에
+    // 흔한 기관명은 사람 이름 상한(5자)을 넘어가서 여태 확인 필요로 빠졌다. 사람 이름
+    // 판별(5자 상한)은 안 건드리고, 흔한 기관명 접미사를 별도 조건으로 추가한다.
+    const isOrg = p => /^[가-힣]{2,20}(부|처|청|원|회|단|재단|협회|공단|위원회|연구소|본부)$/.test(p);
+    const allKo = parts.every(p => isPerson(p) || isOrg(p));
     if (allKo && parts.length >= 1) return { authors: parts, authorsRaw: raw, ok: true };
     return { authors: null, authorsRaw: raw, ok: false };
 }
@@ -71,13 +76,18 @@ function parseRefEntry(text) {
 
     if (THESIS.test(rest)) {
         out.itemType = 'thesis';
-        out.degree = /박사/.test(rest) ? '박사학위논문' : '석사학위논문';
+        // ⚠️ 국문 "박사"만 검사하면 영문 "Doctoral dissertation"이 항상 석사로 잘못 잡힌다
+        // (known-issues.md #2) — 영문 박사 표기(doctoral·Ph.D.)도 같이 본다.
+        out.degree = /박사|doctoral|ph\.?\s*d\.?/i.test(rest) ? '박사학위논문' : '석사학위논문';
         // 학위 표기는 "○○대학교 대학원 석사학위논문"(뒤)·"석사학위논문, ○○대학교"(앞)
         // 둘 다 나온다 — 끝(`$`)에만 있다고 가정하면 앞에 오는 경우를 못 걷어내
         // 소속기관 칸에 학위 표기가 그대로 남고, 조립기가 학위 표기를 또 붙여
         // "…한동대학교. 석사학위논문."처럼 중복되는 사고가 있었다. 위치 무관하게 지운다.
+        // 영문 학위 단어(Doctoral·dissertation·Master's·thesis)도 같이 지운다 — 하나만 지우면
+        // "Doctoral , Harvard University"처럼 남은 단어와 쉼표가 깨진 채로 남았다(known-issues.md #2).
         out.source = _clean(rest.replace(/(석사|박사)?\s*학위\s*논\s*문/i, '')
-            .replace(/thesis|dissertation/i, '')
+            .replace(/doctoral|master'?s?|thesis|dissertation|ph\.?\s*d\.?/gi, '')
+            .replace(/\s*,\s*(?=,|$)/g, '')      // 단어가 빠지고 남은 빈 쉼표(", ,"·끝 쉼표) 정리
             .replace(/^[,\s]+|[,\s]+$/g, '')
             .replace(/\.$/, ''));
         out.confidence = out.authors ? 'high' : 'low';

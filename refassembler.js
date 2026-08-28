@@ -149,10 +149,13 @@ function assembleRef(entry, style) {
     }
 
     if (e.itemType === 'book') {
+        // 출판사명도 학술지명(140줄)과 같은 규정(규정.md §D)을 받아야 하는데 빠져 있었다
+        // (known-issues.md #3) — 영문일 때만 Title Case 적용, 국문은 원문 그대로.
+        const sourceOut = e.lang === 'en' ? titleCaseSource(e.source) : e.source;
         const title = emphasize(titleText, e.lang, style);
-        const html = `${escHtml(authors)} ${yr}. ${title}. ${escHtml(e.source)}.`;
+        const html = `${escHtml(authors)} ${yr}. ${title}. ${escHtml(sourceOut)}.`;
         const prefix = `${authors} ${yr}. `;
-        const text = prefix + `${titleText}. ${e.source}.`;
+        const text = prefix + `${titleText}. ${sourceOut}.`;
         return { html, text, emphStart: prefix.length, emphEnd: prefix.length + titleText.length };
     }
 
