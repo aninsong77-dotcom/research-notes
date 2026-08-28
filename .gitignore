@@ -10,6 +10,8 @@ AGENTS.md
 
 # 수정 전 백업본(로컬 전용)
 app_backup_*.js
+auth_backup_*.js
+mindmap_backup_*.js
 style_backup_*.css
 index_backup_*.html
 mini_backup_*.html

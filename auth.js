@@ -241,7 +241,7 @@ function openAuthModal() {
 //  Firestore — 텍스트/메타데이터 동기화
 // ════════════════════════════════════════════════════════════════════════
 
-const SYNC_STORES = ['papers', 'materials', 'notes', 'projects', 'mindmaps', 'proposals'];
+const SYNC_STORES = ['papers', 'materials', 'notes', 'projects', 'mindmaps', 'proposals', 'postits'];
 
 // undefined 값 필드 재귀 제거 — Firestore는 undefined를 허용하지 않음
 function stripUndefined(obj) {

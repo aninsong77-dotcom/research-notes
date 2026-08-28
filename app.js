@@ -7139,11 +7139,12 @@ async function buildBackupJson(skipBinary = false) {
     const notes = await dbGetAll(STORE_NOTES);
     const proposals = await dbGetAll(STORE_PROPOSALS);      // 모형스케치북
     const projects = await dbGetAll(STORE_PROJECTS);        // 프로젝트 구분
-    const mindmaps = await dbGetAll(STORE_MINDMAPS);        // 마인드맵
-    pushDebug('info', `백업생성 — 프로젝트${projects.length} 마인드맵${mindmaps.length} 스케치북${proposals.length} 메모${notes.length}`);
+    const mindmaps = await dbGetAll(STORE_MINDMAPS);        // 모형스케치북 캔버스(이름 혼동 주의 — 트리형 마인드맵은 postits)
+    const postits = await dbGetAll(STORE_POSTITS);          // 마인드맵(트리 구조 정리) 화면
+    pushDebug('info', `백업생성 — 프로젝트${projects.length} 마인드맵${mindmaps.length} 스케치북${proposals.length} 메모${notes.length} 트리마인드맵${postits.length}`);
     return JSON.stringify(
-        { version: 4, exportedAt: Date.now(), papers: exportable, materials: exportableMat,
-          notes, proposals, projects, mindmaps },
+        { version: 5, exportedAt: Date.now(), papers: exportable, materials: exportableMat,
+          notes, proposals, projects, mindmaps, postits },
         null, 2);
 }
 
@@ -7486,6 +7487,10 @@ async function _restoreAllFromBackupFile() {
         const existingMm = await dbGetAll(STORE_MINDMAPS);
         for (const mm of (data.mindmaps || [])) {
             if (!existingMm.find(e => e.id === mm.id)) await dbPut(STORE_MINDMAPS, mm);
+        }
+        const existingPt = await dbGetAll(STORE_POSTITS);
+        for (const pt of (data.postits || [])) {
+            if (!existingPt.find(e => e.id === pt.id)) await dbPut(STORE_POSTITS, pt);
         }
 
         await initProjects();

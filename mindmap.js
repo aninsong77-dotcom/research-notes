@@ -633,11 +633,23 @@ function mmBind() {
     });
     inp.addEventListener('blur', finishEdit);
 
-    document.addEventListener('keydown', onKey);
-    document.addEventListener('mousedown', e => {
-        if (!e.target.closest('#mm-rel-popup')) hidePopup();
-    });
-    window.addEventListener('resize', resizeBg);
+    // 탭 재진입마다 이 함수가 다시 호출되는데, document/window 리스너는 앱 생애주기 내내 살아있어
+    // 가드 없이 매번 등록하면 재진입 횟수만큼 쌓인다(Ctrl+Z 한 번에 여러 단계 취소되는 원인이었음).
+    // onKey/resizeBg는 mindmap.js 최상위 함수라 매번 최신 S를 읽으므로 1회만 등록해도 안전.
+    if (!window.__mmKeyBound) {
+        window.__mmKeyBound = true;
+        document.addEventListener('keydown', onKey);
+    }
+    if (!window.__mmDocMousedownBound) {
+        window.__mmDocMousedownBound = true;
+        document.addEventListener('mousedown', e => {
+            if (!e.target.closest('#mm-rel-popup')) hidePopup();
+        });
+    }
+    if (!window.__mmResizeBound) {
+        window.__mmResizeBound = true;
+        window.addEventListener('resize', resizeBg);
+    }
 }
 
 function onDown(e) {
@@ -846,6 +858,9 @@ function onWheel(e) {
 
 function onKey(e) {
     if (!S) return;
+    // 리스너를 1회만 등록(위 mmBind 참고)하면서 화면을 떠나도 계속 살아있으므로,
+    // 모형스케치북(sketch) 화면이 아닐 때는 무시 — 다른 화면에서 Delete 눌러도 캔버스가 반응하면 안 됨.
+    if (typeof state !== 'undefined' && state.view !== 'sketch') return;
     // 텍스트 입력 중(제목·부제 contenteditable, 프로포절·이름 편집 input/textarea)에는
     // 캔버스 단축키(Delete·Ctrl+Z 등)를 무시 — 네이티브 텍스트 편집을 우선한다.
     if (document.activeElement?.isContentEditable) return;
